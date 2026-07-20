@@ -1,0 +1,258 @@
+---
+description: A rule for good commit messages
+alwaysApply: false
+---
+## Subject Line Rules
+
+1. **Use imperative mood** ("add feature" not "added feature" or "adds feature")
+2. **Don't capitalize** the first letter
+3. **No period (`.`)** at the end
+4. **Keep it under 50 characters** — aim for 40 to leave room for scope
+5. **Be specific** — avoid vague terms like "update," "fix stuff," or "changes"
+
+### Good Subjects
+
+- `fix login validation on admin panel`
+- `add support for WebP image format`
+- `refactor database query builder`
+- `remove deprecated API endpoints`
+
+### Bad Subjects
+
+- `fixed bug` ❌ (vague, past tense)
+- `Update dependencies.` ❌ (period, vague)
+- `WIP: random changes` ❌ (not descriptive)
+
+---
+
+## Body (Optional but Recommended)
+
+Use the body to explain **why** the change was made, not what the code does (that should be clear from the code itself).
+
+- Wrap at **72 characters** per line
+- Separate from subject with a **blank line**
+- Use bullet points or paragraphs as needed
+- Reference issue numbers: `Closes #123`, `Fixes #456`
+
+### Body Example
+
+```
+feat(payment): add Stripe webhook signature verification
+
+Previously, webhooks were processed without verifying Stripe's
+signature, creating a security vulnerability. Added HMAC-SHA256
+validation using Stripe's published key.
+
+This prevents replay attacks and spoofed payment events.
+
+Closes #1234
+```
+
+---
+
+## Footer (Optional)
+
+Use footers for **breaking changes**, **issue references**, and **metadata**.
+
+### Breaking Changes
+
+Denote breaking changes with `BREAKING CHANGE:` prefix:
+
+```
+refactor(api): change authentication header format
+
+BREAKING CHANGE: API now requires Authorization: Bearer <token>
+instead of X-API-Key header. Clients must update within 30 days.
+```
+
+### Issue References
+
+```
+Closes #123
+Fixes #456, #789
+Relates to #999
+```
+
+---
+
+## Complete Examples
+
+### Example 1: New Feature with Scope
+
+```
+feat(search): add full-text search with Elasticsearch backend
+
+Implemented full-text search using Elasticsearch 7.x. Users can now
+search across all content types (posts, comments, user profiles) with
+advanced filter options.
+
+- Integrated Elasticsearch client library
+- Created search indexing pipeline
+- Added advanced filter UI component
+- Optimized query performance for large datasets
+
+Closes #567
+```
+
+### Example 2: Bug Fix
+
+```
+fix(auth): prevent session hijacking via XSS vulnerability
+
+Cross-site scripting vulnerability in session token storage allowed
+attackers to steal authentication cookies. Tokens are now stored in
+httpOnly cookies and CSRF tokens validated on state-changing requests.
+
+Closes #892
+```
+
+### Example 3: Refactoring
+
+```
+refactor(database): split User model into separate services
+
+Extracted user authentication, profile management, and notification
+preferences into dedicated service classes for better separation of
+concerns and testability.
+```
+
+### Example 4: Breaking Change
+
+```
+feat(api)!: redesign REST API endpoints for v2
+
+BREAKING CHANGE: API endpoints changed from /api/v1/* to /api/v2/*.
+Request/response schemas have been redesigned for consistency.
+
+Old: POST /api/v1/users
+New: POST /api/v2/users
+
+Migration guide: https://docs.example.com/migration-v2
+```
+
+_Note: The `!` before the colon signals a breaking change._
+
+---
+
+## Best Practices
+
+### 1. **Atomic Commits**
+
+Each commit should represent one logical change. If you need an "and" in your subject, split it into multiple commits.
+
+❌ `feat(auth): add login form and reset password flow`  
+✅ `feat(auth): add login form` + `feat(auth): add password reset flow`
+
+### 2. **Use Present Tense**
+
+Commits describe actions, not history.
+
+❌ `Fixed bug in cache invalidation`  
+✅ `fix(cache): invalidate stale entries on mutation`
+
+### 3. **Be Consistent**
+
+Establish project conventions and document them in `CONTRIBUTING.md`. All team members should follow the same patterns.
+
+### 4. **Don't Mix Types**
+
+Keep commits focused. A single commit should not be both a feature and a refactor.
+
+### 5. **Use Commit Linting**
+
+Tools like `commitlint` can enforce these conventions automatically:
+
+```bash
+npm install --save-dev @commitlint/config-conventional commitlint
+```
+
+`.commitlintrc.js`:
+
+```javascript
+module.exports = {
+  extends: ["@commitlint/config-conventional"],
+};
+```
+
+### 6. **Link to Issues**
+
+Always reference the issue or ticket being addressed:
+
+```
+feat(billing): implement tiered pricing model
+
+Closes #1234
+```
+
+---
+
+## Tools & Integration
+
+### Pre-commit Hook
+
+Validate commits before they're created:
+
+```bash
+# .husky/commit-msg
+npx commitlint --edit "$1"
+```
+
+### Commit Template (Git)
+
+Set a commit message template to remind developers of the format:
+
+`.git/hooks/commit-msg` or use `git config commit.template`:
+
+```
+# <type>(<scope>): <subject> (max 50 chars)
+#
+# <body> (wrapped at 72 chars)
+#
+# <footer>
+#
+# Types: feat, fix, docs, style, refactor, test, chore
+# Scopes: auth, api, ui, database, config, docs, ci
+# Remember: Use imperative mood, no period at end
+```
+
+### Changelog Generation
+
+Conventional commits enable automated changelog generation:
+
+```bash
+npm install --save-dev conventional-changelog-cli
+npx conventional-changelog -p angular -i CHANGELOG.md -s
+```
+
+---
+
+## References
+
+- **Conventional Commits Specification**: https://www.conventionalcommits.org/
+- **Semantic Commit Messages**: https://seesparkbox.com/foundry/semantic_commit_messages
+- **Karma Test Runner Git Commit Guidelines**: http://karma-runner.github.io/1.0/dev/git-commit-msg.html
+- **Angular Commit Guidelines**: https://github.com/angular/angular/blob/master/CONTRIBUTING.md#commit
+
+---
+
+## FAQ
+
+**Q: What if my commit doesn't fit a type?**  
+A: Use `chore` for anything that doesn't clearly fit into the main categories. Or reconsider whether it's too broad and should be split.
+
+**Q: Should I always include a scope?**  
+A: No, but it's strongly recommended for clarity. Most commits benefit from a scope.
+
+**Q: Can I use multiple types in one commit?**  
+A: No. Commits should be atomic. If you're doing multiple things, split them into separate commits.
+
+**Q: What's the difference between `refactor` and `fix`?**  
+A: `fix` solves an actual bug. `refactor` improves code without changing behavior.
+
+**Q: Do I need to include a body?**  
+A: Not always, but for non-trivial changes, a body explaining the _why_ is invaluable for future readers.
+
+---
+
+**Last Updated:** 2026  
+**Version:** 1.0

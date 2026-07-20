@@ -1,0 +1,35 @@
+# ESP32 / PlatformIO / ESP-IDF build output
+.pio/
+.pioenvs/
+.piolibdeps/
+build/
+sdkconfig.old
+*.bin
+*.elf
+*.hex
+*.map
+*.uf2
+
+# Editor files
+.idea/
+.vscode/
+*.swp
+*~
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.pem
+
+# Python host tools
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Logs and operating-system files
+*.log
+.DS_Store
+Thumbs.db
+Desktop.ini

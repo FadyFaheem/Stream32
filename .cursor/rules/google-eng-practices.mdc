@@ -1,0 +1,34 @@
+---
+description: Google engineering practices for authoring and reviewing changes (small CLs, clear descriptions, code-health-first review)
+alwaysApply: false
+---
+# Google Engineering Practices
+
+Baseline for how we author and review changes, adapted from
+[google/eng-practices](https://github.com/google/eng-practices) (the Code
+Reviewer's Guide and Change Author's Guide). Here a "CL" means one
+self-contained change (a PR or commit); "LGTM" means a reviewer approves.
+
+## Authoring changes (small CLs)
+
+- **Keep CLs small and focused** — one self-contained change per CL. Small CLs are
+  reviewed faster and more thoroughly, and are less likely to introduce bugs.
+- **Separate unrelated work** into separate CLs (e.g. a refactor vs. a feature).
+- **Write a good description:** an imperative summary line of _what_, then a body
+  explaining _why_ and any context the reviewer needs. Avoid vague messages.
+
+```
+add stripe webhook signature verification
+
+Webhooks were processed without verifying Stripe's signature, allowing
+spoofed events. Validate the HMAC-SHA256 signature before processing.
+```
+
+## Reviewing changes
+
+- **Standard:** approve once the change _definitely improves overall code health_,
+  even if it is not perfect. Don't block on perfection.
+- **Look at:** design, functionality, complexity, tests, naming, comments,
+  consistency with the codebase, and documentation.
+- **Prefer follow-ups for nitpicks.** Prefix non-blocking suggestions with `Nit:`.
+- **Be timely and explain the _why_** behind feedback.

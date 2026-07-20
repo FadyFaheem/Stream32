@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./assets/logo.png" alt="Stream32 logo" width="400">
+  <img src="./assets/logo.png" alt="Stream32 logo" width="260">
 
   <h1>Stream32</h1>
 

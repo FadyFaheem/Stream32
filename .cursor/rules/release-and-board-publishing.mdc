@@ -1,0 +1,50 @@
+---
+description: Project-specific workflow for publishing Stream32 desktop releases and board support
+alwaysApply: true
+---
+
+# Stream32 releases and board support
+
+Follow the repository automation; do not manually attach build outputs or commit generated binaries.
+
+## Publish a desktop application release
+
+1. Start from an up-to-date `main` with no unrelated changes.
+2. From `desktop/`, run `npm ci`, `npm test`, and `npm run check`.
+3. Set the SemVer version in both manifests with `npm version <version> --no-git-tag-version`.
+4. Commit only `desktop/package.json` and `desktop/package-lock.json`, using
+   `chore(desktop): prepare v<version>`.
+5. Create tag `v<version>` on that commit. The tag must exactly equal `v` plus
+   `desktop/package.json`'s version.
+6. Push the commit to `main`, then push the tag:
+   `git push origin main` and `git push origin v<version>`.
+7. Verify the `Release Desktop` workflow and its generated GitHub Release.
+   It must contain Windows NSIS/portable, macOS DMG/ZIP, Linux AppImage/DEB,
+   updater metadata, and blockmaps. A hyphenated version is a prerelease.
+
+The workflow runs checks and packages x64 builds on all three operating
+systems. macOS artifacts are unsigned unless signing/notarization is configured,
+so do not claim that automatic macOS installation works for unsigned builds.
+
+## Add, update, and publish board support
+
+1. Create a lowercase stable directory under `boards/` with `board.json` and an
+   ESP-IDF project; use an existing board as the structural reference.
+2. Add its relative `board.json` path to `boards/catalog.json`.
+3. Keep `board.json`'s firmware SemVer, versioned `imageName`, and firmware
+   `CMakeLists.txt` `PROJECT_VER` identical. If firmware bytes change, bump the
+   version; published firmware asset names are immutable.
+4. Use precise USB VID/PID filters and correct hardware-revision warnings.
+   Catalog schema 1 currently accepts only ESP32-S3 and protocol 1.
+5. Build with ESP-IDF 5.4.4 from the firmware directory:
+   `bash ../../tools/build-firmware.sh`.
+6. Run `node boards/tools/build-catalog.js --validate-only` from the repository
+   root. Never commit `boards/dist/` or compiled firmware.
+7. Open and merge a PR. `Board CI` builds every listed profile. A merged
+   `boards/**` change on `main` runs `Publish Board Support`, which updates the
+   non-latest rolling `boards-current` release and publishes `catalog-v1.json`
+   only after versioned firmware and dependency locks succeed.
+
+Existing schema-1/protocol-1/flashing transport profiles need no desktop
+release. For a new protocol, chip, or transport, update the desktop, catalog
+tooling, and hardcoded board CI first; set `minimumDesktopVersion` accordingly.

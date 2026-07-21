@@ -165,6 +165,39 @@ function validateProfile(source, profilePath) {
     fail(`${profilePath} firmware version does not match CMakeLists.txt.`);
   }
 
+  let deck;
+
+  if (source.deck !== undefined) {
+    if (
+      !source.deck ||
+      typeof source.deck !== 'object' ||
+      Array.isArray(source.deck)
+    ) {
+      fail(`${profilePath} deck limits are invalid.`);
+    }
+
+    deck = {
+      maxRows: requireInteger(
+        source.deck.maxRows ?? 5,
+        `${profilePath} deck maxRows`,
+        1,
+        5,
+      ),
+      maxCols: requireInteger(
+        source.deck.maxCols ?? 5,
+        `${profilePath} deck maxCols`,
+        1,
+        5,
+      ),
+      maxPages: requireInteger(
+        source.deck.maxPages ?? 8,
+        `${profilePath} deck maxPages`,
+        1,
+        8,
+      ),
+    };
+  }
+
   return {
     id,
     name: requireString(source.name, `${profilePath} name`),
@@ -177,6 +210,7 @@ function validateProfile(source, profilePath) {
     protocolVersion,
     minimumDesktopVersion,
     usbFilters,
+    ...(deck ? { deck } : {}),
     firmware: {
       imageName,
       offset: requireInteger(
@@ -281,6 +315,7 @@ const boards = profiles.map((profile) => {
     protocolVersion: profile.protocolVersion,
     minimumDesktopVersion: profile.minimumDesktopVersion,
     usbFilters: profile.usbFilters,
+    ...(profile.deck ? { deck: profile.deck } : {}),
     capabilities: profile.capabilities,
     recoveryInstructions: profile.recoveryInstructions,
     firmware: {

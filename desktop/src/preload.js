@@ -2,11 +2,17 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('stream32', {
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+  exportDeck: (deviceId) => ipcRenderer.invoke('deck:export', deviceId),
   getBoardFirmware: (boardId) =>
     ipcRenderer.invoke('boards:firmware', boardId),
   getAutoStart: () => ipcRenderer.invoke('autostart:get'),
+  importDeck: () => ipcRenderer.invoke('deck:import'),
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   listBoards: (force = false) => ipcRenderer.invoke('boards:list', force),
+  listDecks: () => ipcRenderer.invoke('deck:list'),
+  runAction: (action) => ipcRenderer.invoke('action:run', action),
+  saveDeck: (deviceId, profile) =>
+    ipcRenderer.invoke('deck:save', deviceId, profile),
   onBoardDownloadProgress(callback) {
     if (typeof callback !== 'function') {
       throw new TypeError('Board download listener must be a function.');

@@ -68,6 +68,27 @@ test('validates catalog compatibility and rejects hostile asset names', () => {
   assert.throws(() => validateCatalog(hostile, '0.1.0'), /unsafe/);
 });
 
+test('applies and validates optional per-board deck limits', () => {
+  const image = Buffer.from([0xe9, 1, 2, 3]);
+
+  assert.deepEqual(
+    validateCatalog(catalogFor(image), '0.1.0').boards[0].deck,
+    { maxCols: 5, maxPages: 8, maxRows: 5 },
+  );
+  assert.deepEqual(
+    validateCatalog(
+      catalogFor(image, { deck: { maxRows: 4, maxCols: 3, maxPages: 2 } }),
+      '0.1.0',
+    ).boards[0].deck,
+    { maxCols: 3, maxPages: 2, maxRows: 4 },
+  );
+  assert.throws(
+    () =>
+      validateCatalog(catalogFor(image, { deck: { maxRows: 99 } }), '0.1.0'),
+    /deck maxRows/,
+  );
+});
+
 test('downloads from the fixed release base, verifies, and caches firmware', async () => {
   const directory = mkdtempSync(path.join(os.tmpdir(), 'stream32-boards-'));
   const image = Buffer.from([0xe9, 0xaa, 0xbb, 0xcc, 0xdd]);

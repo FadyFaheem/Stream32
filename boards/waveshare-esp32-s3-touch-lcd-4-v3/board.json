@@ -13,6 +13,11 @@
       "usbProductId": 4097
     }
   ],
+  "deck": {
+    "maxRows": 5,
+    "maxCols": 5,
+    "maxPages": 8
+  },
   "firmware": {
     "version": "0.1.2",
     "projectPath": "firmware",

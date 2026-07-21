@@ -1,16 +1,27 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
+const { readFile, writeFile } = require('node:fs/promises');
 const path = require('node:path');
 
+const { createActionRunner } = require('./actions');
 const {
   getAutoStartEnabled,
   setAutoStartEnabled,
   wasStartedHidden,
 } = require('./autostart');
 const { createDefaultBoardService } = require('./boards');
+const {
+  MAX_IMPORT_BYTES,
+  exportProfile,
+  getDecksPath,
+  importProfile,
+  readDecks,
+  saveDeviceProfile,
+} = require('./deck-store');
 const { configureSerialAccess } = require('./serial');
 const { createTray } = require('./tray');
 const { createUpdater } = require('./updater');
 
+const actionRunner = createActionRunner();
 let boardService = null;
 let isQuitting = false;
 let mainWindow = null;
@@ -117,6 +128,58 @@ function registerIpcHandlers() {
 
     return boardService.getFirmware(boardId);
   });
+  ipcMain.handle('deck:list', () => readDecks(getDecksPath()));
+  ipcMain.handle('deck:save', (_event, deviceId, profile) => {
+    if (typeof deviceId !== 'string') {
+      throw new TypeError('Device id must be a string.');
+    }
+
+    return saveDeviceProfile(deviceId, profile, getDecksPath());
+  });
+  ipcMain.handle('deck:export', async (_event, deviceId) => {
+    if (typeof deviceId !== 'string') {
+      throw new TypeError('Device id must be a string.');
+    }
+
+    const profile = readDecks(getDecksPath()).devices[deviceId];
+
+    if (!profile) {
+      throw new Error('This device has no saved deck profile.');
+    }
+
+    const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
+      defaultPath: `stream32-deck-${deviceId}.json`,
+      filters: [{ name: 'Stream32 deck profile', extensions: ['json'] }],
+    });
+
+    if (canceled || !filePath) {
+      return { saved: false };
+    }
+
+    await writeFile(filePath, exportProfile(profile), 'utf8');
+    return { saved: true };
+  });
+  ipcMain.handle('deck:import', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+      filters: [{ name: 'Stream32 deck profile', extensions: ['json'] }],
+      properties: ['openFile'],
+    });
+
+    if (canceled || filePaths.length === 0) {
+      return { profile: null };
+    }
+
+    const text = await readFile(filePaths[0], 'utf8');
+
+    if (text.length > MAX_IMPORT_BYTES) {
+      throw new Error('Deck profile file is too large.');
+    }
+
+    return { profile: importProfile(text) };
+  });
+  ipcMain.handle('action:run', (_event, action) =>
+    actionRunner.runAction(action),
+  );
 }
 
 function reportBackgroundError(error) {
@@ -177,6 +240,7 @@ if (!hasSingleInstanceLock) {
 
 app.on('before-quit', () => {
   isQuitting = true;
+  actionRunner.dispose();
 });
 
 app.on('window-all-closed', () => {

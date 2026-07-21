@@ -74,7 +74,7 @@ Desktop messages:
 Firmware messages:
 
 ```json
-{"type":"hello","protocol":1,"boardId":"waveshare-esp32-s3-touch-lcd-4-v3","firmwareVersion":"0.1.0","deviceId":"aabbccddeeff"}
+{"type":"hello","protocol":1,"boardId":"waveshare-esp32-s3-touch-lcd-4-v3","firmwareVersion":"0.1.1","deviceId":"aabbccddeeff"}
 {"type":"pong","id":1}
 {"type":"touch","phase":"down","x":120,"y":240}
 ```

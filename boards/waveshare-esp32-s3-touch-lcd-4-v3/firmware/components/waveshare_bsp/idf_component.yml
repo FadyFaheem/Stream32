@@ -1,0 +1,13 @@
+dependencies:
+  espressif/esp_io_expander:
+    version: "*"
+  espressif/esp_lvgl_port:
+    version: "*"
+  espressif/esp_lcd_st7701:
+    version: "*"
+  espressif/esp_lcd_panel_io_additions:
+    version: "*"
+  espressif/esp_lcd_touch_gt911:
+    version: "*"
+  lvgl/lvgl:
+    version: "9.2.0"

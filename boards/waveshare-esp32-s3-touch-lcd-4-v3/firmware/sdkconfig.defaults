@@ -18,6 +18,11 @@ CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
 CONFIG_SPIRAM_RODATA=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 
+# The GT911 on this board was unstable at the BSP's 400 kHz default.
+# CONFIG_BSP_I2C_FAST_MODE is not set
+# Return display/touch initialization errors instead of rebooting on assert.
+# CONFIG_BSP_ERROR_CHECK is not set
+
 CONFIG_FREERTOS_HZ=1000
 CONFIG_LV_USE_CLIB_MALLOC=y
 CONFIG_LV_USE_CLIB_STRING=y

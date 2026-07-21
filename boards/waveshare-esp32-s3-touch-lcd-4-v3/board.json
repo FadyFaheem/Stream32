@@ -14,9 +14,9 @@
     }
   ],
   "firmware": {
-    "version": "0.1.0",
+    "version": "0.1.1",
     "projectPath": "firmware",
-    "imageName": "waveshare-esp32-s3-touch-lcd-4-v3-0.1.0.bin",
+    "imageName": "waveshare-esp32-s3-touch-lcd-4-v3-0.1.1.bin",
     "offset": 0
   },
   "capabilities": [

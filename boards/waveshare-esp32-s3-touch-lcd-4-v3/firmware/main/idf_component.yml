@@ -1,8 +1,6 @@
 dependencies:
   idf:
     version: ">=5.4.4,<5.5"
-  waveshare/esp32_s3_touch_lcd_4:
-    version: "1.1.0"
   espressif/esp_lcd_st7701:
     version: "1.1.0"
   espressif/esp_lcd_touch_gt911:

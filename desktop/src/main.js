@@ -102,6 +102,7 @@ function registerIpcHandlers() {
     return actualState;
   });
   ipcMain.handle('updater:check', () => updaterController?.checkForUpdates());
+  ipcMain.handle('updater:install', installUpdate);
   ipcMain.handle('boards:list', (_event, force = false) => {
     if (typeof force !== 'boolean') {
       throw new TypeError('Board refresh flag must be a boolean.');

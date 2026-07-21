@@ -50,7 +50,7 @@ function createUpdater({ onDownloaded, sendStatus }) {
 
     return autoUpdater.checkForUpdatesAndNotify({
       title: 'Stream32 update ready',
-      body: 'Restart Stream32 from the tray menu to install it.',
+      body: 'Choose Restart to update in Stream32 or from the tray menu.',
     });
   }
 

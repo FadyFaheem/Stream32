@@ -41,7 +41,7 @@
           </p>
         </header>
 
-        <details class="card" open>
+        <details id="flash-step" class="card setup-step" open>
           <summary class="card-summary">
             <span class="step">Step 1</span>
             <h2 id="flash-title">Choose and flash your board</h2>
@@ -121,13 +121,6 @@
             >
               Flash Stream32 firmware
             </button>
-            <button
-              id="reconnect-device"
-              class="button button-secondary"
-              type="button"
-            >
-              Reconnect
-            </button>
           </div>
 
           <div class="progress-group">
@@ -151,13 +144,22 @@
           </div>
         </details>
 
-        <details class="card" open>
+        <details id="test-step" class="card setup-step" open>
           <summary class="card-summary">
             <span class="step">Step 2</span>
             <h2 id="test-title">Test USB and touch</h2>
           </summary>
 
           <div class="card-body">
+            <div class="card-toolbar">
+              <button
+                id="reconnect-device"
+                class="button button-secondary"
+                type="button"
+              >
+                Reconnect Stream32 screen
+              </button>
+            </div>
             <p id="touch-status" class="touch-status" aria-live="polite">
               Flash and connect the board, then touch its display.
             </p>

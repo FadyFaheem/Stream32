@@ -57,11 +57,13 @@ class DeviceController {
     this.flashButton = document.querySelector('#flash-device');
     this.flashLog = document.querySelector('#flash-log');
     this.flashProgress = document.querySelector('#flash-progress');
+    this.flashStep = document.querySelector('#flash-step');
     this.flashStatus = document.querySelector('#flash-status');
     this.reconnectButton = document.querySelector('#reconnect-device');
     this.recoveryList = document.querySelector('#recovery-steps');
     this.refreshButton = document.querySelector('#refresh-boards');
     this.refreshUsbButton = document.querySelector('#refresh-usb');
+    this.testStep = document.querySelector('#test-step');
     this.touchStatus = document.querySelector('#touch-status');
     this.usbPortStatus = document.querySelector('#usb-port-status');
   }
@@ -87,8 +89,12 @@ class DeviceController {
     this.refreshButton.addEventListener('click', () => {
       this.loadBoards(true);
     });
-    this.reconnectButton.addEventListener('click', () => {
-      this.reconnectAuthorizedDevice();
+    this.reconnectButton.addEventListener('click', async () => {
+      await this.reconnectAuthorizedDevice(true);
+
+      if (this.session) {
+        this.showTouchTest();
+      }
     });
 
     this.api.onBoardDownloadProgress((progress) => {
@@ -383,6 +389,12 @@ class DeviceController {
       !this.serial;
   }
 
+  showTouchTest() {
+    this.flashStep.open = false;
+    this.testStep.open = true;
+    this.testStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
   async flashSelectedBoard() {
     const board = this.selectedBoard();
     const port = this.selectedPort;
@@ -466,6 +478,7 @@ class DeviceController {
       );
       this.flashStatus.textContent =
         'Firmware flashed and connected successfully.';
+      this.showTouchTest();
     } catch (error) {
       const message = errorMessage(error);
       this.appendLog(message);
@@ -514,13 +527,13 @@ class DeviceController {
     );
   }
 
-  async reconnectAuthorizedDevice() {
+  async reconnectAuthorizedDevice(force = false) {
     if (
       this.busy ||
-      this.session ||
       this.operation ||
       !this.serial ||
-      this.boards.size === 0
+      this.boards.size === 0 ||
+      (this.session && !force)
     ) {
       return;
     }
@@ -532,6 +545,10 @@ class DeviceController {
     this.setDeviceStatus('Looking for an authorized Stream32 device…', 'working');
 
     try {
+      if (force) {
+        await this.closeSession();
+      }
+
       const ports = await this.serial.getPorts();
 
       for (const port of ports) {

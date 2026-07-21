@@ -1,5 +1,6 @@
 :root {
   color-scheme: dark;
+  interpolate-size: allow-keywords;
   --accent: #ffad22;
   --accent-strong: #ffc45c;
   --background: #0b1116;
@@ -197,6 +198,24 @@ h2 {
   border-radius: 18px;
   background: rgba(16, 26, 33, 0.94);
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.14);
+}
+
+.setup-step::details-content {
+  block-size: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-0.35rem);
+  transition:
+    block-size 240ms ease,
+    opacity 180ms ease,
+    transform 220ms ease,
+    content-visibility 240ms allow-discrete;
+}
+
+.setup-step[open]::details-content {
+  block-size: auto;
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .card-summary {

@@ -122,6 +122,12 @@ function validateKey(key, keyCount, pageCount) {
   };
   const label = optionalString(key.label, 'Key label', MAX_LABEL_LENGTH);
   const color = optionalString(key.color, 'Key color', 7, COLOR_PATTERN);
+  const labelColor = optionalString(
+    key.labelColor,
+    'Key label color',
+    7,
+    COLOR_PATTERN,
+  );
 
   if (label !== undefined) {
     validated.label = label;
@@ -129,6 +135,10 @@ function validateKey(key, keyCount, pageCount) {
 
   if (color !== undefined) {
     validated.color = color;
+  }
+
+  if (labelColor !== undefined) {
+    validated.labelColor = labelColor;
   }
 
   if (key.image !== undefined) {

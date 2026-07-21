@@ -222,6 +222,17 @@ function encodeLayoutMessage({ page, of, rows, cols, keys }) {
       encoded.color = key.color;
     }
 
+    if (key.labelColor !== undefined) {
+      if (
+        typeof key.labelColor !== 'string' ||
+        !KEY_COLOR_PATTERN.test(key.labelColor)
+      ) {
+        throw new TypeError('Layout key label color is invalid.');
+      }
+
+      encoded.labelColor = key.labelColor;
+    }
+
     if (key.imageCrc !== undefined) {
       if (
         typeof key.imageCrc !== 'string' ||

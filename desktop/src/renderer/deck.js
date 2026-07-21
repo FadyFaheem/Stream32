@@ -94,6 +94,7 @@ class DeckController {
     this.keyTitle = document.querySelector('#deck-key-title');
     this.keyLabel = document.querySelector('#deck-key-label');
     this.keyColor = document.querySelector('#deck-key-color');
+    this.keyLabelColor = document.querySelector('#deck-key-label-color');
     this.keyImage = document.querySelector('#deck-key-image');
     this.keyImageClear = document.querySelector('#deck-key-image-clear');
     this.actionType = document.querySelector('#deck-action-type');
@@ -253,6 +254,11 @@ class DeckController {
     this.keyColor.addEventListener('change', () => {
       this.updateSelectedKey((key) => {
         key.color = this.keyColor.value;
+      });
+    });
+    this.keyLabelColor.addEventListener('change', () => {
+      this.updateSelectedKey((key) => {
+        key.labelColor = this.keyLabelColor.value;
       });
     });
     this.keyImage.addEventListener('change', async () => {
@@ -423,7 +429,13 @@ class DeckController {
 
     mutate(key);
 
-    if (!key.label && !key.color && !key.image && !key.action) {
+    if (
+      !key.label &&
+      !key.color &&
+      !key.labelColor &&
+      !key.image &&
+      !key.action
+    ) {
       page.keys = page.keys.filter((entry) => entry !== key);
     }
 
@@ -814,6 +826,10 @@ class DeckController {
         entry.color = key.color;
       }
 
+      if (key.labelColor) {
+        entry.labelColor = key.labelColor;
+      }
+
       const render = renders.get(key.index);
 
       if (render) {
@@ -1047,8 +1063,17 @@ class DeckController {
       if (key?.label) {
         const label = this.document.createElement('span');
         label.textContent = key.label;
+
+        if (key.labelColor) {
+          label.style.color = key.labelColor;
+        }
+
         cell.append(label);
       }
+
+      cell.dataset.empty = String(
+        !key || (!key.label && !key.color && !key.image && !key.action),
+      );
 
       if (key?.action?.type === 'page') {
         cell.dataset.badge = '⇒';
@@ -1084,6 +1109,7 @@ class DeckController {
     this.keyTitle.textContent = `Key ${this.selectedKey + 1} (row ${row}, column ${col})`;
     this.keyLabel.value = key.label || '';
     this.keyColor.value = key.color || DEFAULT_KEY_COLOR;
+    this.keyLabelColor.value = key.labelColor || '#f3f7f9';
     this.keyImageClear.disabled = !key.image;
 
     this.actionPage.replaceChildren();

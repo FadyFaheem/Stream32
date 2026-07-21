@@ -30,7 +30,7 @@ html {
 }
 
 body {
-  min-width: 100vw;
+  /* 100vw would include the vertical scrollbar and force a horizontal one. */
   min-height: 100vh;
   margin: 0;
   color: var(--ink);
@@ -502,23 +502,62 @@ input:disabled {
 .deck-toolbar {
   display: flex;
   align-items: end;
-  gap: 1rem;
+  gap: 1.25rem;
   flex-wrap: wrap;
 }
 
-.deck-device-picker {
+.deck-field {
   display: grid;
-  flex: 1 1 240px;
   gap: 0.35rem;
+  align-content: start;
 }
 
-.deck-device-picker label {
-  font-size: 0.78rem;
+.deck-field > label,
+.deck-field label {
+  font-size: 0.76rem;
   font-weight: 700;
 }
 
-.deck-device-picker .helper[data-state="ready"] {
+.deck-device-picker {
+  flex: 1 1 300px;
+}
+
+.deck-device-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.deck-device-row select {
+  flex: 1;
+  width: auto;
+}
+
+.deck-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.34rem 0.75rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.deck-badge::before {
+  width: 0.45rem;
+  height: 0.45rem;
+  content: "";
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.deck-badge[data-state="ready"] {
   color: var(--success);
+  border-color: rgba(103, 208, 154, 0.45);
+  background: rgba(103, 208, 154, 0.08);
 }
 
 .deck-toolbar input[type="text"],
@@ -536,13 +575,13 @@ input:disabled {
 .deck-file-actions {
   display: flex;
   gap: 0.9rem;
-  padding-bottom: 0.55rem;
+  padding-bottom: 0.7rem;
 }
 
 .deck-sync-status {
-  width: 100%;
   min-height: 1.1rem;
-  margin: 0;
+  margin: 0 0 0 auto;
+  text-align: right;
 }
 
 #deck-sync-status[data-state="ready"] {
@@ -556,8 +595,7 @@ input:disabled {
 .deck-pagebar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
+  gap: 1rem 1.5rem;
   flex-wrap: wrap;
 }
 
@@ -635,9 +673,27 @@ input:disabled {
   cursor: pointer;
   place-items: center;
   color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: var(--surface-strong);
+  border: 1px solid #31485a;
+  border-radius: 16px;
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.05), transparent 45%),
+    var(--surface-strong);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 6px 14px rgba(0, 0, 0, 0.32);
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+
+.deck-key:hover {
+  border-color: rgba(255, 173, 34, 0.55);
+  transform: translateY(-2px);
+}
+
+.deck-key[data-empty="true"] {
+  border-style: dashed;
+  border-color: rgba(41, 64, 77, 0.9);
+  background: rgba(23, 38, 48, 0.42);
+  box-shadow: none;
 }
 
 .deck-key img {
@@ -675,40 +731,73 @@ input:disabled {
 }
 
 .deck-key-editor {
-  padding: 1rem 1.2rem;
+  padding: 1rem 1.2rem 1.2rem;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: rgba(16, 26, 33, 0.94);
 }
 
-.deck-key-fields {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
-  gap: 0.8rem;
-  margin-top: 0.7rem;
+.deck-key-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
-.deck-key-fields label {
-  display: grid;
-  gap: 0.35rem;
-  font-size: 0.78rem;
-  font-weight: 700;
+.deck-key-editor-head .field-label {
+  margin: 0;
+}
+
+.deck-key-fields {
+  display: flex;
+  align-items: end;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.9rem;
+}
+
+.deck-key-fields .deck-field {
+  flex: 1 1 190px;
+}
+
+.deck-color-field {
+  flex: 0 0 auto !important;
 }
 
 .deck-key-fields input[type="color"] {
+  width: 3.4rem;
   min-height: 2.55rem;
-  padding: 0.2rem;
+  padding: 0.25rem;
+  cursor: pointer;
 }
 
-.deck-key-fields input[type="file"] {
+.deck-image-row,
+.deck-action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.deck-image-row input[type="file"] {
+  flex: 1;
   padding: 0.5rem 0.85rem;
   font-size: 0.75rem;
 }
 
+.deck-action-field {
+  flex: 2 1 320px !important;
+}
+
+.deck-action-row > * {
+  flex: 1;
+  min-width: 0;
+}
+
 .deck-key-actions {
   display: flex;
-  gap: 0.75rem;
-  margin-top: 1rem;
+  align-items: center;
+  gap: 0.9rem;
 }
 
 .progress-group {

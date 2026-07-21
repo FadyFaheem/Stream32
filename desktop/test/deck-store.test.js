@@ -35,6 +35,7 @@ function sampleProfile() {
             index: 0,
             label: 'OBS',
             color: '#ff5533',
+            labelColor: '#0b1116',
             image: TINY_PNG,
             action: { type: 'launch', command: 'obs' },
           },
@@ -65,6 +66,7 @@ test('validates a full multi-page profile', () => {
   assert.equal(validated.pages.length, 2);
   assert.equal(validated.activePage, 1);
   assert.equal(validated.keyPx['3x3'], 150);
+  assert.equal(validated.pages[0].keys[0].labelColor, '#0b1116');
   assert.deepEqual(validated.pages[1].keys[1].action, {
     type: 'hotkey',
     key: 'F5',
@@ -96,6 +98,10 @@ test('rejects invalid profiles', () => {
   const badImage = sampleProfile();
   badImage.pages[0].keys[0].image = 'data:text/html;base64,PGh0bWw+';
   assert.throws(() => validateProfile(badImage), /Key image/);
+
+  const badLabelColor = sampleProfile();
+  badLabelColor.pages[0].keys[0].labelColor = 'white';
+  assert.throws(() => validateProfile(badLabelColor), /Key label color/);
 
   const duplicateKeys = sampleProfile();
   duplicateKeys.pages[0].keys = [{ index: 0 }, { index: 0 }];

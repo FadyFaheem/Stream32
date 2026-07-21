@@ -65,21 +65,25 @@
 
           <div id="deck-editor" class="deck-editor" hidden>
             <div class="deck-toolbar">
-              <div class="deck-device-picker">
+              <div class="deck-field deck-device-picker">
                 <label for="deck-device">Device</label>
-                <select id="deck-device"></select>
-                <span
-                  id="deck-device-status"
-                  class="helper"
-                  data-state="idle"
-                >Offline</span>
+                <div class="deck-device-row">
+                  <select id="deck-device"></select>
+                  <span
+                    id="deck-device-status"
+                    class="deck-badge"
+                    data-state="idle"
+                  >Offline</span>
+                </div>
               </div>
-              <input
-                id="deck-device-name"
-                type="text"
-                maxlength="60"
-                aria-label="Device nickname"
-              >
+              <div class="deck-field">
+                <label for="deck-device-name">Nickname</label>
+                <input
+                  id="deck-device-name"
+                  type="text"
+                  maxlength="60"
+                >
+              </div>
               <div class="deck-file-actions">
                 <button id="deck-import" class="button button-quiet" type="button">
                   Import
@@ -88,12 +92,6 @@
                   Export
                 </button>
               </div>
-              <p
-                id="deck-sync-status"
-                class="helper deck-sync-status"
-                data-state="idle"
-                aria-live="polite"
-              ></p>
             </div>
 
             <div class="deck-pagebar">
@@ -118,6 +116,12 @@
                 <label for="deck-cols">Columns</label>
                 <select id="deck-cols"></select>
               </div>
+              <p
+                id="deck-sync-status"
+                class="helper deck-sync-status"
+                data-state="idle"
+                aria-live="polite"
+              ></p>
             </div>
 
             <div class="deck-stage">
@@ -125,71 +129,81 @@
             </div>
 
             <div id="deck-key-editor" class="deck-key-editor" hidden>
-              <p id="deck-key-title" class="field-label"></p>
+              <div class="deck-key-editor-head">
+                <p id="deck-key-title" class="field-label"></p>
+                <div class="deck-key-actions">
+                  <button id="deck-key-test" class="button button-secondary" type="button">
+                    Test action
+                  </button>
+                  <button id="deck-key-clear" class="button button-quiet" type="button">
+                    Clear key
+                  </button>
+                </div>
+              </div>
               <div class="deck-key-fields">
-                <label>
+                <label class="deck-field">
                   Label
                   <input id="deck-key-label" type="text" maxlength="32">
                 </label>
-                <label>
-                  Color
+                <label class="deck-field deck-color-field">
+                  Key color
                   <input id="deck-key-color" type="color" value="#172630">
                 </label>
-                <label>
-                  Image
-                  <input id="deck-key-image" type="file" accept="image/*">
+                <label class="deck-field deck-color-field">
+                  Text color
+                  <input id="deck-key-label-color" type="color" value="#f3f7f9">
                 </label>
-                <button
-                  id="deck-key-image-clear"
-                  class="button button-quiet"
-                  type="button"
-                >
-                  Remove image
-                </button>
-                <label>
-                  Action
-                  <select id="deck-action-type">
-                    <option value="none">Do nothing</option>
-                    <option value="media">Media control</option>
-                    <option value="url">Open website</option>
-                    <option value="launch">Launch app / command</option>
-                    <option value="hotkey">Keyboard shortcut</option>
-                    <option value="page">Go to page</option>
-                  </select>
-                </label>
-                <select id="deck-action-media" aria-label="Media command" hidden></select>
-                <input
-                  id="deck-action-url"
-                  type="url"
-                  placeholder="https://example.com"
-                  aria-label="Website address"
-                  hidden
-                >
-                <input
-                  id="deck-action-launch"
-                  type="text"
-                  maxlength="1024"
-                  placeholder="notepad.exe or any command line"
-                  aria-label="Launch command"
-                  hidden
-                >
-                <input
-                  id="deck-action-hotkey"
-                  type="text"
-                  readonly
-                  placeholder="Click, then press keys"
-                  aria-label="Keyboard shortcut"
-                  hidden
-                >
-                <select id="deck-action-page" aria-label="Target page" hidden></select>
-              </div>
-              <div class="deck-key-actions">
-                <button id="deck-key-test" class="button button-secondary" type="button">
-                  Test action
-                </button>
-                <button id="deck-key-clear" class="button button-quiet" type="button">
-                  Clear key
-                </button>
+                <div class="deck-field">
+                  <label for="deck-key-image">Image</label>
+                  <div class="deck-image-row">
+                    <input id="deck-key-image" type="file" accept="image/*">
+                    <button
+                      id="deck-key-image-clear"
+                      class="button button-quiet"
+                      type="button"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+                <div class="deck-field deck-action-field">
+                  <label for="deck-action-type">Action</label>
+                  <div class="deck-action-row">
+                    <select id="deck-action-type">
+                      <option value="none">Do nothing</option>
+                      <option value="media">Media control</option>
+                      <option value="url">Open website</option>
+                      <option value="launch">Launch app / command</option>
+                      <option value="hotkey">Keyboard shortcut</option>
+                      <option value="page">Go to page</option>
+                    </select>
+                    <select id="deck-action-media" aria-label="Media command" hidden></select>
+                    <input
+                      id="deck-action-url"
+                      type="url"
+                      placeholder="https://example.com"
+                      aria-label="Website address"
+                      hidden
+                    >
+                    <input
+                      id="deck-action-launch"
+                      type="text"
+                      maxlength="1024"
+                      placeholder="notepad.exe or any command line"
+                      aria-label="Launch command"
+                      hidden
+                    >
+                    <input
+                      id="deck-action-hotkey"
+                      type="text"
+                      readonly
+                      placeholder="Click, then press keys"
+                      aria-label="Keyboard shortcut"
+                      hidden
+                    >
+                    <select id="deck-action-page" aria-label="Target page" hidden></select>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

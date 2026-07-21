@@ -105,7 +105,13 @@ test('encodes layout pages and rejects invalid keys', () => {
       rows: 2,
       cols: 3,
       keys: [
-        { index: 0, label: 'OBS', color: '#ff5533', imageCrc: 'deadbeef' },
+        {
+          index: 0,
+          label: 'OBS',
+          color: '#ff5533',
+          labelColor: '#ffffff',
+          imageCrc: 'deadbeef',
+        },
         { index: 5, goPage: 1 },
       ],
     }),
@@ -118,7 +124,13 @@ test('encodes layout pages and rejects invalid keys', () => {
     rows: 2,
     cols: 3,
     keys: [
-      { index: 0, label: 'OBS', color: '#ff5533', imageCrc: 'deadbeef' },
+      {
+        index: 0,
+        label: 'OBS',
+        color: '#ff5533',
+        labelColor: '#ffffff',
+        imageCrc: 'deadbeef',
+      },
       { index: 5, goPage: 1 },
     ],
   });
@@ -143,6 +155,17 @@ test('encodes layout pages and rejects invalid keys', () => {
         keys: [{ index: 0, color: 'red' }],
       }),
     /color/,
+  );
+  assert.throws(
+    () =>
+      encodeLayoutMessage({
+        page: 0,
+        of: 1,
+        rows: 2,
+        cols: 2,
+        keys: [{ index: 0, labelColor: 'white' }],
+      }),
+    /label color/,
   );
   assert.throws(
     () =>

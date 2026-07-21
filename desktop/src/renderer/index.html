@@ -72,6 +72,33 @@
             </p>
           </div>
 
+          <div class="usb-picker">
+            <div>
+              <p class="field-label">USB port</p>
+              <p id="usb-port-status" class="helper" data-state="idle">
+                No USB port selected.
+              </p>
+            </div>
+            <div class="usb-actions">
+              <button
+                id="choose-usb"
+                class="button button-secondary"
+                type="button"
+                disabled
+              >
+                Choose USB port
+              </button>
+              <button
+                id="refresh-usb"
+                class="button button-quiet"
+                type="button"
+                disabled
+              >
+                Refresh USB ports
+              </button>
+            </div>
+          </div>
+
           <label class="confirmation" for="confirm-revision">
             <input id="confirm-revision" type="checkbox">
             <span>
@@ -104,7 +131,7 @@
           <div class="progress-group">
             <progress id="flash-progress" max="100" value="0"></progress>
             <p id="flash-status" class="helper" aria-live="polite">
-              Select the exact board revision to begin.
+              Select the board, choose its USB port, and confirm the revision.
             </p>
           </div>
 

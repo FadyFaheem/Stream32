@@ -1,6 +1,32 @@
 const { DeckController } = require('./deck');
 const { DeviceController } = require('./device');
 
+const navItems = document.querySelectorAll('.nav-item');
+const views = new Map(
+  ['deck', 'flash', 'settings'].map((name) => [
+    name,
+    document.querySelector(`#view-${name}`),
+  ]),
+);
+
+function showView(name) {
+  for (const [viewName, view] of views) {
+    view.hidden = viewName !== name;
+  }
+
+  for (const item of navItems) {
+    item.dataset.active = String(item.dataset.view === name);
+  }
+}
+
+for (const item of navItems) {
+  item.addEventListener('click', () => showView(item.dataset.view));
+}
+
+document
+  .querySelector('#deck-goto-flash')
+  .addEventListener('click', () => showView('flash'));
+
 const autoStartControl = document.querySelector('#autostart');
 const checkUpdatesButton = document.querySelector('#check-updates');
 const updateRow = document.querySelector('.update-row');

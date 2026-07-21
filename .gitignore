@@ -35,6 +35,8 @@ node_modules/
 desktop/dist/
 desktop/out/
 desktop/src/renderer/renderer.bundle.js
+desktop/src/renderer/icon-names.json
+desktop/src/renderer/material-symbols.woff2
 
 # Logs and operating-system files
 *.log

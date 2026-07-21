@@ -15,9 +15,10 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "build:renderer": "esbuild src/renderer/renderer.js --bundle --platform=browser --format=iife --target=chrome142 --outfile=src/renderer/renderer.bundle.js",
+    "build:renderer": "node tools/generate-icon-names.js && esbuild src/renderer/renderer.js --bundle --platform=browser --format=iife --target=chrome142 --outfile=src/renderer/renderer.bundle.js",
     "start": "npm run build:renderer && electron .",
-    "check": "npm run build:renderer && node --check src/main.js && node --check src/preload.js && node --check src/tray.js && node --check src/updater.js && node --check src/autostart.js && node --check src/actions.js && node --check src/boards.js && node --check src/deck-store.js && node --check src/keymap.js && node --check src/serial.js && node --check src/settings.js && node --check src/renderer/deck.js && node --check src/renderer/device.js && node --check src/renderer/firmware-hash.js && node --check src/renderer/protocol.js && node --check src/renderer/renderer.js",
+    "check": "npm run build:renderer && node --check src/main.js && node --check src/preload.js && node --check src/tray.js && node --check src/updater.js && node --check src/autostart.js && node --check src/actions.js && node --check src/boards.js && node --check src/deck-store.js && node --check src/keymap.js && node --check src/serial.js && node --check src/settings.js && node --check tools/generate-icon-names.js && node --check src/renderer/deck.js && node --check src/renderer/device.js && node --check src/renderer/firmware-hash.js && node --check src/renderer/protocol.js && node --check src/renderer/renderer.js",
+    "pretest": "node -e \"require('node:fs').existsSync('node_modules/electron/dist') || require('node:child_process').execFileSync(process.execPath, ['node_modules/electron/install.js'], { stdio: 'inherit' })\"",
     "test": "node --test",
     "prepack": "npm run build:renderer",
     "pack": "electron-builder --dir",
@@ -27,6 +28,7 @@
   "dependencies": {
     "electron-updater": "^6.8.9",
     "esptool-js": "^0.6.0",
+    "material-symbols": "^0.45.8",
     "spark-md5": "^3.0.2"
   },
   "devDependencies": {

@@ -1,0 +1,25 @@
+/* Material Symbols Rounded (Apache-2.0, google/material-design-icons).
+   The woff2 file is copied beside this sheet by tools/generate-icon-names.js
+   during build:renderer. */
+@font-face {
+  font-family: "Material Symbols Rounded";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: block;
+  src: url("./material-symbols.woff2") format("woff2");
+}
+
+.ms-icon {
+  font-family: "Material Symbols Rounded";
+  font-weight: normal;
+  font-style: normal;
+  font-size: 26px;
+  line-height: 1;
+  direction: ltr;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  word-wrap: normal;
+  font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+}

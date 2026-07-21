@@ -4,6 +4,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_io_additions.h"
@@ -156,7 +157,7 @@ esp_err_t bsp_spiffs_unmount(void)
 esp_io_expander_handle_t bsp_io_expander_init()
 {
     if (!i2c_initialized) {
-        BSP_ERROR_CHECK_RETURN_ERR(bsp_i2c_init());
+        BSP_ERROR_CHECK_RETURN_NULL(bsp_i2c_init());
     }
     if (!io_expander) {
         ESP_LOGI(TAG, "Initializing TCA9554 IO expander at address 0x%02X", BSP_IO_EXPANDER_I2C_ADDRESS);

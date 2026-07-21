@@ -5,6 +5,7 @@
 
 #include "bsp/esp-bsp.h"
 #include "cJSON.h"
+#include "deck_ui.h"
 #include "driver/usb_serial_jtag.h"
 #include "esp_app_desc.h"
 #include "esp_err.h"
@@ -17,17 +18,14 @@
 
 #define STREAM32_BOARD_ID "waveshare-esp32-s3-touch-lcd-4-v3"
 #define STREAM32_PROTOCOL_VERSION 1
-#define STREAM32_LINE_CAPACITY 256
-#define STREAM32_USB_BUFFER_SIZE 1024
-
-typedef struct {
-    const char *phase;
-    int16_t x;
-    int16_t y;
-} touch_message_t;
+/* Matches the desktop's protocol line limit; image chunks fill whole lines. */
+#define STREAM32_LINE_CAPACITY 4096
+#define STREAM32_USB_BUFFER_SIZE 4096
+#define STREAM32_EVENT_LINE_CAPACITY 128
+#define STREAM32_REPLY_CAPACITY 384
 
 static const char *TAG = "stream32";
-static QueueHandle_t touch_queue;
+static QueueHandle_t event_queue;
 static lv_obj_t *connection_label;
 static lv_obj_t *touch_label;
 static lv_obj_t *touch_surface;
@@ -56,6 +54,15 @@ static void usb_write_line(const char *json)
 {
     usb_write_all(json, strlen(json));
     usb_write_all("\n", 1);
+}
+
+/* Queues a ready-to-send JSON line from LVGL/event context. */
+static void queue_event_line(const char *json)
+{
+    char line[STREAM32_EVENT_LINE_CAPACITY];
+
+    strlcpy(line, json, sizeof(line));
+    (void)xQueueSend(event_queue, line, 0);
 }
 
 static void update_connection_label(const char *text)
@@ -109,6 +116,7 @@ static void send_error(const char *code)
 static void handle_host_message(const char *line, size_t length)
 {
     cJSON *message = cJSON_ParseWithLength(line, length);
+    static char reply[STREAM32_REPLY_CAPACITY];
 
     if (message == NULL) {
         send_error("invalid-json");
@@ -148,26 +156,39 @@ static void handle_host_message(const char *line, size_t length)
             );
             usb_write_line(response);
         }
+    } else if (strcmp(type->valuestring, "layout") == 0) {
+        const char *error = deck_ui_handle_layout(
+            message,
+            line,
+            length,
+            reply,
+            sizeof(reply)
+        );
+
+        if (error != NULL) {
+            send_error(error);
+        } else {
+            usb_write_line(reply);
+        }
+    } else if (strcmp(type->valuestring, "image") == 0) {
+        const char *error = deck_ui_handle_image(message, reply, sizeof(reply));
+
+        if (error != NULL) {
+            send_error(error);
+        } else {
+            usb_write_line(reply);
+        }
+    } else if (strcmp(type->valuestring, "page") == 0) {
+        const char *error = deck_ui_handle_page(message);
+
+        if (error != NULL) {
+            send_error(error);
+        }
     } else {
         send_error("unknown-type");
     }
 
     cJSON_Delete(message);
-}
-
-static void send_touch_message(const touch_message_t *touch)
-{
-    char message[128];
-
-    snprintf(
-        message,
-        sizeof(message),
-        "{\"type\":\"touch\",\"phase\":\"%s\",\"x\":%d,\"y\":%d}",
-        touch->phase,
-        touch->x,
-        touch->y
-    );
-    usb_write_line(message);
 }
 
 static void usb_protocol_task(void *argument)
@@ -176,8 +197,9 @@ static void usb_protocol_task(void *argument)
         .tx_buffer_size = STREAM32_USB_BUFFER_SIZE,
         .rx_buffer_size = STREAM32_USB_BUFFER_SIZE,
     };
-    uint8_t incoming[64];
-    char line[STREAM32_LINE_CAPACITY];
+    uint8_t incoming[256];
+    /* Static: a 4 KB line does not belong on the task stack. */
+    static char line[STREAM32_LINE_CAPACITY];
     size_t line_length = 0;
     bool dropping_oversized_line = false;
 
@@ -212,10 +234,12 @@ static void usb_protocol_task(void *argument)
             }
         }
 
-        touch_message_t touch;
+        deck_ui_poll();
 
-        while (xQueueReceive(touch_queue, &touch, 0) == pdTRUE) {
-            send_touch_message(&touch);
+        char event_line[STREAM32_EVENT_LINE_CAPACITY];
+
+        while (xQueueReceive(event_queue, event_line, 0) == pdTRUE) {
+            usb_write_line(event_line);
         }
     }
 }
@@ -253,13 +277,17 @@ static void touch_event_handler(lv_event_t *event)
         LV_PART_MAIN
     );
 
-    const touch_message_t touch = {
-        .phase = phase,
-        .x = (int16_t)point.x,
-        .y = (int16_t)point.y,
-    };
+    char line[STREAM32_EVENT_LINE_CAPACITY];
 
-    (void)xQueueSend(touch_queue, &touch, 0);
+    snprintf(
+        line,
+        sizeof(line),
+        "{\"type\":\"touch\",\"phase\":\"%s\",\"x\":%d,\"y\":%d}",
+        phase,
+        (int)point.x,
+        (int)point.y
+    );
+    queue_event_line(line);
 }
 
 static void create_self_test_ui(void)
@@ -324,10 +352,10 @@ static void create_self_test_ui(void)
 
 void app_main(void)
 {
-    touch_queue = xQueueCreate(16, sizeof(touch_message_t));
+    event_queue = xQueueCreate(24, STREAM32_EVENT_LINE_CAPACITY);
 
-    if (touch_queue == NULL) {
-        ESP_LOGE(TAG, "Could not allocate the touch event queue");
+    if (event_queue == NULL) {
+        ESP_LOGE(TAG, "Could not allocate the event queue");
         return;
     }
 
@@ -346,10 +374,16 @@ void app_main(void)
     create_self_test_ui();
     bsp_display_unlock();
 
+    /* Restores the persisted deck; the self-test screen stays visible when
+       no deck has ever been synced. */
+    if (deck_ui_init(queue_event_line) != ESP_OK) {
+        ESP_LOGW(TAG, "Deck storage is unavailable; decks will not persist");
+    }
+
     const BaseType_t task_created = xTaskCreate(
         usb_protocol_task,
         "stream32_usb",
-        6144,
+        8192,
         NULL,
         5,
         NULL

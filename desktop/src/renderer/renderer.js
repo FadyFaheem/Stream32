@@ -1,3 +1,4 @@
+const { DeckController } = require('./deck');
 const { DeviceController } = require('./device');
 
 const autoStartControl = document.querySelector('#autostart');
@@ -76,12 +77,23 @@ checkUpdatesButton.addEventListener('click', async () => {
 window.stream32.onUpdateStatus(showUpdateStatus);
 loadAutoStartState();
 
+const deckController = new DeckController({
+  api: window.stream32,
+  document,
+});
 const deviceController = new DeviceController({
   api: window.stream32,
+  deck: deckController,
   document,
   serial: navigator.serial,
 });
 
+deckController.initialize().catch((error) => {
+  const syncStatus = document.querySelector('#deck-sync-status');
+  syncStatus.dataset.state = 'error';
+  syncStatus.textContent =
+    `Deck setup failed: ${error instanceof Error ? error.message : error}`;
+});
 deviceController.initialize().catch((error) => {
   const deviceStatus = document.querySelector('#device-status');
   deviceStatus.dataset.state = 'error';

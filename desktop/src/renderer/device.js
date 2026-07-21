@@ -34,8 +34,9 @@ function errorMessage(error) {
 }
 
 class DeviceController {
-  constructor({ api, document, serial }) {
+  constructor({ api, deck = null, document, serial }) {
     this.api = api;
+    this.deck = deck;
     this.document = document;
     this.serial = serial;
     this.boards = new Map();
@@ -44,7 +45,7 @@ class DeviceController {
     this.operation = null;
     this.selectedPort = null;
     this.selectedPortBoardId = null;
-    this.session = null;
+    this.sessions = new Map();
 
     this.boardSelect = document.querySelector('#board-select');
     this.boardDetails = document.querySelector('#board-details');
@@ -92,7 +93,7 @@ class DeviceController {
     this.reconnectButton.addEventListener('click', async () => {
       await this.reconnectAuthorizedDevice(true);
 
-      if (this.session) {
+      if (this.sessions.size > 0) {
         this.showTouchTest();
       }
     });
@@ -126,7 +127,7 @@ class DeviceController {
     }
 
     this.serial.addEventListener('connect', () => {
-      if (!this.session && !this.operation) {
+      if (!this.operation) {
         this.reconnectAuthorizedDevice();
       }
     });
@@ -135,9 +136,8 @@ class DeviceController {
         this.clearUsbSelection('The selected USB/COM port was disconnected.');
       }
 
-      if (this.session?.port === event.target) {
-        this.closeSession();
-        this.setDeviceStatus('Stream32 device disconnected.', 'idle');
+      if (this.sessions.has(event.target)) {
+        this.closeSessionForPort(event.target);
       }
     });
 
@@ -237,7 +237,7 @@ class DeviceController {
       // requestPort must run directly from this click before user activation
       // expires; downloading firmware first prevents Chromium's picker.
       const port = await this.serial.requestPort();
-      await this.closeSession();
+      await this.closeSessionForPort(port);
       await sleep(300);
       const info = port.getInfo();
       const vendorId = info.usbVendorId
@@ -301,6 +301,7 @@ class DeviceController {
       const previousSelection = this.boardSelect.value;
 
       this.boards = new Map(result.boards.map((board) => [board.id, board]));
+      this.deck?.setBoards(result.boards);
       this.boardSelect.replaceChildren();
 
       for (const board of result.boards) {
@@ -417,7 +418,7 @@ class DeviceController {
     let transport = null;
 
     try {
-      await this.closeSession();
+      await this.closeSessionForPort(port);
       await sleep(500);
       const firmware = await this.api.getBoardFirmware(board.id);
 
@@ -517,7 +518,7 @@ class DeviceController {
         );
       } catch (error) {
         lastError = error;
-        await this.closeSession();
+        await this.closeSessionForPort(port);
       }
     }
 
@@ -527,13 +528,37 @@ class DeviceController {
     );
   }
 
+  connectedSessions() {
+    return [...this.sessions.values()].filter(
+      (session) => session.handshakeComplete,
+    );
+  }
+
+  updateDeviceStatusSummary() {
+    const connected = this.connectedSessions();
+
+    if (connected.length === 0) {
+      this.setDeviceStatus('No Stream32 device is connected.', 'idle');
+    } else if (connected.length === 1) {
+      const { hello } = connected[0];
+      this.setDeviceStatus(
+        `Connected · ${hello.boardId} · firmware ${hello.firmwareVersion}`,
+        'connected',
+      );
+    } else {
+      this.setDeviceStatus(
+        `${connected.length} Stream32 devices connected.`,
+        'connected',
+      );
+    }
+  }
+
   async reconnectAuthorizedDevice(force = false) {
     if (
       this.busy ||
       this.operation ||
       !this.serial ||
-      this.boards.size === 0 ||
-      (this.session && !force)
+      this.boards.size === 0
     ) {
       return;
     }
@@ -542,25 +567,28 @@ class DeviceController {
       return;
     }
 
-    this.setDeviceStatus('Looking for an authorized Stream32 device…', 'working');
+    this.setDeviceStatus('Looking for authorized Stream32 devices…', 'working');
 
     try {
       if (force) {
-        await this.closeSession();
+        await this.closeAllSessions();
       }
 
       const ports = await this.serial.getPorts();
 
       for (const port of ports) {
+        if (this.sessions.has(port)) {
+          continue;
+        }
+
         try {
           await this.openSession(port, null);
-          return;
         } catch {
-          await this.closeSession();
+          await this.closeSessionForPort(port);
         }
       }
 
-      this.setDeviceStatus('No Stream32 device is connected.', 'idle');
+      this.updateDeviceStatusSummary();
     } catch (error) {
       this.setDeviceStatus(
         `Could not reconnect: ${errorMessage(error)}`,
@@ -576,7 +604,7 @@ class DeviceController {
     expectedBoardId,
     expectedFirmwareVersion = null,
   ) {
-    await this.closeSession();
+    await this.closeSessionForPort(port);
     await port.open({ baudRate: 115200, bufferSize: 4096 });
 
     let writer = null;
@@ -614,13 +642,34 @@ class DeviceController {
       rejectHandshake = reject;
     });
     const session = {
-      boardId: null,
+      hello: null,
       handshakeComplete: false,
       port,
       readTask: null,
       reader,
+      send: null,
+      sendChain: Promise.resolve(),
     };
-    this.session = session;
+    // Deck pushes serialize their writes so image chunks never interleave
+    // with layout or page messages on the same port.
+    session.send = (bytes) => {
+      const task = session.sendChain.then(async () => {
+        if (this.sessions.get(port) !== session) {
+          throw new Error('The device session is closed.');
+        }
+
+        const sendWriter = port.writable.getWriter();
+
+        try {
+          await sendWriter.write(bytes);
+        } finally {
+          sendWriter.releaseLock();
+        }
+      });
+      session.sendChain = task.catch(() => {});
+      return task;
+    };
+    this.sessions.set(port, session);
 
     const decoder = createLineDecoder({
       onError: (error) => {
@@ -646,20 +695,21 @@ class DeviceController {
               );
             }
 
-            session.boardId = hello.boardId;
+            session.hello = hello;
             session.handshakeComplete = true;
-            this.setDeviceStatus(
-              `Connected · ${hello.boardId} · firmware ` +
-                hello.firmwareVersion,
-              'connected',
-            );
+            this.updateDeviceStatusSummary();
             this.touchStatus.textContent = 'Touch the display to test input.';
+            this.deck?.attachSession(session, this.boards.get(hello.boardId));
             resolveHandshake(hello);
           } else if (message.type === 'touch' && session.handshakeComplete) {
             const touch = validateTouchMessage(message);
             this.touchStatus.textContent =
               `${touch.phase === 'down' ? 'Pressed' : 'Released'} at ` +
               `X ${touch.x}, Y ${touch.y}`;
+          } else if (session.handshakeComplete && this.deck) {
+            // layout-ack, image-ack, page, press, and error replies belong
+            // to the deck sync engine after the handshake.
+            this.deck.handleDeviceMessage(session, message);
           } else if (message.type === 'error') {
             this.appendLog(`Device error: ${message.code || 'unknown'}`);
           }
@@ -675,7 +725,7 @@ class DeviceController {
 
     session.readTask = (async () => {
       try {
-        while (this.session === session) {
+        while (this.sessions.get(port) === session) {
           const { done, value } = await reader.read();
 
           if (done) {
@@ -685,7 +735,7 @@ class DeviceController {
           decoder.push(value);
         }
       } catch (error) {
-        if (this.session === session) {
+        if (this.sessions.get(port) === session) {
           rejectHandshake(error);
           this.setDeviceStatus(
             `Device connection lost: ${errorMessage(error)}`,
@@ -693,11 +743,11 @@ class DeviceController {
           );
         }
       } finally {
-        const ownsSession = this.session === session;
+        const ownsSession = this.sessions.get(port) === session;
         reader.releaseLock();
 
         if (ownsSession) {
-          this.session = null;
+          this.sessions.delete(port);
 
           try {
             await port.close();
@@ -706,7 +756,8 @@ class DeviceController {
           }
 
           if (session.handshakeComplete) {
-            this.setDeviceStatus('Stream32 device disconnected.', 'idle');
+            this.deck?.detachSession(session);
+            this.updateDeviceStatusSummary();
           }
         }
       }
@@ -717,7 +768,7 @@ class DeviceController {
     // device answers or the handshake window closes.
     const helloTimer = setInterval(async () => {
       if (
-        this.session !== session ||
+        this.sessions.get(port) !== session ||
         session.handshakeComplete ||
         !port.writable ||
         port.writable.locked
@@ -746,21 +797,25 @@ class DeviceController {
     try {
       return await Promise.race([handshake, timeout]);
     } catch (error) {
-      await this.closeSession();
+      await this.closeSessionForPort(port);
       throw error;
     } finally {
       clearInterval(helloTimer);
     }
   }
 
-  async closeSession() {
-    const session = this.session;
+  async closeSessionForPort(port) {
+    const session = this.sessions.get(port);
 
     if (!session) {
       return;
     }
 
-    this.session = null;
+    this.sessions.delete(port);
+
+    if (session.handshakeComplete) {
+      this.deck?.detachSession(session);
+    }
 
     try {
       await session.reader.cancel();
@@ -778,6 +833,12 @@ class DeviceController {
       await session.port.close();
     } catch {
       // The operating system may have already removed the port.
+    }
+  }
+
+  async closeAllSessions() {
+    for (const port of [...this.sessions.keys()]) {
+      await this.closeSessionForPort(port);
     }
   }
 }

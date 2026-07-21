@@ -166,6 +166,39 @@ function validateStringList(values, field, maximumItems) {
   );
 }
 
+const DEFAULT_DECK_LIMITS = { maxCols: 5, maxPages: 8, maxRows: 5 };
+
+function validateDeckLimits(deck, boardId) {
+  if (deck === undefined) {
+    return { ...DEFAULT_DECK_LIMITS };
+  }
+
+  if (!deck || typeof deck !== 'object' || Array.isArray(deck)) {
+    throw new TypeError(`${boardId} deck limits are invalid.`);
+  }
+
+  return {
+    maxCols: requireInteger(
+      deck.maxCols ?? DEFAULT_DECK_LIMITS.maxCols,
+      `${boardId} deck maxCols`,
+      1,
+      DEFAULT_DECK_LIMITS.maxCols,
+    ),
+    maxPages: requireInteger(
+      deck.maxPages ?? DEFAULT_DECK_LIMITS.maxPages,
+      `${boardId} deck maxPages`,
+      1,
+      DEFAULT_DECK_LIMITS.maxPages,
+    ),
+    maxRows: requireInteger(
+      deck.maxRows ?? DEFAULT_DECK_LIMITS.maxRows,
+      `${boardId} deck maxRows`,
+      1,
+      DEFAULT_DECK_LIMITS.maxRows,
+    ),
+  };
+}
+
 function validateImages(images, boardId) {
   if (!Array.isArray(images) || images.length === 0 || images.length > 8) {
     throw new TypeError(`${boardId} must define 1-8 firmware images.`);
@@ -286,6 +319,7 @@ function validateBoard(board, appVersion) {
       `${id} capabilities`,
       16,
     ),
+    deck: validateDeckLimits(board.deck, id),
     recoveryInstructions: validateStringList(
       board.recoveryInstructions,
       `${id} recoveryInstructions`,
@@ -441,6 +475,7 @@ function publicBoard(board) {
     compatible: board.compatible,
     usbFilters: board.usbFilters,
     capabilities: board.capabilities,
+    deck: board.deck,
     recoveryInstructions: board.recoveryInstructions,
     firmwareVersion: board.firmware.version,
   };

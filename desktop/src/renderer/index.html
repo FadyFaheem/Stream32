@@ -8,6 +8,7 @@
     >
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stream32</title>
+    <link rel="stylesheet" href="./material-symbols.css">
     <link rel="stylesheet" href="./styles.css">
     <script src="./renderer.bundle.js" defer></script>
   </head>
@@ -156,6 +157,13 @@
                 <div class="deck-field">
                   <label for="deck-key-image">Image</label>
                   <div class="deck-image-row">
+                    <button
+                      id="deck-icon-open"
+                      class="button button-secondary"
+                      type="button"
+                    >
+                      Icon library
+                    </button>
                     <input id="deck-key-image" type="file" accept="image/*">
                     <button
                       id="deck-key-image-clear"
@@ -208,6 +216,25 @@
             </div>
           </div>
         </section>
+
+        <dialog id="deck-icon-dialog" class="deck-icon-dialog">
+          <div class="deck-icon-head">
+            <input
+              id="deck-icon-search"
+              type="search"
+              placeholder="Search 3,800+ Material icons…"
+              aria-label="Search icons"
+            >
+            <button id="deck-icon-close" class="button button-quiet" type="button">
+              Close
+            </button>
+          </div>
+          <div
+            id="deck-icon-grid"
+            class="deck-icon-grid"
+            aria-label="Icon results"
+          ></div>
+        </dialog>
 
         <section id="view-flash" class="view" aria-label="Flash board" hidden>
           <details id="flash-step" class="card setup-step" open>

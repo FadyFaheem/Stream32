@@ -800,6 +800,63 @@ input:disabled {
   gap: 0.9rem;
 }
 
+.deck-icon-dialog {
+  width: min(92vw, 620px);
+  max-height: min(84vh, 640px);
+  padding: 1.1rem;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.55);
+}
+
+.deck-icon-dialog::backdrop {
+  background: rgba(4, 8, 11, 0.66);
+}
+
+.deck-icon-head {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.deck-icon-head input {
+  flex: 1;
+  min-height: 2.55rem;
+  padding: 0 0.85rem;
+  color: var(--ink);
+  border: 1px solid #46606e;
+  border-radius: 9px;
+  background: var(--surface-strong);
+}
+
+.deck-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
+  gap: 0.45rem;
+  max-height: 460px;
+  margin-top: 1rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.deck-icon-choice {
+  display: grid;
+  aspect-ratio: 1;
+  cursor: pointer;
+  place-items: center;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-strong);
+}
+
+.deck-icon-choice:hover {
+  color: var(--accent-strong);
+  border-color: rgba(255, 173, 34, 0.55);
+}
+
 .progress-group {
   margin-top: 1rem;
 }

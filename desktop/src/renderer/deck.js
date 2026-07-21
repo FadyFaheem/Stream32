@@ -1,3 +1,4 @@
+const ICON_NAMES = require('./icon-names.json');
 const { canonicalKeyFromCode } = require('../keymap');
 const {
   MAX_DECK_COLS,
@@ -18,6 +19,8 @@ const ACK_TIMEOUT_MS = 5000;
 const SYNC_DEBOUNCE_MS = 600;
 const STORED_IMAGE_PIXELS = 192;
 const DEFAULT_KEY_COLOR = '#172630';
+const ICON_FONT = 'Material Symbols Rounded';
+const MAX_ICON_RESULTS = 96;
 const MEDIA_LABELS = {
   mute: 'Mute',
   next: 'Next track',
@@ -97,6 +100,11 @@ class DeckController {
     this.keyLabelColor = document.querySelector('#deck-key-label-color');
     this.keyImage = document.querySelector('#deck-key-image');
     this.keyImageClear = document.querySelector('#deck-key-image-clear');
+    this.iconOpen = document.querySelector('#deck-icon-open');
+    this.iconDialog = document.querySelector('#deck-icon-dialog');
+    this.iconSearch = document.querySelector('#deck-icon-search');
+    this.iconGrid = document.querySelector('#deck-icon-grid');
+    this.iconClose = document.querySelector('#deck-icon-close');
     this.actionType = document.querySelector('#deck-action-type');
     this.actionMedia = document.querySelector('#deck-action-media');
     this.actionUrl = document.querySelector('#deck-action-url');
@@ -283,6 +291,24 @@ class DeckController {
         delete key.image;
       });
     });
+    this.iconOpen.addEventListener('click', () => {
+      this.iconSearch.value = '';
+      this.renderIconGrid('');
+      this.iconDialog.showModal();
+      this.iconSearch.focus();
+    });
+    this.iconSearch.addEventListener('input', () => {
+      this.renderIconGrid(this.iconSearch.value);
+    });
+    this.iconClose.addEventListener('click', () => {
+      this.iconDialog.close();
+    });
+    this.iconDialog.addEventListener('click', (event) => {
+      // A click on the backdrop targets the dialog element itself.
+      if (event.target === this.iconDialog) {
+        this.iconDialog.close();
+      }
+    });
     this.actionType.addEventListener('change', () => {
       this.applyActionFromEditor();
     });
@@ -344,6 +370,77 @@ class DeckController {
 
     parts.push(hotkey.key);
     return parts.join('+');
+  }
+
+  renderIconGrid(query) {
+    const needle = query.trim().toLowerCase().replace(/[\s-]+/g, '_');
+    const matches = [];
+
+    for (const name of ICON_NAMES) {
+      if (!needle || name.includes(needle)) {
+        matches.push(name);
+
+        if (matches.length === MAX_ICON_RESULTS) {
+          break;
+        }
+      }
+    }
+
+    this.iconGrid.replaceChildren();
+
+    if (matches.length === 0) {
+      const empty = this.document.createElement('p');
+      empty.className = 'helper';
+      empty.textContent = 'No icons match that search.';
+      this.iconGrid.append(empty);
+      return;
+    }
+
+    for (const name of matches) {
+      const button = this.document.createElement('button');
+      button.type = 'button';
+      button.className = 'deck-icon-choice';
+      button.title = name.replaceAll('_', ' ');
+
+      const glyph = this.document.createElement('span');
+      glyph.className = 'ms-icon';
+      glyph.textContent = name;
+      button.append(glyph);
+      button.addEventListener('click', () => {
+        this.pickIcon(name);
+      });
+      this.iconGrid.append(button);
+    }
+  }
+
+  async pickIcon(name) {
+    try {
+      // The glyph draws as its ligature text until the font is ready.
+      await this.document.fonts.load(`128px "${ICON_FONT}"`);
+
+      const canvas = this.document.createElement('canvas');
+      canvas.width = STORED_IMAGE_PIXELS;
+      canvas.height = STORED_IMAGE_PIXELS;
+
+      const context = canvas.getContext('2d');
+      context.font = `${Math.round(STORED_IMAGE_PIXELS * 0.78)}px "${ICON_FONT}"`;
+      context.textAlign = 'center';
+      context.textBaseline = 'middle';
+      context.fillStyle = '#f3f7f9';
+      context.fillText(
+        name,
+        STORED_IMAGE_PIXELS / 2,
+        STORED_IMAGE_PIXELS / 2,
+      );
+
+      const dataUrl = canvas.toDataURL('image/webp', 0.92);
+      this.updateSelectedKey((key) => {
+        key.image = dataUrl;
+      });
+      this.iconDialog.close();
+    } catch (error) {
+      this.setSyncStatus(`Could not render the icon: ${error.message}`, 'error');
+    }
   }
 
   async readImageFile(file) {

@@ -70,7 +70,7 @@ Desktop messages:
 ```json
 {"type":"hello","protocol":1}
 {"type":"ping","id":1}
-{"type":"layout","page":0,"of":2,"rows":3,"cols":3,"keys":[{"index":0,"label":"OBS","color":"#ff5533","imageCrc":"9a3f11d2","goPage":1}]}
+{"type":"layout","page":0,"of":2,"rows":3,"cols":3,"keys":[{"index":0,"label":"OBS","color":"#ff5533","labelColor":"#ffffff","imageCrc":"9a3f11d2","goPage":1}]}
 {"type":"image","page":0,"index":0,"seq":0,"of":13,"w":150,"h":150,"data":"<base64 RGB565>"}
 {"type":"page","index":1}
 ```

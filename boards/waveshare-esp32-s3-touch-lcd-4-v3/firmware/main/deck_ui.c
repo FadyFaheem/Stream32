@@ -25,8 +25,10 @@
 typedef struct {
     bool used;
     bool has_color;
+    bool has_label_color;
     int8_t go_page; /* -1 = plain key */
     uint32_t color;
+    uint32_t label_color;
     uint32_t image_crc; /* 0 = no artwork */
     char label[DECK_LABEL_CAPACITY];
 } deck_key_t;
@@ -276,7 +278,9 @@ static void build_page(uint8_t page_index)
             /* Explicit: the theme's card style would otherwise decide. */
             lv_obj_set_style_text_color(
                 label,
-                lv_color_hex(0xf3f7f9),
+                lv_color_hex(
+                    key->has_label_color ? key->label_color : 0xf3f7f9
+                ),
                 LV_PART_MAIN
             );
             lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
@@ -420,6 +424,18 @@ static const char *parse_page_message(
             }
 
             key->has_color = true;
+        }
+
+        const cJSON *label_color =
+            cJSON_GetObjectItemCaseSensitive(entry, "labelColor");
+
+        if (label_color != NULL) {
+            if (!cJSON_IsString(label_color) ||
+                !parse_color(label_color->valuestring, &key->label_color)) {
+                return "layout-invalid";
+            }
+
+            key->has_label_color = true;
         }
 
         if (image_crc != NULL) {

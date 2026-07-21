@@ -3,6 +3,8 @@
 .pioenvs/
 .piolibdeps/
 build/
+managed_components/
+sdkconfig
 sdkconfig.old
 *.bin
 *.elf
@@ -32,6 +34,7 @@ venv/
 node_modules/
 desktop/dist/
 desktop/out/
+desktop/src/renderer/renderer.bundle.js
 
 # Logs and operating-system files
 *.log

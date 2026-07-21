@@ -9,41 +9,157 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stream32</title>
     <link rel="stylesheet" href="./styles.css">
-    <script src="./renderer.js" defer></script>
+    <script src="./renderer.bundle.js" defer></script>
   </head>
   <body>
-    <main class="shell">
-      <div class="brand" aria-hidden="true">
-        <span class="brand-grid">32</span>
-      </div>
+    <main class="app-shell" data-stream32-app>
+      <aside class="sidebar" aria-label="Stream32">
+        <div class="brand" aria-hidden="true">
+          <span class="brand-grid">32</span>
+        </div>
+        <div>
+          <p class="kicker">Desktop companion</p>
+          <p class="sidebar-copy">
+            Flash, connect, and test your open-source control surface.
+          </p>
+        </div>
+      </aside>
 
-      <section class="intro" aria-labelledby="app-title">
-        <p class="kicker">Desktop companion</p>
-        <h1 id="app-title">Stream<span>32</span></h1>
-        <p class="summary">
-          Your open-source control surface, ready in the background.
-        </p>
-
-        <div class="setting">
+      <div class="content">
+        <header class="page-header">
           <div>
-            <label for="autostart">Start on login</label>
-            <p>Launch Stream32 quietly when you sign in.</p>
+            <p class="kicker">Hardware setup</p>
+            <h1 id="app-title">Stream<span>32</span></h1>
           </div>
-          <input
-            id="autostart"
-            class="switch"
-            type="checkbox"
-            role="switch"
-            disabled
+          <p
+            id="device-status"
+            class="status-pill"
+            data-state="idle"
+            aria-live="polite"
           >
-        </div>
+            No Stream32 device is connected.
+          </p>
+        </header>
 
-        <div class="update-row" aria-live="polite">
-          <span class="status-dot" aria-hidden="true"></span>
-          <p id="update-status">Preparing Stream32…</p>
-          <button id="check-updates" type="button">Check now</button>
-        </div>
-      </section>
+        <section class="card" aria-labelledby="flash-title">
+          <div class="card-heading">
+            <div>
+              <p class="step">Step 1</p>
+              <h2 id="flash-title">Choose and flash your board</h2>
+            </div>
+            <button
+              id="refresh-boards"
+              class="button button-quiet"
+              type="button"
+            >
+              Refresh support
+            </button>
+          </div>
+
+          <div class="board-picker">
+            <label for="board-select">ESP32 display board</label>
+            <select id="board-select" aria-describedby="catalog-status"></select>
+            <p id="catalog-status" class="helper" aria-live="polite">
+              Loading board support…
+            </p>
+          </div>
+
+          <div class="board-summary">
+            <p id="board-details">No supported board is available.</p>
+            <p>
+              Firmware
+              <strong id="firmware-version">—</strong>
+            </p>
+          </div>
+
+          <label class="confirmation" for="confirm-revision">
+            <input id="confirm-revision" type="checkbox">
+            <span>
+              I confirmed the board silkscreen matches
+              <strong id="confirmation-board">
+                the selected board and revision
+              </strong>.
+              Flashing erases its current contents.
+            </span>
+          </label>
+
+          <div class="flash-actions">
+            <button
+              id="flash-device"
+              class="button button-primary"
+              type="button"
+              disabled
+            >
+              Flash Stream32 firmware
+            </button>
+            <button
+              id="reconnect-device"
+              class="button button-secondary"
+              type="button"
+            >
+              Reconnect
+            </button>
+          </div>
+
+          <div class="progress-group">
+            <progress id="flash-progress" max="100" value="0"></progress>
+            <p id="flash-status" class="helper" aria-live="polite">
+              Select the exact board revision to begin.
+            </p>
+          </div>
+
+          <details class="recovery">
+            <summary>BOOT-mode recovery steps</summary>
+            <ol id="recovery-steps"></ol>
+          </details>
+
+          <pre
+            id="flash-log"
+            class="flash-log"
+            aria-label="Firmware flash log"
+            aria-live="polite"
+          ></pre>
+        </section>
+
+        <section class="card test-card" aria-labelledby="test-title">
+          <div>
+            <p class="step">Step 2</p>
+            <h2 id="test-title">Test USB and touch</h2>
+          </div>
+          <p id="touch-status" class="touch-status" aria-live="polite">
+            Flash and connect the board, then touch its display.
+          </p>
+        </section>
+
+        <section class="card settings-card" aria-labelledby="settings-title">
+          <h2 id="settings-title">Desktop settings</h2>
+          <div class="setting">
+            <div>
+              <label for="autostart">Start on login</label>
+              <p>Launch Stream32 quietly when you sign in.</p>
+            </div>
+            <input
+              id="autostart"
+              class="switch"
+              type="checkbox"
+              role="switch"
+              disabled
+            >
+          </div>
+
+          <div class="update-row" aria-live="polite">
+            <span class="status-dot" aria-hidden="true"></span>
+            <p id="update-status">Preparing Stream32…</p>
+            <button
+              id="check-updates"
+              class="button button-quiet"
+              type="button"
+            >
+              Check now
+            </button>
+          </div>
+        </section>
+      </div>
     </main>
   </body>
 </html>

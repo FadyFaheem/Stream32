@@ -104,4 +104,5 @@ jobs:
           fail_on_unmatched_files: true
           files: release-assets/*
           generate_release_notes: true
+          make_latest: ${{ contains(github.ref_name, '-') && 'false' || 'true' }}
           prerelease: ${{ contains(github.ref_name, '-') }}

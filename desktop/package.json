@@ -15,18 +15,24 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "start": "electron .",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/tray.js && node --check src/updater.js && node --check src/autostart.js && node --check src/renderer/renderer.js",
+    "build:renderer": "esbuild src/renderer/renderer.js --bundle --platform=browser --format=iife --target=chrome142 --outfile=src/renderer/renderer.bundle.js",
+    "start": "npm run build:renderer && electron .",
+    "check": "npm run build:renderer && node --check src/main.js && node --check src/preload.js && node --check src/tray.js && node --check src/updater.js && node --check src/autostart.js && node --check src/boards.js && node --check src/serial.js && node --check src/settings.js && node --check src/renderer/device.js && node --check src/renderer/firmware-hash.js && node --check src/renderer/protocol.js && node --check src/renderer/renderer.js",
     "test": "node --test",
+    "prepack": "npm run build:renderer",
     "pack": "electron-builder --dir",
+    "predist": "npm run build:renderer",
     "dist": "electron-builder"
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "esptool-js": "^0.6.0",
+    "spark-md5": "^3.0.2"
   },
   "devDependencies": {
     "electron": "^43.1.1",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1"
   },
   "build": {
     "appId": "com.stream32.desktop",

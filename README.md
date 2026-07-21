@@ -19,11 +19,14 @@ Everything needed to reproduce and modify the project will live here in the open
 ## Project status
 
 > [!NOTE]
-> Stream32 is in its earliest stage. The firmware and hardware designs have not been published yet.
+> Stream32 is in its earliest stage. Initial firmware supports the Waveshare
+> ESP32-S3-Touch-LCD-4 hardware Rev 3.0; custom hardware designs have not been
+> published yet.
 
 The project is currently taking shape. Planned areas include:
 
-- **Firmware** — ESP32 software for inputs, controls, and device communication.
+- **Firmware** — the first display/touch self-test and USB protocol live under
+  [`boards/`](./boards).
 - **Hardware** — reproducible electronics, a bill of materials, and enclosure designs.
 - **Host tools** — configuration and integrations for desktop workflows.
 - **Documentation** — clear instructions to build, flash, configure, and customize your own Stream32.
@@ -33,7 +36,8 @@ Plans may change as the first prototype is developed and tested.
 ## Desktop app
 
 The Electron companion lives in [`desktop/`](./desktop). It runs in the system
-tray, can launch quietly at login, and checks GitHub Releases for updates.
+tray, can launch quietly at login, checks GitHub Releases for updates, and can
+download and flash supported board firmware over USB.
 
 Node.js 22 or newer is required for local development:
 
@@ -44,8 +48,22 @@ npm start
 ```
 
 Run `npm test` and `npm run check` before opening a pull request. Pull requests
-that touch the desktop app are packaged on macOS and Linux. To build an
-installer for your current platform locally, run `npm run dist`.
+that touch the desktop app are packaged on Windows, macOS, and Linux. To build
+an installer for your current platform locally, run `npm run dist`.
+
+### Board firmware and flashing
+
+The desktop app loads board support independently from the rolling
+`boards-current` GitHub Release. It downloads only the selected firmware,
+checks its declared size and SHA-256 hash, and caches it for offline
+reflashing. Adding a compatible profile therefore does not require a desktop
+release.
+
+The current profile is specifically for the 4-inch, 480×480 Waveshare
+`ESP32-S3-Touch-LCD-4` with a **Rev 3.0** silkscreen. Rev 4 and the 4.3-inch
+product are not interchangeable. See [`boards/README.md`](./boards/README.md)
+for firmware builds, profile publishing, the USB protocol, and BOOT-mode
+recovery.
 
 ### Publishing a desktop release
 

@@ -1,3 +1,5 @@
+const { DeviceController } = require('./device');
+
 const autoStartControl = document.querySelector('#autostart');
 const checkUpdatesButton = document.querySelector('#check-updates');
 const updateRow = document.querySelector('.update-row');
@@ -56,3 +58,16 @@ checkUpdatesButton.addEventListener('click', async () => {
 
 window.stream32.onUpdateStatus(showUpdateStatus);
 loadAutoStartState();
+
+const deviceController = new DeviceController({
+  api: window.stream32,
+  document,
+  serial: navigator.serial,
+});
+
+deviceController.initialize().catch((error) => {
+  const deviceStatus = document.querySelector('#device-status');
+  deviceStatus.dataset.state = 'error';
+  deviceStatus.textContent =
+    `Device setup failed: ${error instanceof Error ? error.message : error}`;
+});

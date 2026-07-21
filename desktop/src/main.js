@@ -6,9 +6,12 @@ const {
   setAutoStartEnabled,
   wasStartedHidden,
 } = require('./autostart');
+const { createDefaultBoardService } = require('./boards');
+const { configureSerialAccess } = require('./serial');
 const { createTray } = require('./tray');
 const { createUpdater } = require('./updater');
 
+let boardService = null;
 let isQuitting = false;
 let mainWindow = null;
 let trayController = null;
@@ -23,6 +26,12 @@ function getIconPath() {
 function sendUpdateStatus(status) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('updater:status', status);
+  }
+}
+
+function sendBoardDownloadProgress(progress) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('boards:download-progress', progress);
   }
 }
 
@@ -41,10 +50,10 @@ function showWindow() {
 
 function createMainWindow() {
   const window = new BrowserWindow({
-    width: 880,
-    height: 620,
-    minWidth: 680,
-    minHeight: 500,
+    width: 1120,
+    height: 780,
+    minWidth: 760,
+    minHeight: 580,
     show: false,
     title: 'Stream32',
     backgroundColor: '#0b1116',
@@ -57,6 +66,7 @@ function createMainWindow() {
     },
   });
 
+  configureSerialAccess(window);
   window.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   window.once('ready-to-show', () => {
@@ -88,6 +98,20 @@ function registerIpcHandlers() {
     return actualState;
   });
   ipcMain.handle('updater:check', () => updaterController?.checkForUpdates());
+  ipcMain.handle('boards:list', (_event, force = false) => {
+    if (typeof force !== 'boolean') {
+      throw new TypeError('Board refresh flag must be a boolean.');
+    }
+
+    return boardService.getBoards(force);
+  });
+  ipcMain.handle('boards:firmware', (_event, boardId) => {
+    if (typeof boardId !== 'string') {
+      throw new TypeError('Board id must be a string.');
+    }
+
+    return boardService.getFirmware(boardId);
+  });
 }
 
 function reportBackgroundError(error) {
@@ -117,6 +141,7 @@ if (!hasSingleInstanceLock) {
   app.whenReady().then(() => {
     app.setAppUserModelId('com.stream32.desktop');
     mainWindow = createMainWindow();
+    boardService = createDefaultBoardService(sendBoardDownloadProgress);
     registerIpcHandlers();
 
     updaterController = createUpdater({

@@ -2,14 +2,13 @@ const { app } = require('electron');
 const {
   existsSync,
   mkdirSync,
-  readFileSync,
   rmSync,
   writeFileSync,
 } = require('node:fs');
 const path = require('node:path');
+const { readSettings, updateSettings } = require('./settings');
 
 const AUTOSTART_FILENAME = 'stream32.desktop';
-const SETTINGS_FILENAME = 'settings.json';
 const START_HIDDEN_ARGUMENT = '--hidden';
 
 function quoteDesktopArgument(value) {
@@ -82,27 +81,11 @@ function getLoginItemQuery() {
 }
 
 function getStoredPreference() {
-  try {
-    const settingsPath = path.join(
-      app.getPath('userData'),
-      SETTINGS_FILENAME,
-    );
-    const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
-
-    return settings.startOnLogin === true;
-  } catch {
-    return false;
-  }
+  return readSettings().startOnLogin === true;
 }
 
 function storePreference(enabled) {
-  const userDataPath = app.getPath('userData');
-  mkdirSync(userDataPath, { recursive: true });
-  writeFileSync(
-    path.join(userDataPath, SETTINGS_FILENAME),
-    `${JSON.stringify({ startOnLogin: enabled }, null, 2)}\n`,
-    'utf8',
-  );
+  updateSettings({ startOnLogin: enabled });
 }
 
 function getAutoStartEnabled() {

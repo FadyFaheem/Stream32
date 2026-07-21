@@ -1,0 +1,96 @@
+name: Board CI
+
+on:
+  pull_request:
+    paths:
+      - "boards/**"
+      - ".github/workflows/ci-boards.yml"
+      - ".github/workflows/release-boards.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "boards/**"
+      - ".github/workflows/ci-boards.yml"
+      - ".github/workflows/release-boards.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate board catalog
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.boards.outputs.matrix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Validate board profiles
+        run: node boards/tools/build-catalog.js --validate-only
+
+      - name: Discover firmware projects
+        id: boards
+        run: echo "matrix=$(node boards/tools/build-catalog.js --matrix)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.id }}
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.validate.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Build and merge firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.4.4
+          target: esp32s3
+          path: ${{ matrix.path }}
+          command: bash ../../tools/build-firmware.sh
+
+      - name: Upload firmware image
+        uses: actions/upload-artifact@v7
+        with:
+          name: board-${{ matrix.id }}
+          if-no-files-found: error
+          path: boards/dist/*
+
+  catalog:
+    name: Assemble release catalog
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Download firmware images
+        uses: actions/download-artifact@v7
+        with:
+          pattern: board-*
+          path: boards/dist
+          merge-multiple: true
+
+      - name: Generate release catalog
+        run: node boards/tools/build-catalog.js
+
+      - name: Upload board bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: stream32-boards
+          if-no-files-found: error
+          path: boards/dist/*

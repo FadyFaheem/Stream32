@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "id": "waveshare-esp32-s3-touch-lcd-4-v3",
+  "name": "Waveshare ESP32-S3-Touch-LCD-4",
+  "vendor": "Waveshare",
+  "hardwareRevision": "3.0",
+  "chip": "ESP32-S3",
+  "protocolVersion": 1,
+  "minimumDesktopVersion": "0.1.0",
+  "usbFilters": [
+    {
+      "usbVendorId": 12346,
+      "usbProductId": 4097
+    }
+  ],
+  "firmware": {
+    "version": "0.1.0",
+    "projectPath": "firmware",
+    "imageName": "waveshare-esp32-s3-touch-lcd-4-v3-0.1.0.bin",
+    "offset": 0
+  },
+  "capabilities": [
+    "display",
+    "touch",
+    "usb-serial-jtag"
+  ],
+  "recoveryInstructions": [
+    "Disconnect power from the board.",
+    "Hold BOOT while reconnecting the USB data cable, then release BOOT.",
+    "Run Flash again. After a successful flash, press RESET or reconnect power."
+  ]
+}

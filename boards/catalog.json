@@ -1,0 +1,6 @@
+{
+  "schemaVersion": 1,
+  "boards": [
+    "waveshare-esp32-s3-touch-lcd-4-v3/board.json"
+  ]
+}

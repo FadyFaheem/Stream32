@@ -1,0 +1,150 @@
+name: Publish Board Support
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "boards/**"
+      - ".github/workflows/release-boards.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: publish-board-support
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    name: Validate board catalog
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.boards.outputs.matrix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Validate board profiles
+        run: node boards/tools/build-catalog.js --validate-only
+
+      - name: Discover firmware projects
+        id: boards
+        run: echo "matrix=$(node boards/tools/build-catalog.js --matrix)" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.id }}
+    needs: validate
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.validate.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Build and merge firmware
+        uses: espressif/esp-idf-ci-action@v1
+        with:
+          esp_idf_version: v5.4.4
+          target: esp32s3
+          path: ${{ matrix.path }}
+          command: bash ../../tools/build-firmware.sh
+
+      - name: Upload firmware image
+        uses: actions/upload-artifact@v7
+        with:
+          name: board-${{ matrix.id }}
+          if-no-files-found: error
+          path: boards/dist/*
+
+  publish:
+    name: Publish board catalog
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Download firmware images
+        uses: actions/download-artifact@v7
+        with:
+          pattern: board-*
+          path: boards/dist
+          merge-multiple: true
+
+      - name: Generate catalog and checksums
+        run: node boards/tools/build-catalog.js
+
+      - name: Enforce immutable firmware versions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_id="$(gh api \
+            repos/${{ github.repository }}/releases/tags/boards-current \
+            --jq '.id' 2>/dev/null || true)"
+          if [ -z "$release_id" ]; then
+            exit 0
+          fi
+
+          assets="$(gh api \
+            repos/${{ github.repository }}/releases/${release_id}/assets)"
+          for image in boards/dist/*.bin boards/dist/*.dependencies.lock; do
+            asset_name="$(basename "$image")"
+            remote_name="$(printf '%s' "$assets" | jq -r \
+              --arg name "$asset_name" \
+              '.[] | select(.name == $name) | .name')"
+            if [ -z "$remote_name" ]; then
+              continue
+            fi
+
+            remote_digest="$(printf '%s' "$assets" | jq -r \
+              --arg name "$asset_name" \
+              '.[] | select(.name == $name) | .digest // empty')"
+            if [ -z "$remote_digest" ]; then
+              echo "::error::Cannot verify the existing ${asset_name}; publish a new firmware version."
+              exit 1
+            fi
+
+            local_digest="sha256:$(sha256sum "$image" | cut -d' ' -f1)"
+            if [ "$remote_digest" != "$local_digest" ]; then
+              echo "::error::${asset_name} already exists with different contents. Bump the firmware version."
+              exit 1
+            fi
+          done
+
+      - name: Publish versioned firmware assets
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: boards-current
+          name: Stream32 Board Support
+          body: >-
+            Rolling, application-independent board catalog used by the
+            Stream32 desktop flasher. Firmware assets are versioned and
+            catalog-v1.json is published only after firmware uploads succeed.
+          make_latest: false
+          overwrite_files: false
+          fail_on_unmatched_files: true
+          files: |
+            boards/dist/*.bin
+            boards/dist/*.dependencies.lock
+
+      - name: Publish catalog last
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: boards-current
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: boards/dist/catalog-v1.json

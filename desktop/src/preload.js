@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('stream32', {
   getBoardFirmware: (boardId) =>
     ipcRenderer.invoke('boards:firmware', boardId),
   getAutoStart: () => ipcRenderer.invoke('autostart:get'),
+  installUpdate: () => ipcRenderer.invoke('updater:install'),
   listBoards: (force = false) => ipcRenderer.invoke('boards:list', force),
   onBoardDownloadProgress(callback) {
     if (typeof callback !== 'function') {

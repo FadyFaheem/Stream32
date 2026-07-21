@@ -5,9 +5,17 @@ const checkUpdatesButton = document.querySelector('#check-updates');
 const updateRow = document.querySelector('.update-row');
 const updateStatus = document.querySelector('#update-status');
 
+const UPDATE_BUSY_STATES = new Set(['available', 'checking', 'downloading']);
+let updateReady = false;
+
 function showUpdateStatus({ message, state }) {
   updateRow.dataset.state = state;
   updateStatus.textContent = message;
+  updateReady ||= state === 'downloaded';
+  checkUpdatesButton.textContent = updateReady
+    ? 'Restart to update'
+    : 'Check now';
+  checkUpdatesButton.disabled = UPDATE_BUSY_STATES.has(state);
 }
 
 async function loadAutoStartState() {
@@ -42,17 +50,26 @@ autoStartControl.addEventListener('change', async () => {
 });
 
 checkUpdatesButton.addEventListener('click', async () => {
+  const installing = updateReady;
+  let installStarted = false;
   checkUpdatesButton.disabled = true;
 
   try {
-    await window.stream32.checkForUpdates();
+    if (installing) {
+      checkUpdatesButton.textContent = 'Restarting…';
+      await window.stream32.installUpdate();
+      installStarted = true;
+    } else {
+      await window.stream32.checkForUpdates();
+    }
   } catch (error) {
     showUpdateStatus({
-      message: `Update check failed: ${error.message}`,
+      message: `Update ${installing ? 'install' : 'check'} failed: ${error.message}`,
       state: 'error',
     });
   } finally {
-    checkUpdatesButton.disabled = false;
+    checkUpdatesButton.disabled =
+      UPDATE_BUSY_STATES.has(updateRow.dataset.state) || installStarted;
   }
 });
 

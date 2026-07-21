@@ -2,3 +2,4 @@
 nvs,      data, nvs,     0x9000,   24K,
 phy_init, data, phy,     0xf000,   4K,
 factory,  app,  factory, 0x10000,  4M,
+deck,     data, 0x40,    0x410000, 0xBF0000,

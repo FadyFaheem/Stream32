@@ -91,27 +91,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          release_id="$(gh api \
-            repos/${{ github.repository }}/releases/tags/boards-current \
-            --jq '.id' 2>/dev/null || true)"
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/boards-current" --jq '.id' 2>/dev/null || true)"
           if [ -z "$release_id" ]; then
             exit 0
           fi
 
-          assets="$(gh api \
-            repos/${{ github.repository }}/releases/${release_id}/assets)"
+          assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets")"
           for image in boards/dist/*.bin boards/dist/*.dependencies.lock; do
             asset_name="$(basename "$image")"
-            remote_name="$(printf '%s' "$assets" | jq -r \
-              --arg name "$asset_name" \
-              '.[] | select(.name == $name) | .name')"
+            remote_name="$(printf '%s' "$assets" | jq -r --arg name "$asset_name" '.[] | select(.name == $name) | .name')"
             if [ -z "$remote_name" ]; then
               continue
             fi
 
-            remote_digest="$(printf '%s' "$assets" | jq -r \
-              --arg name "$asset_name" \
-              '.[] | select(.name == $name) | .digest // empty')"
+            remote_digest="$(printf '%s' "$assets" | jq -r --arg name "$asset_name" '.[] | select(.name == $name) | .digest // empty')"
             if [ -z "$remote_digest" ]; then
               echo "::error::Cannot verify the existing ${asset_name}; publish a new firmware version."
               exit 1

@@ -89,16 +89,22 @@ function rememberSerialDevice(device) {
 
 function portLabel(port) {
   const name = port.displayName || port.portName || 'ESP32-S3';
-  const suffix = port.serialNumber
-    ? ` (${port.serialNumber})`
-    : port.portName && port.displayName
-      ? ` (${port.portName})`
-      : '';
+  const details = [
+    port.portName && port.portName !== name ? port.portName : null,
+    port.serialNumber || null,
+  ].filter(Boolean);
+  const suffix = details.length > 0 ? ` (${details.join(' · ')})` : '';
 
   return `${name}${suffix}`;
 }
 
-function configureSerialAccess(window) {
+function configureSerialAccess(
+  window,
+  {
+    rememberDevice = rememberSerialDevice,
+    showMessageBox = (...args) => dialog.showMessageBox(...args),
+  } = {},
+) {
   const session = window.webContents.session;
   let pendingIdentity = null;
 
@@ -145,30 +151,27 @@ function configureSerialAccess(window) {
           return;
         }
 
-        let selected = ports[0];
+        const cancelId = ports.length;
+        const result = await showMessageBox(window, {
+          type: 'question',
+          title: 'Select a USB port',
+          message: 'Choose the ESP32-S3 USB port to flash.',
+          detail:
+            'Stream32 shows the USB name, COM port, and serial number when ' +
+            'the operating system provides them.',
+          buttons: [...ports.map(portLabel), 'Cancel'],
+          cancelId,
+          defaultId: 0,
+          noLink: true,
+        });
 
-        if (ports.length > 1) {
-          const cancelId = ports.length;
-          const result = await dialog.showMessageBox(window, {
-            type: 'question',
-            title: 'Select an ESP32-S3',
-            message: 'Choose the ESP32-S3 to flash.',
-            detail: 'The board revision is selected separately in Stream32.',
-            buttons: [...ports.map(portLabel), 'Cancel'],
-            cancelId,
-            defaultId: 0,
-            noLink: true,
-          });
-
-          if (result.response === cancelId) {
-            settle();
-            return;
-          }
-
-          selected = ports[result.response];
+        if (result.response === cancelId) {
+          settle();
+          return;
         }
 
-        pendingIdentity = rememberSerialDevice(selected);
+        const selected = ports[result.response];
+        pendingIdentity = rememberDevice(selected);
         settle(selected.portId);
       } catch (error) {
         console.error('Serial port selection failed:', error);

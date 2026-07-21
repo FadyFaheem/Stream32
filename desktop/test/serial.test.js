@@ -34,6 +34,51 @@ test('serial selection always settles when no supported port exists', async () =
   assert.deepEqual(selected, ['']);
 });
 
+test('serial selection always asks which supported USB port to flash', async () => {
+  let selectionHandler;
+  let dialogOptions;
+  const session = {
+    on(eventName, handler) {
+      if (eventName === 'select-serial-port') {
+        selectionHandler = handler;
+      }
+    },
+    setDevicePermissionHandler() {},
+    setPermissionCheckHandler() {},
+  };
+  const window = { webContents: { session } };
+  const port = {
+    displayName: 'USB JTAG/serial debug unit',
+    portId: 'port-1',
+    portName: 'COM7',
+    productId: '1001',
+    serialNumber: 'aabbccddeeff',
+    vendorId: '303a',
+  };
+  const selected = [];
+
+  configureSerialAccess(window, {
+    rememberDevice: serialDeviceIdentity,
+    showMessageBox: async (_window, options) => {
+      dialogOptions = options;
+      return { response: 0 };
+    },
+  });
+  await selectionHandler(
+    { preventDefault() {} },
+    [port],
+    null,
+    (portId) => selected.push(portId),
+  );
+
+  assert.deepEqual(selected, ['port-1']);
+  assert.equal(dialogOptions.title, 'Select a USB port');
+  assert.deepEqual(dialogOptions.buttons, [
+    'USB JTAG/serial debug unit (COM7 · aabbccddeeff)',
+    'Cancel',
+  ]);
+});
+
 test('normalizes USB IDs from Electron metadata', () => {
   assert.equal(normalizeUsbId('0x303A'), '303a');
   assert.equal(normalizeUsbId(0x1001), '1001');

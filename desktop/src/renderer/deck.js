@@ -75,7 +75,6 @@ class DeckController {
     // still empty (an empty URL/hotkey is not a storable action yet).
     this.pendingActionType = null;
 
-    this.card = document.querySelector('#deck-step');
     this.deviceSelect = document.querySelector('#deck-device');
     this.deviceStatus = document.querySelector('#deck-device-status');
     this.deviceName = document.querySelector('#deck-device-name');
@@ -603,7 +602,7 @@ class DeckController {
           new Error(
             message.code === 'unknown-type'
               ? 'The board firmware is too old for deck layouts. ' +
-                'Reflash it from the step below.'
+                'Reflash it from the Flash board section.'
               : `Device error: ${message.code || 'unknown'}`,
           ),
         );
@@ -1025,6 +1024,7 @@ class DeckController {
 
     const page = profile.pages[this.selectedPage];
     this.grid.style.setProperty('--deck-cols', String(page.cols));
+    this.grid.style.setProperty('--deck-rows', String(page.rows));
 
     for (let index = 0; index < page.rows * page.cols; index++) {
       const key = page.keys.find((entry) => entry.index === index);

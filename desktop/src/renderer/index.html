@@ -14,78 +14,89 @@
   <body>
     <main class="app-shell" data-stream32-app>
       <aside class="sidebar" aria-label="Stream32">
-        <div class="brand" aria-hidden="true">
-          <span class="brand-grid">32</span>
-        </div>
         <div>
-          <p class="kicker">Desktop companion</p>
-          <p class="sidebar-copy">
-            Flash, connect, and test your open-source control surface.
-          </p>
+          <div class="brand" aria-hidden="true">
+            <span class="brand-grid">32</span>
+          </div>
+          <nav class="side-nav" aria-label="Sections">
+            <button
+              class="nav-item"
+              type="button"
+              data-view="deck"
+              data-active="true"
+            >
+              Deck
+            </button>
+            <button class="nav-item" type="button" data-view="flash">
+              Flash board
+            </button>
+            <button class="nav-item" type="button" data-view="settings">
+              Settings
+            </button>
+          </nav>
         </div>
+        <p
+          id="device-status"
+          class="status-pill"
+          data-state="idle"
+          aria-live="polite"
+        >
+          No Stream32 device is connected.
+        </p>
       </aside>
 
       <div class="content">
-        <header class="page-header">
-          <div>
-            <p class="kicker">Hardware setup</p>
-            <h1 id="app-title">Stream<span>32</span></h1>
-          </div>
-          <p
-            id="device-status"
-            class="status-pill"
-            data-state="idle"
-            aria-live="polite"
-          >
-            No Stream32 device is connected.
-          </p>
-        </header>
-
-        <details id="deck-step" class="card deck-card" open>
-          <summary class="card-summary">
-            <h2 id="deck-title">Deck</h2>
-          </summary>
-
-          <div class="card-body">
-            <p id="deck-empty">
-              No Stream32 deck yet. Flash a board below and connect it to
-              start configuring keys.
+        <section id="view-deck" class="view view-deck" aria-label="Deck">
+          <div id="deck-empty" class="deck-empty">
+            <p class="kicker">Deck</p>
+            <h2>No Stream32 deck yet</h2>
+            <p>
+              Flash a board and connect it over USB to start configuring
+              keys, pages, and actions.
             </p>
+            <button
+              id="deck-goto-flash"
+              class="button button-primary"
+              type="button"
+            >
+              Flash a board
+            </button>
+          </div>
 
-            <div id="deck-editor" hidden>
-              <div class="deck-toolbar">
-                <div class="deck-device-picker">
-                  <label for="deck-device">Device</label>
-                  <select id="deck-device"></select>
-                  <span
-                    id="deck-device-status"
-                    class="helper"
-                    data-state="idle"
-                  >Offline</span>
-                </div>
-                <input
-                  id="deck-device-name"
-                  type="text"
-                  maxlength="60"
-                  aria-label="Device nickname"
-                >
-                <div class="deck-file-actions">
-                  <button id="deck-import" class="button button-quiet" type="button">
-                    Import
-                  </button>
-                  <button id="deck-export" class="button button-quiet" type="button">
-                    Export
-                  </button>
-                </div>
+          <div id="deck-editor" class="deck-editor" hidden>
+            <div class="deck-toolbar">
+              <div class="deck-device-picker">
+                <label for="deck-device">Device</label>
+                <select id="deck-device"></select>
+                <span
+                  id="deck-device-status"
+                  class="helper"
+                  data-state="idle"
+                >Offline</span>
               </div>
-
+              <input
+                id="deck-device-name"
+                type="text"
+                maxlength="60"
+                aria-label="Device nickname"
+              >
+              <div class="deck-file-actions">
+                <button id="deck-import" class="button button-quiet" type="button">
+                  Import
+                </button>
+                <button id="deck-export" class="button button-quiet" type="button">
+                  Export
+                </button>
+              </div>
               <p
                 id="deck-sync-status"
-                class="helper"
+                class="helper deck-sync-status"
                 data-state="idle"
                 aria-live="polite"
               ></p>
+            </div>
 
+            <div class="deck-pagebar">
               <div class="deck-pages">
                 <div id="deck-page-tabs" role="tablist" aria-label="Deck pages"></div>
                 <button id="deck-add-page" class="button button-quiet" type="button">
@@ -95,7 +106,6 @@
                   Remove page
                 </button>
               </div>
-
               <div class="deck-page-settings">
                 <input
                   id="deck-page-name"
@@ -108,239 +118,245 @@
                 <label for="deck-cols">Columns</label>
                 <select id="deck-cols"></select>
               </div>
+            </div>
 
+            <div class="deck-stage">
               <div id="deck-grid" class="deck-grid" aria-label="Deck keys"></div>
+            </div>
 
-              <div id="deck-key-editor" class="deck-key-editor" hidden>
-                <p id="deck-key-title" class="field-label"></p>
-                <div class="deck-key-fields">
-                  <label>
-                    Label
-                    <input id="deck-key-label" type="text" maxlength="32">
-                  </label>
-                  <label>
-                    Color
-                    <input id="deck-key-color" type="color" value="#172630">
-                  </label>
-                  <label>
-                    Image
-                    <input id="deck-key-image" type="file" accept="image/*">
-                  </label>
-                  <button
-                    id="deck-key-image-clear"
-                    class="button button-quiet"
-                    type="button"
-                  >
-                    Remove image
-                  </button>
-                  <label>
-                    Action
-                    <select id="deck-action-type">
-                      <option value="none">Do nothing</option>
-                      <option value="media">Media control</option>
-                      <option value="url">Open website</option>
-                      <option value="launch">Launch app / command</option>
-                      <option value="hotkey">Keyboard shortcut</option>
-                      <option value="page">Go to page</option>
-                    </select>
-                  </label>
-                  <select id="deck-action-media" aria-label="Media command" hidden></select>
-                  <input
-                    id="deck-action-url"
-                    type="url"
-                    placeholder="https://example.com"
-                    aria-label="Website address"
-                    hidden
-                  >
-                  <input
-                    id="deck-action-launch"
-                    type="text"
-                    maxlength="1024"
-                    placeholder="notepad.exe or any command line"
-                    aria-label="Launch command"
-                    hidden
-                  >
-                  <input
-                    id="deck-action-hotkey"
-                    type="text"
-                    readonly
-                    placeholder="Click, then press keys"
-                    aria-label="Keyboard shortcut"
-                    hidden
-                  >
-                  <select id="deck-action-page" aria-label="Target page" hidden></select>
-                </div>
-                <div class="deck-key-actions">
-                  <button id="deck-key-test" class="button button-secondary" type="button">
-                    Test action
-                  </button>
-                  <button id="deck-key-clear" class="button button-quiet" type="button">
-                    Clear key
-                  </button>
-                </div>
+            <div id="deck-key-editor" class="deck-key-editor" hidden>
+              <p id="deck-key-title" class="field-label"></p>
+              <div class="deck-key-fields">
+                <label>
+                  Label
+                  <input id="deck-key-label" type="text" maxlength="32">
+                </label>
+                <label>
+                  Color
+                  <input id="deck-key-color" type="color" value="#172630">
+                </label>
+                <label>
+                  Image
+                  <input id="deck-key-image" type="file" accept="image/*">
+                </label>
+                <button
+                  id="deck-key-image-clear"
+                  class="button button-quiet"
+                  type="button"
+                >
+                  Remove image
+                </button>
+                <label>
+                  Action
+                  <select id="deck-action-type">
+                    <option value="none">Do nothing</option>
+                    <option value="media">Media control</option>
+                    <option value="url">Open website</option>
+                    <option value="launch">Launch app / command</option>
+                    <option value="hotkey">Keyboard shortcut</option>
+                    <option value="page">Go to page</option>
+                  </select>
+                </label>
+                <select id="deck-action-media" aria-label="Media command" hidden></select>
+                <input
+                  id="deck-action-url"
+                  type="url"
+                  placeholder="https://example.com"
+                  aria-label="Website address"
+                  hidden
+                >
+                <input
+                  id="deck-action-launch"
+                  type="text"
+                  maxlength="1024"
+                  placeholder="notepad.exe or any command line"
+                  aria-label="Launch command"
+                  hidden
+                >
+                <input
+                  id="deck-action-hotkey"
+                  type="text"
+                  readonly
+                  placeholder="Click, then press keys"
+                  aria-label="Keyboard shortcut"
+                  hidden
+                >
+                <select id="deck-action-page" aria-label="Target page" hidden></select>
+              </div>
+              <div class="deck-key-actions">
+                <button id="deck-key-test" class="button button-secondary" type="button">
+                  Test action
+                </button>
+                <button id="deck-key-clear" class="button button-quiet" type="button">
+                  Clear key
+                </button>
               </div>
             </div>
           </div>
-        </details>
+        </section>
 
-        <details id="flash-step" class="card setup-step" open>
-          <summary class="card-summary">
-            <span class="step">Step 1</span>
-            <h2 id="flash-title">Choose and flash your board</h2>
-          </summary>
+        <section id="view-flash" class="view" aria-label="Flash board" hidden>
+          <details id="flash-step" class="card setup-step" open>
+            <summary class="card-summary">
+              <span class="step">Step 1</span>
+              <h2 id="flash-title">Choose and flash your board</h2>
+            </summary>
 
-          <div class="card-body">
-          <div class="card-toolbar">
-            <button
-              id="refresh-boards"
-              class="button button-quiet"
-              type="button"
-            >
-              Refresh support
-            </button>
-          </div>
-
-          <div class="board-picker">
-            <label for="board-select">ESP32 display board</label>
-            <select id="board-select" aria-describedby="catalog-status"></select>
-            <p id="catalog-status" class="helper" aria-live="polite">
-              Loading board support…
-            </p>
-          </div>
-
-          <div class="board-summary">
-            <p id="board-details">No supported board is available.</p>
-            <p>
-              Firmware
-              <strong id="firmware-version">—</strong>
-            </p>
-          </div>
-
-          <div class="usb-picker">
-            <div>
-              <p class="field-label">USB / COM port</p>
-              <p id="usb-port-status" class="helper" data-state="idle">
-                No USB or COM port selected.
-              </p>
-            </div>
-            <div class="usb-actions">
-              <button
-                id="choose-usb"
-                class="button button-secondary"
-                type="button"
-                disabled
-              >
-                Choose USB / COM port
-              </button>
-              <button
-                id="refresh-usb"
-                class="button button-quiet"
-                type="button"
-                disabled
-              >
-                Refresh USB / COM ports
-              </button>
-            </div>
-          </div>
-
-          <label class="confirmation" for="confirm-revision">
-            <input id="confirm-revision" type="checkbox">
-            <span>
-              I confirmed the board silkscreen matches
-              <strong id="confirmation-board">
-                the selected board and revision
-              </strong>.
-              Flashing erases its current contents.
-            </span>
-          </label>
-
-          <div class="flash-actions">
-            <button
-              id="flash-device"
-              class="button button-primary"
-              type="button"
-              disabled
-            >
-              Flash Stream32 firmware
-            </button>
-          </div>
-
-          <div class="progress-group">
-            <progress id="flash-progress" max="100" value="0"></progress>
-            <p id="flash-status" class="helper" aria-live="polite">
-              Select the board, choose its USB port, and confirm the revision.
-            </p>
-          </div>
-
-          <details class="recovery">
-            <summary>BOOT-mode recovery steps</summary>
-            <ol id="recovery-steps"></ol>
-          </details>
-
-          <pre
-            id="flash-log"
-            class="flash-log"
-            aria-label="Firmware flash log"
-            aria-live="polite"
-          ></pre>
-          </div>
-        </details>
-
-        <details id="test-step" class="card setup-step" open>
-          <summary class="card-summary">
-            <span class="step">Step 2</span>
-            <h2 id="test-title">Test USB and touch</h2>
-          </summary>
-
-          <div class="card-body">
+            <div class="card-body">
             <div class="card-toolbar">
               <button
-                id="reconnect-device"
-                class="button button-secondary"
+                id="refresh-boards"
+                class="button button-quiet"
                 type="button"
               >
-                Reconnect Stream32 screen
+                Refresh support
               </button>
             </div>
-            <p id="touch-status" class="touch-status" aria-live="polite">
-              Flash and connect the board, then touch its display.
-            </p>
-          </div>
-        </details>
 
-        <details class="card settings-card" open>
-          <summary class="card-summary">
-            <h2 id="settings-title">Desktop settings</h2>
-          </summary>
-
-          <div class="card-body">
-          <div class="setting">
-            <div>
-              <label for="autostart">Start on login</label>
-              <p>Launch Stream32 quietly when you sign in.</p>
+            <div class="board-picker">
+              <label for="board-select">ESP32 display board</label>
+              <select id="board-select" aria-describedby="catalog-status"></select>
+              <p id="catalog-status" class="helper" aria-live="polite">
+                Loading board support…
+              </p>
             </div>
-            <input
-              id="autostart"
-              class="switch"
-              type="checkbox"
-              role="switch"
-              disabled
-            >
-          </div>
 
-          <div class="update-row" aria-live="polite">
-            <span class="status-dot" aria-hidden="true"></span>
-            <p id="update-status">Preparing Stream32…</p>
-            <button
-              id="check-updates"
-              class="button button-quiet"
-              type="button"
-            >
-              Check now
-            </button>
-          </div>
-          </div>
-        </details>
+            <div class="board-summary">
+              <p id="board-details">No supported board is available.</p>
+              <p>
+                Firmware
+                <strong id="firmware-version">—</strong>
+              </p>
+            </div>
+
+            <div class="usb-picker">
+              <div>
+                <p class="field-label">USB / COM port</p>
+                <p id="usb-port-status" class="helper" data-state="idle">
+                  No USB or COM port selected.
+                </p>
+              </div>
+              <div class="usb-actions">
+                <button
+                  id="choose-usb"
+                  class="button button-secondary"
+                  type="button"
+                  disabled
+                >
+                  Choose USB / COM port
+                </button>
+                <button
+                  id="refresh-usb"
+                  class="button button-quiet"
+                  type="button"
+                  disabled
+                >
+                  Refresh USB / COM ports
+                </button>
+              </div>
+            </div>
+
+            <label class="confirmation" for="confirm-revision">
+              <input id="confirm-revision" type="checkbox">
+              <span>
+                I confirmed the board silkscreen matches
+                <strong id="confirmation-board">
+                  the selected board and revision
+                </strong>.
+                Flashing erases its current contents.
+              </span>
+            </label>
+
+            <div class="flash-actions">
+              <button
+                id="flash-device"
+                class="button button-primary"
+                type="button"
+                disabled
+              >
+                Flash Stream32 firmware
+              </button>
+            </div>
+
+            <div class="progress-group">
+              <progress id="flash-progress" max="100" value="0"></progress>
+              <p id="flash-status" class="helper" aria-live="polite">
+                Select the board, choose its USB port, and confirm the revision.
+              </p>
+            </div>
+
+            <details class="recovery">
+              <summary>BOOT-mode recovery steps</summary>
+              <ol id="recovery-steps"></ol>
+            </details>
+
+            <pre
+              id="flash-log"
+              class="flash-log"
+              aria-label="Firmware flash log"
+              aria-live="polite"
+            ></pre>
+            </div>
+          </details>
+
+          <details id="test-step" class="card setup-step" open>
+            <summary class="card-summary">
+              <span class="step">Step 2</span>
+              <h2 id="test-title">Test USB and touch</h2>
+            </summary>
+
+            <div class="card-body">
+              <div class="card-toolbar">
+                <button
+                  id="reconnect-device"
+                  class="button button-secondary"
+                  type="button"
+                >
+                  Reconnect Stream32 screen
+                </button>
+              </div>
+              <p id="touch-status" class="touch-status" aria-live="polite">
+                Flash and connect the board, then touch its display.
+              </p>
+            </div>
+          </details>
+        </section>
+
+        <section id="view-settings" class="view" aria-label="Settings" hidden>
+          <details class="card settings-card" open>
+            <summary class="card-summary">
+              <h2 id="settings-title">Desktop settings</h2>
+            </summary>
+
+            <div class="card-body">
+            <div class="setting">
+              <div>
+                <label for="autostart">Start on login</label>
+                <p>Launch Stream32 quietly when you sign in.</p>
+              </div>
+              <input
+                id="autostart"
+                class="switch"
+                type="checkbox"
+                role="switch"
+                disabled
+              >
+            </div>
+
+            <div class="update-row" aria-live="polite">
+              <span class="status-dot" aria-hidden="true"></span>
+              <p id="update-status">Preparing Stream32…</p>
+              <button
+                id="check-updates"
+                class="button button-quiet"
+                type="button"
+              >
+                Check now
+              </button>
+            </div>
+            </div>
+          </details>
+        </section>
       </div>
     </main>
   </body>

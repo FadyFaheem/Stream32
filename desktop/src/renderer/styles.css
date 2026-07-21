@@ -18,6 +18,11 @@
   box-sizing: border-box;
 }
 
+/* Keep the hidden attribute authoritative over author display rules. */
+[hidden] {
+  display: none !important;
+}
+
 html {
   min-width: 720px;
   min-height: 580px;
@@ -71,7 +76,8 @@ select {
 .brand {
   position: relative;
   display: grid;
-  min-height: 190px;
+  min-height: 130px;
+  margin-bottom: 1.6rem;
   place-items: center;
 }
 
@@ -95,7 +101,7 @@ select {
   color: var(--accent);
   font-family: "Bahnschrift Condensed", "Avenir Next Condensed",
     "DejaVu Sans Condensed", sans-serif;
-  font-size: 6.5rem;
+  font-size: 4.4rem;
   font-weight: 900;
   letter-spacing: -0.14em;
   line-height: 0.8;
@@ -103,28 +109,58 @@ select {
   text-shadow: 8px 8px 0 rgba(0, 0, 0, 0.2);
 }
 
-.sidebar-copy {
-  margin: 0.75rem 0 0;
+.side-nav {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.nav-item {
+  padding: 0.7rem 0.9rem;
+  cursor: pointer;
   color: var(--muted);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
   font-size: 0.86rem;
-  line-height: 1.55;
+  font-weight: 700;
+  text-align: left;
+}
+
+.nav-item:hover {
+  color: var(--ink);
+  background: rgba(145, 166, 181, 0.08);
+}
+
+.nav-item[data-active="true"] {
+  color: var(--accent-strong);
+  border-color: rgba(255, 173, 34, 0.35);
+  background: rgba(255, 173, 34, 0.08);
+}
+
+.sidebar .status-pill {
+  max-width: 100%;
 }
 
 .content {
+  display: flex;
+  width: min(100%, 1280px);
+  min-height: 100vh;
+  margin: 0 auto;
+  flex-direction: column;
+  padding: 1.75rem clamp(1.5rem, 3.5vw, 3rem) 2.5rem;
+}
+
+.view:not([hidden]) {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+#view-flash:not([hidden]),
+#view-settings:not([hidden]) {
+  display: block;
   width: min(100%, 920px);
   margin: 0 auto;
-  padding: 2.5rem clamp(2rem, 5vw, 4.5rem) 4rem;
-}
-
-.page-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
-}
-
-.page-header {
-  margin-bottom: 2rem;
 }
 
 .kicker,
@@ -137,24 +173,9 @@ select {
   text-transform: uppercase;
 }
 
-h1,
 h2,
 p {
   overflow-wrap: anywhere;
-}
-
-h1 {
-  margin: 0;
-  font-family: "Bahnschrift Condensed", "Avenir Next Condensed",
-    "DejaVu Sans Condensed", sans-serif;
-  font-size: clamp(3.4rem, 7vw, 5.2rem);
-  font-weight: 900;
-  letter-spacing: -0.075em;
-  line-height: 0.88;
-}
-
-h1 span {
-  color: var(--accent);
 }
 
 h2 {
@@ -444,10 +465,38 @@ input:disabled {
   opacity: 0.45;
 }
 
-#deck-empty {
-  margin: 0.6rem 0 0;
+.deck-empty {
+  display: grid;
+  flex: 1;
+  gap: 0.5rem;
+  align-content: center;
+  justify-items: center;
+  padding: 3rem 1rem;
+  text-align: center;
+}
+
+.deck-empty h2 {
+  font-size: 1.6rem;
+}
+
+.deck-empty p:not(.kicker) {
+  max-width: 380px;
+  margin: 0;
   color: var(--muted);
-  font-size: 0.86rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.deck-empty .button {
+  margin-top: 1rem;
+}
+
+.deck-editor {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.9rem;
+  min-height: 0;
 }
 
 .deck-toolbar {
@@ -455,7 +504,6 @@ input:disabled {
   align-items: end;
   gap: 1rem;
   flex-wrap: wrap;
-  margin-top: 0.8rem;
 }
 
 .deck-device-picker {
@@ -491,9 +539,10 @@ input:disabled {
   padding-bottom: 0.55rem;
 }
 
-#deck-sync-status {
+.deck-sync-status {
+  width: 100%;
   min-height: 1.1rem;
-  margin: 0.65rem 0 0;
+  margin: 0;
 }
 
 #deck-sync-status[data-state="ready"] {
@@ -504,12 +553,19 @@ input:disabled {
   color: var(--accent-strong);
 }
 
+.deck-pagebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
 .deck-pages {
   display: flex;
   align-items: center;
   gap: 0.9rem;
   flex-wrap: wrap;
-  margin-top: 1rem;
 }
 
 #deck-page-tabs {
@@ -540,7 +596,6 @@ input:disabled {
   align-items: center;
   gap: 0.6rem;
   flex-wrap: wrap;
-  margin-top: 0.9rem;
   font-size: 0.8rem;
 }
 
@@ -549,12 +604,26 @@ input:disabled {
   min-height: 2.35rem;
 }
 
+/* The stage fills the leftover height so the deck feels like the device. */
+.deck-stage {
+  display: grid;
+  flex: 1;
+  min-height: 260px;
+  padding: clamp(1rem, 3vh, 2.5rem);
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(39, 60, 71, 0.55) 0, transparent 62%),
+    rgba(11, 17, 22, 0.72);
+}
+
 .deck-grid {
   display: grid;
-  grid-template-columns: repeat(var(--deck-cols, 3), minmax(0, 96px));
-  gap: 0.55rem;
-  justify-content: start;
-  margin-top: 1.1rem;
+  grid-template-columns:
+    repeat(var(--deck-cols, 3), clamp(72px, calc(52vh / var(--deck-rows, 3)), 148px));
+  gap: clamp(0.5rem, 1.4vh, 1rem);
+  justify-content: center;
 }
 
 .deck-key {
@@ -606,11 +675,10 @@ input:disabled {
 }
 
 .deck-key-editor {
-  margin-top: 1.2rem;
-  padding: 1rem;
+  padding: 1rem 1.2rem;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: rgba(11, 17, 22, 0.48);
+  border-radius: 14px;
+  background: rgba(16, 26, 33, 0.94);
 }
 
 .deck-key-fields {

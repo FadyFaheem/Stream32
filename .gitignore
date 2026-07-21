@@ -28,6 +28,11 @@ __pycache__/
 .venv/
 venv/
 
+# Node / Electron desktop app
+node_modules/
+desktop/dist/
+desktop/out/
+
 # Logs and operating-system files
 *.log
 .DS_Store

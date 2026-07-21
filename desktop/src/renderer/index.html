@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' data:; script-src 'self'; style-src 'self'"
+    >
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stream32</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script src="./renderer.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <div class="brand" aria-hidden="true">
+        <span class="brand-grid">32</span>
+      </div>
+
+      <section class="intro" aria-labelledby="app-title">
+        <p class="kicker">Desktop companion</p>
+        <h1 id="app-title">Stream<span>32</span></h1>
+        <p class="summary">
+          Your open-source control surface, ready in the background.
+        </p>
+
+        <div class="setting">
+          <div>
+            <label for="autostart">Start on login</label>
+            <p>Launch Stream32 quietly when you sign in.</p>
+          </div>
+          <input
+            id="autostart"
+            class="switch"
+            type="checkbox"
+            role="switch"
+            disabled
+          >
+        </div>
+
+        <div class="update-row" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <p id="update-status">Preparing Stream32…</p>
+          <button id="check-updates" type="button">Check now</button>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

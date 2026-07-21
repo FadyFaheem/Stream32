@@ -1,0 +1,65 @@
+name: Desktop CI
+
+on:
+  pull_request:
+    paths:
+      - "desktop/**"
+      - "assets/logo.png"
+      - ".github/workflows/ci-desktop.yml"
+      - ".github/workflows/release-desktop.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "desktop/**"
+      - "assets/logo.png"
+      - ".github/workflows/ci-desktop.yml"
+      - ".github/workflows/release-desktop.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Package (${{ matrix.platform }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS
+            os: macos-latest
+            target: mac
+          - platform: Linux
+            os: ubuntu-latest
+            target: linux
+
+    defaults:
+      run:
+        working-directory: desktop
+
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run checks
+        run: npm run check
+
+      - name: Run tests
+        run: npm test
+
+      - name: Package application
+        run: npm run dist -- --${{ matrix.target }} --x64 --publish never

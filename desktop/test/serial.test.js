@@ -23,7 +23,9 @@ test('serial selection always settles when no supported port exists', async () =
   const window = { webContents: { session } };
   const selected = [];
 
-  configureSerialAccess(window);
+  configureSerialAccess(window, {
+    getRememberedDevice: () => null,
+  });
   await selectionHandler(
     { preventDefault() {} },
     [],
@@ -48,16 +50,17 @@ test('serial selection always asks which supported USB port to flash', async () 
   };
   const window = { webContents: { session } };
   const port = {
-    displayName: 'USB JTAG/serial debug unit',
+    displayName: 'USB-SERIAL CH340',
     portId: 'port-1',
     portName: 'COM7',
-    productId: '1001',
+    productId: '29987',
     serialNumber: 'aabbccddeeff',
-    vendorId: '303a',
+    vendorId: '6790',
   };
   const selected = [];
 
   configureSerialAccess(window, {
+    getRememberedDevice: () => null,
     rememberDevice: serialDeviceIdentity,
     showMessageBox: async (_window, options) => {
       dialogOptions = options;
@@ -72,31 +75,33 @@ test('serial selection always asks which supported USB port to flash', async () 
   );
 
   assert.deepEqual(selected, ['port-1']);
-  assert.equal(dialogOptions.title, 'Select a USB port');
+  assert.equal(dialogOptions.title, 'Select a USB or COM port');
   assert.deepEqual(dialogOptions.buttons, [
-    'USB JTAG/serial debug unit (COM7 · aabbccddeeff)',
+    'USB-SERIAL CH340 (COM7 · aabbccddeeff)',
     'Cancel',
   ]);
 });
 
 test('normalizes USB IDs from Electron metadata', () => {
-  assert.equal(normalizeUsbId('0x303A'), '303a');
-  assert.equal(normalizeUsbId(0x1001), '1001');
+  assert.equal(normalizeUsbId('0x303A'), 0x303a);
+  assert.equal(normalizeUsbId(0x1001), 0x1001);
+  assert.equal(normalizeUsbId('12346'), 0x303a);
+  assert.equal(normalizeUsbId('4097'), 0x1001);
   assert.equal(normalizeUsbId('not-an-id'), null);
 });
 
 test('recognizes only the ESP32-S3 USB Serial/JTAG interface', () => {
   assert.equal(
     isEspressifUsbSerialJtag({
-      productId: '1001',
-      vendorId: '303A',
+      productId: '4097',
+      vendorId: '12346',
     }),
     true,
   );
   assert.equal(
     isEspressifUsbSerialJtag({
-      productId: '0001',
-      vendorId: '303A',
+      productId: '1',
+      vendorId: '12346',
     }),
     false,
   );
@@ -105,27 +110,121 @@ test('recognizes only the ESP32-S3 USB Serial/JTAG interface', () => {
 test('matches remembered devices by stable serial identity', () => {
   const remembered = serialDeviceIdentity({
     portName: 'COM4',
-    productId: '1001',
+    productId: '4097',
     serialNumber: 'device-a',
-    vendorId: '303a',
+    vendorId: '12346',
   });
 
   assert.equal(
     serialDeviceMatches(remembered, {
       portName: 'COM9',
-      productId: '1001',
+      productId: '0x1001',
       serialNumber: 'device-a',
-      vendorId: '303a',
+      vendorId: '0x303a',
     }),
     true,
   );
   assert.equal(
     serialDeviceMatches(remembered, {
       portName: 'COM4',
-      productId: '1001',
+      productId: '4097',
       serialNumber: 'device-b',
-      vendorId: '303a',
+      vendorId: '12346',
     }),
     false,
+  );
+});
+
+test('supports serial ports without USB VID/PID metadata', () => {
+  const remembered = serialDeviceIdentity({ portName: 'COM8' });
+
+  assert.deepEqual(remembered, {
+    deviceInstanceId: null,
+    portName: 'COM8',
+    portId: null,
+    productId: null,
+    serialNumber: null,
+    vendorId: null,
+  });
+  assert.equal(
+    serialDeviceMatches(remembered, { portName: 'COM8' }),
+    true,
+  );
+});
+
+test('matches when Electron omits serial metadata during permission checks', () => {
+  const remembered = serialDeviceIdentity({
+    deviceInstanceId: 'USB\\VID_303A&PID_1001\\device',
+    portName: 'COM5',
+    productId: '4097',
+    serialNumber: 'device-a',
+    vendorId: '12346',
+  });
+
+  assert.equal(
+    serialDeviceMatches(remembered, {
+      deviceInstanceId: 'USB\\VID_303A&PID_1001\\device',
+      portName: 'COM5',
+      productId: '4097',
+      vendorId: '12346',
+    }),
+    true,
+  );
+});
+
+test('matches the snake_case device shape used by SerialPort.open checks', () => {
+  const remembered = serialDeviceIdentity({
+    deviceInstanceId: 'USB\\VID_303A&PID_1001&MI_00\\7&27970455&0&0000',
+    displayName: 'USB JTAG/serial debug unit',
+    portId: '5D3F6E9C65834BBB438D07DFC1E632A9',
+    portName: 'COM5',
+    productId: '4097',
+    serialNumber: null,
+    vendorId: '12346',
+  });
+
+  // Windows open-time shape: only name + device_instance_id.
+  assert.equal(
+    serialDeviceMatches(remembered, {
+      device_instance_id: 'USB\\VID_303A&PID_1001&MI_00\\7&27970455&0&0000',
+      name: 'USB JTAG/serial debug unit',
+    }),
+    true,
+  );
+
+  // Non-Windows open-time shape: name + vendor/product/serial numbers.
+  const posixRemembered = serialDeviceIdentity({
+    portId: 'AABBCCDDEEFF00112233445566778899',
+    portName: 'ttyACM0',
+    productId: '4097',
+    serialNumber: 'device-a',
+    vendorId: '12346',
+  });
+  assert.equal(
+    serialDeviceMatches(posixRemembered, {
+      name: 'USB JTAG/serial debug unit',
+      product_id: 4097,
+      serial_number: 'device-a',
+      vendor_id: 12346,
+    }),
+    true,
+  );
+
+  // Ephemeral open-time shape: name + base64 token of the picker portId.
+  const portIdHex = '5D3F6E9C65834BBB438D07DFC1E632A9';
+  const token = Buffer.concat([
+    Buffer.from(portIdHex.slice(0, 16), 'hex').reverse(),
+    Buffer.from(portIdHex.slice(16), 'hex').reverse(),
+  ]).toString('base64');
+  const ephemeralRemembered = serialDeviceIdentity({
+    portId: portIdHex,
+    portName: 'COM5',
+  });
+  assert.equal(
+    serialDeviceMatches(ephemeralRemembered, {
+      name: 'USB JTAG/serial debug unit',
+      token,
+    }),
+    true,
   );
 });

@@ -41,12 +41,14 @@
           </p>
         </header>
 
-        <section class="card" aria-labelledby="flash-title">
-          <div class="card-heading">
-            <div>
-              <p class="step">Step 1</p>
-              <h2 id="flash-title">Choose and flash your board</h2>
-            </div>
+        <details class="card" open>
+          <summary class="card-summary">
+            <span class="step">Step 1</span>
+            <h2 id="flash-title">Choose and flash your board</h2>
+          </summary>
+
+          <div class="card-body">
+          <div class="card-toolbar">
             <button
               id="refresh-boards"
               class="button button-quiet"
@@ -74,9 +76,9 @@
 
           <div class="usb-picker">
             <div>
-              <p class="field-label">USB port</p>
+              <p class="field-label">USB / COM port</p>
               <p id="usb-port-status" class="helper" data-state="idle">
-                No USB port selected.
+                No USB or COM port selected.
               </p>
             </div>
             <div class="usb-actions">
@@ -86,7 +88,7 @@
                 type="button"
                 disabled
               >
-                Choose USB port
+                Choose USB / COM port
               </button>
               <button
                 id="refresh-usb"
@@ -94,7 +96,7 @@
                 type="button"
                 disabled
               >
-                Refresh USB ports
+                Refresh USB / COM ports
               </button>
             </div>
           </div>
@@ -146,20 +148,28 @@
             aria-label="Firmware flash log"
             aria-live="polite"
           ></pre>
-        </section>
-
-        <section class="card test-card" aria-labelledby="test-title">
-          <div>
-            <p class="step">Step 2</p>
-            <h2 id="test-title">Test USB and touch</h2>
           </div>
-          <p id="touch-status" class="touch-status" aria-live="polite">
-            Flash and connect the board, then touch its display.
-          </p>
-        </section>
+        </details>
 
-        <section class="card settings-card" aria-labelledby="settings-title">
-          <h2 id="settings-title">Desktop settings</h2>
+        <details class="card" open>
+          <summary class="card-summary">
+            <span class="step">Step 2</span>
+            <h2 id="test-title">Test USB and touch</h2>
+          </summary>
+
+          <div class="card-body">
+            <p id="touch-status" class="touch-status" aria-live="polite">
+              Flash and connect the board, then touch its display.
+            </p>
+          </div>
+        </details>
+
+        <details class="card settings-card" open>
+          <summary class="card-summary">
+            <h2 id="settings-title">Desktop settings</h2>
+          </summary>
+
+          <div class="card-body">
           <div class="setting">
             <div>
               <label for="autostart">Start on login</label>
@@ -185,7 +195,8 @@
               Check now
             </button>
           </div>
-        </section>
+          </div>
+        </details>
       </div>
     </main>
   </body>

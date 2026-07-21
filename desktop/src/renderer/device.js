@@ -9,6 +9,7 @@ const {
 } = require('./protocol');
 
 const HANDSHAKE_TIMEOUT_MS = 7000;
+const HELLO_RETRY_MS = 1000;
 const RECONNECT_ATTEMPTS = 8;
 const RECONNECT_DELAY_MS = 750;
 const MAX_LOG_LINES = 80;
@@ -23,7 +24,10 @@ function errorMessage(error) {
   }
 
   if (error?.name === 'NetworkError') {
-    return 'The serial port is busy or the board was disconnected.';
+    return (
+      'The serial port is busy or the board was disconnected.' +
+      (error.message ? ` (${error.message})` : '')
+    );
   }
 
   return error instanceof Error ? error.message : String(error);
@@ -122,7 +126,7 @@ class DeviceController {
     });
     this.serial.addEventListener('disconnect', (event) => {
       if (this.selectedPort === event.target && !this.busy) {
-        this.clearUsbSelection('The selected USB port was disconnected.');
+        this.clearUsbSelection('The selected USB/COM port was disconnected.');
       }
 
       if (this.session?.port === event.target) {
@@ -132,7 +136,33 @@ class DeviceController {
     });
 
     await this.loadBoards();
+    await this.restoreUsbSelection();
     await this.reconnectAuthorizedDevice();
+  }
+
+  async restoreUsbSelection() {
+    const board = this.selectedBoard();
+
+    if (!board || this.selectedPort || !this.serial) {
+      return;
+    }
+
+    try {
+      const ports = await this.serial.getPorts();
+
+      // ponytail: with several authorized ports there is no way to know which
+      // one the user means, so only restore an unambiguous single grant.
+      if (ports.length === 1) {
+        this.selectedPort = ports[0];
+        this.selectedPortBoardId = board.id;
+        this.usbPortStatus.textContent =
+          'Previously authorized USB port restored.';
+        this.usbPortStatus.dataset.state = 'ready';
+        this.updateFlashButton();
+      }
+    } catch {
+      // Restoring a previous selection must never block startup.
+    }
   }
 
   selectedBoard() {
@@ -178,7 +208,7 @@ class DeviceController {
     this.flashProgress.value = Math.max(0, Math.min(100, value));
   }
 
-  clearUsbSelection(message = 'No USB port selected.') {
+  clearUsbSelection(message = 'No USB or COM port selected.') {
     this.selectedPort = null;
     this.selectedPortBoardId = null;
     this.usbPortStatus.textContent = message;
@@ -189,20 +219,20 @@ class DeviceController {
   async selectUsbPort() {
     const board = this.selectedBoard();
 
-    if (!board || !this.serial || this.operation) {
+    if (
+      !board ||
+      !this.serial ||
+      !this.beginOperation('usb-select')
+    ) {
       return;
     }
-
-    this.chooseUsbButton.disabled = true;
-    this.refreshUsbButton.disabled = true;
 
     try {
       // requestPort must run directly from this click before user activation
       // expires; downloading firmware first prevents Chromium's picker.
-      const portRequest = this.serial.requestPort({
-        filters: board.usbFilters,
-      });
-      const port = await portRequest;
+      const port = await this.serial.requestPort();
+      await this.closeSession();
+      await sleep(300);
       const info = port.getInfo();
       const vendorId = info.usbVendorId
         ?.toString(16)
@@ -215,18 +245,16 @@ class DeviceController {
 
       this.selectedPort = port;
       this.selectedPortBoardId = board.id;
-      this.usbPortStatus.textContent = `ESP32-S3 port selected${usbId}`;
+      this.usbPortStatus.textContent = `Serial port selected${usbId}`;
       this.usbPortStatus.dataset.state = 'ready';
     } catch (error) {
       this.clearUsbSelection(
         error?.name === 'NotFoundError'
-          ? 'USB selection cancelled.'
-          : `Could not select USB: ${errorMessage(error)}`,
+          ? 'USB/COM selection cancelled.'
+          : `Could not select USB/COM: ${errorMessage(error)}`,
       );
     } finally {
-      this.chooseUsbButton.disabled = Boolean(this.operation);
-      this.refreshUsbButton.disabled = Boolean(this.operation);
-      this.updateFlashButton();
+      this.endOperation('usb-select');
     }
   }
 
@@ -258,7 +286,6 @@ class DeviceController {
     }
 
     this.confirmRevision.checked = false;
-    this.clearUsbSelection();
     this.catalogStatus.textContent = force
       ? 'Refreshing board support…'
       : 'Loading board support…';
@@ -284,6 +311,13 @@ class DeviceController {
         this.boardSelect.value = previousSelection;
       }
 
+      if (
+        this.selectedPortBoardId &&
+        this.selectedPortBoardId !== this.boardSelect.value
+      ) {
+        this.clearUsbSelection();
+      }
+
       this.catalogStatus.textContent = result.warning
         ? result.warning
         : result.source === 'cache'
@@ -294,6 +328,7 @@ class DeviceController {
     } catch (error) {
       this.boards.clear();
       this.boardSelect.replaceChildren();
+      this.clearUsbSelection();
       this.catalogStatus.textContent = errorMessage(error);
       this.catalogStatus.dataset.state = 'error';
       this.updateSelectedBoard();
@@ -371,6 +406,7 @@ class DeviceController {
 
     try {
       await this.closeSession();
+      await sleep(500);
       const firmware = await this.api.getBoardFirmware(board.id);
 
       this.flashStatus.textContent = 'Connecting to the ESP32-S3 bootloader…';
@@ -433,7 +469,6 @@ class DeviceController {
     } catch (error) {
       const message = errorMessage(error);
       this.appendLog(message);
-      this.clearUsbSelection('Choose the USB port again before retrying.');
       this.flashStatus.textContent = `Flash failed: ${message}`;
       this.setDeviceStatus('Flash failed. See recovery steps below.', 'error');
     } finally {
@@ -572,7 +607,11 @@ class DeviceController {
 
     const decoder = createLineDecoder({
       onError: (error) => {
-        this.appendLog(`Protocol: ${errorMessage(error)}`);
+        // Boot banners (e.g. "ESP-ROM:...") arrive before the firmware's
+        // JSON protocol starts; only real post-handshake noise matters.
+        if (session.handshakeComplete) {
+          this.appendLog(`Protocol: ${errorMessage(error)}`);
+        }
       },
       onMessage: (message) => {
         try {
@@ -656,6 +695,30 @@ class DeviceController {
       }
     })();
 
+    // Opening the USB Serial/JTAG port can reset the board, so a hello sent
+    // while the firmware is still booting is lost. Repeat it until the
+    // device answers or the handshake window closes.
+    const helloTimer = setInterval(async () => {
+      if (
+        this.session !== session ||
+        session.handshakeComplete ||
+        !port.writable ||
+        port.writable.locked
+      ) {
+        return;
+      }
+
+      const retryWriter = port.writable.getWriter();
+
+      try {
+        await retryWriter.write(encodeHostHello());
+      } catch {
+        // The timeout or read loop will report a failed connection.
+      } finally {
+        retryWriter.releaseLock();
+      }
+    }, HELLO_RETRY_MS);
+
     const timeout = new Promise((_, reject) => {
       setTimeout(
         () => reject(new Error('Timed out waiting for the device hello.')),
@@ -668,6 +731,8 @@ class DeviceController {
     } catch (error) {
       await this.closeSession();
       throw error;
+    } finally {
+      clearInterval(helloTimer);
     }
   }
 

@@ -17,6 +17,10 @@ let mainWindow = null;
 let trayController = null;
 let updaterController = null;
 
+// Electron otherwise applies Chromium's serial-device blocklist even after
+// the user explicitly selects a port. Permission remains limited in serial.js.
+app.commandLine.appendSwitch('disable-serial-blocklist');
+
 function getIconPath() {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'logo.png')

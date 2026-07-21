@@ -91,10 +91,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/boards-current" --jq '.id' 2>/dev/null || true)"
-          if [ -z "$release_id" ]; then
+          if ! release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/boards-current" 2>/dev/null)"; then
             exit 0
           fi
+          release_id="$(printf '%s' "$release_json" | jq -r '.id')"
 
           assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets")"
           for image in boards/dist/*.bin boards/dist/*.dependencies.lock; do

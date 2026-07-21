@@ -273,6 +273,12 @@ static void build_page(uint8_t page_index)
             lv_obj_t *label = lv_label_create(cell);
 
             lv_label_set_text(label, key->label);
+            /* Explicit: the theme's card style would otherwise decide. */
+            lv_obj_set_style_text_color(
+                label,
+                lv_color_hex(0xf3f7f9),
+                LV_PART_MAIN
+            );
             lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
             lv_obj_set_width(label, key_px - 12);
             lv_obj_set_style_text_align(

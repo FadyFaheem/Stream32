@@ -16,7 +16,9 @@ const {
   importProfile,
   readDecks,
   saveDeviceProfile,
+  validateHostAction,
 } = require('./deck-store');
+const { createPluginService } = require('./plugins');
 const { configureSerialAccess } = require('./serial');
 const { createTray } = require('./tray');
 const { createUpdater } = require('./updater');
@@ -25,6 +27,7 @@ const actionRunner = createActionRunner();
 let boardService = null;
 let isQuitting = false;
 let mainWindow = null;
+let pluginService = null;
 let serialAccess = null;
 let trayController = null;
 let updaterController = null;
@@ -129,6 +132,16 @@ function registerIpcHandlers() {
 
     return boardService.getFirmware(boardId);
   });
+  ipcMain.handle('plugins:list', (event, force = false) => {
+    if (
+      event.sender !== mainWindow?.webContents ||
+      typeof force !== 'boolean'
+    ) {
+      throw new TypeError('Plugin list request is invalid.');
+    }
+
+    return force ? pluginService.load() : pluginService.list();
+  });
   ipcMain.handle('serial:select-port', (event, requestId, portId) => {
     if (
       event.sender !== mainWindow?.webContents ||
@@ -191,9 +204,17 @@ function registerIpcHandlers() {
 
     return { profile: importProfile(text) };
   });
-  ipcMain.handle('action:run', (_event, action) =>
-    actionRunner.runAction(action),
-  );
+  ipcMain.handle('action:run', (event, action) => {
+    if (event.sender !== mainWindow?.webContents) {
+      throw new TypeError('Action request is invalid.');
+    }
+
+    const validated = validateHostAction(action);
+    const runnable = validated.type === 'plugin'
+      ? pluginService.resolve(validated)
+      : validated;
+    return actionRunner.runAction(runnable);
+  });
 }
 
 function reportBackgroundError(error) {
@@ -224,6 +245,7 @@ if (!hasSingleInstanceLock) {
     app.setAppUserModelId('com.stream32.desktop');
     mainWindow = createMainWindow();
     boardService = createDefaultBoardService(sendBoardDownloadProgress);
+    pluginService = createPluginService();
     registerIpcHandlers();
 
     updaterController = createUpdater({

@@ -175,42 +175,41 @@
                   </div>
                 </div>
                 <div class="deck-field deck-action-field">
-                  <label for="deck-action-type">Action</label>
-                  <div class="deck-action-row">
-                    <select id="deck-action-type">
-                      <option value="none">Do nothing</option>
-                      <option value="media">Media control</option>
-                      <option value="url">Open website</option>
-                      <option value="launch">Launch app / command</option>
-                      <option value="hotkey">Keyboard shortcut</option>
-                      <option value="page">Go to page</option>
-                    </select>
-                    <select id="deck-action-media" aria-label="Media command" hidden></select>
-                    <input
-                      id="deck-action-url"
-                      type="url"
-                      placeholder="https://example.com"
-                      aria-label="Website address"
+                  <span class="field-label">Action</span>
+                  <div class="deck-action-summary">
+                    <button
+                      id="deck-action-open"
+                      class="action-summary-button"
+                      type="button"
+                    >
+                      <span
+                        id="deck-action-summary-icon"
+                        class="ms-icon action-summary-icon"
+                        aria-hidden="true"
+                      >add</span>
+                      <span class="action-summary-copy">
+                        <strong id="deck-action-summary-name">Choose an action</strong>
+                        <span id="deck-action-summary-source">
+                          Search Stream32 and installed plugins
+                        </span>
+                      </span>
+                      <span class="action-summary-change">Change</span>
+                    </button>
+                    <button
+                      id="deck-action-clear"
+                      class="button button-quiet"
+                      type="button"
                       hidden
                     >
-                    <input
-                      id="deck-action-launch"
-                      type="text"
-                      maxlength="1024"
-                      placeholder="notepad.exe or any command line"
-                      aria-label="Launch command"
-                      hidden
-                    >
-                    <input
-                      id="deck-action-hotkey"
-                      type="text"
-                      readonly
-                      placeholder="Click, then press keys"
-                      aria-label="Keyboard shortcut"
-                      hidden
-                    >
-                    <select id="deck-action-page" aria-label="Target page" hidden></select>
+                      Clear
+                    </button>
                   </div>
+                  <div id="deck-action-config" class="deck-action-config"></div>
+                  <p
+                    id="deck-action-message"
+                    class="helper deck-action-message"
+                    aria-live="polite"
+                  ></p>
                 </div>
               </div>
             </div>
@@ -233,6 +232,39 @@
             id="deck-icon-grid"
             class="deck-icon-grid"
             aria-label="Icon results"
+          ></div>
+        </dialog>
+
+        <dialog id="deck-action-dialog" class="deck-action-dialog">
+          <div class="deck-action-dialog-head">
+            <div>
+              <h2>Choose an action</h2>
+              <p>Search built-in controls and installed plugins.</p>
+            </div>
+            <button id="deck-action-close" class="button button-quiet" type="button">
+              Close
+            </button>
+          </div>
+          <div class="deck-action-search-row">
+            <input
+              id="deck-action-search"
+              type="search"
+              placeholder="Search actions…"
+              aria-label="Search actions"
+            >
+            <button
+              id="deck-action-reload"
+              class="button button-secondary"
+              type="button"
+            >
+              Reload plugins
+            </button>
+          </div>
+          <p id="deck-plugin-status" class="helper deck-plugin-status"></p>
+          <div
+            id="deck-action-list"
+            class="deck-action-list"
+            aria-label="Action results"
           ></div>
         </dialog>
 

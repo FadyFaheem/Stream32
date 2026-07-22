@@ -39,6 +39,15 @@ function sampleProfile() {
             image: TINY_PNG,
             action: { type: 'launch', command: 'obs' },
           },
+          {
+            index: 1,
+            action: {
+              type: 'plugin',
+              pluginId: 'microsoft-teams',
+              actionId: 'toggle-mute',
+              settings: {},
+            },
+          },
           { index: 8, action: { type: 'page', page: 1 } },
         ],
       },
@@ -67,6 +76,12 @@ test('validates a full multi-page profile', () => {
   assert.equal(validated.activePage, 1);
   assert.equal(validated.keyPx['3x3'], 150);
   assert.equal(validated.pages[0].keys[0].labelColor, '#0b1116');
+  assert.deepEqual(validated.pages[0].keys[1].action, {
+    type: 'plugin',
+    pluginId: 'microsoft-teams',
+    actionId: 'toggle-mute',
+    settings: {},
+  });
   assert.deepEqual(validated.pages[1].keys[1].action, {
     type: 'hotkey',
     key: 'F5',
@@ -200,7 +215,11 @@ test('round-trips export and import and rejects malformed files', () => {
   const exported = exportProfile(sampleProfile());
   const imported = importProfile(exported);
 
+  assert.equal(JSON.parse(exported).stream32Deck, 2);
   assert.deepEqual(imported, validateProfile(sampleProfile()));
+  const legacy = JSON.parse(exported);
+  legacy.stream32Deck = 1;
+  assert.deepEqual(importProfile(JSON.stringify(legacy)), imported);
   assert.throws(() => importProfile('not json'), /not valid JSON/);
   assert.throws(
     () => importProfile('{"stream32Deck":99,"profile":{}}'),

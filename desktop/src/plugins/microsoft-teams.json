@@ -1,0 +1,124 @@
+{
+  "stream32Plugin": 1,
+  "id": "microsoft-teams",
+  "name": "Microsoft Teams",
+  "version": "1.0.0",
+  "description": "Meeting controls using Microsoft Teams desktop keyboard shortcuts.",
+  "actions": [
+    {
+      "id": "toggle-mute",
+      "name": "Toggle mute / unmute",
+      "description": "Toggle your microphone. Teams does not expose its current mute state to Stream32.",
+      "category": "Meetings",
+      "icon": "mic_off",
+      "keywords": ["microphone", "audio", "mute", "unmute"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "M",
+          "ctrl": true,
+          "shift": true
+        }
+      },
+      "appearance": {
+        "label": "Teams Mic",
+        "icon": "mic_off",
+        "color": "#6264a7",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-camera",
+      "name": "Toggle camera",
+      "description": "Turn your meeting camera on or off.",
+      "category": "Meetings",
+      "icon": "videocam",
+      "keywords": ["camera", "video"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "O",
+          "ctrl": true,
+          "shift": true
+        }
+      },
+      "appearance": {
+        "label": "Camera",
+        "icon": "videocam",
+        "color": "#6264a7",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-hand",
+      "name": "Raise / lower hand",
+      "description": "Toggle your raised hand in the current meeting.",
+      "category": "Meetings",
+      "icon": "front_hand",
+      "keywords": ["hand", "raise", "lower"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "K",
+          "ctrl": true,
+          "shift": true
+        }
+      },
+      "appearance": {
+        "label": "Raise Hand",
+        "icon": "front_hand",
+        "color": "#6264a7",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "share",
+      "name": "Open sharing controls",
+      "description": "Open or close the meeting share-content tray.",
+      "category": "Meetings",
+      "icon": "present_to_all",
+      "keywords": ["screen", "share", "present"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "E",
+          "ctrl": true,
+          "shift": true
+        }
+      },
+      "appearance": {
+        "label": "Share",
+        "icon": "present_to_all",
+        "color": "#6264a7",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "leave-call",
+      "name": "Leave call",
+      "description": "Leave or end the current audio or video call.",
+      "category": "Meetings",
+      "icon": "call_end",
+      "keywords": ["leave", "end", "hang up"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "H",
+          "ctrl": true,
+          "shift": true
+        }
+      },
+      "appearance": {
+        "label": "Leave",
+        "icon": "call_end",
+        "color": "#9f2828",
+        "labelColor": "#ffffff"
+      }
+    }
+  ]
+}

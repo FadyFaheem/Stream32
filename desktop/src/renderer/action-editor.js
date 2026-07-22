@@ -535,7 +535,7 @@ class ActionEditor {
     }
   }
 
-  emit(appearance) {
+  emit(appearance = this.selectedDefinition()?.appearance) {
     const action = this.buildAction();
     this.action = action;
     this.onChange(action, action ? appearance : undefined);

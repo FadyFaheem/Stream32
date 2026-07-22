@@ -13,7 +13,7 @@ closed.
 
 1. Open the action picker for any deck key.
 2. Copy the plugin's `.json` file into the user plugin directory shown below
-   **Reload plugins**.
+   the action search box.
 3. Select **Reload plugins**. Invalid manifests are skipped and reported in the
    picker.
 

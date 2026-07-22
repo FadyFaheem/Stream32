@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+  ActionEditor,
   CORE_ACTIONS,
   actionKey,
   filterActions,
@@ -42,4 +43,25 @@ test('maps native and plugin actions to stable catalog keys', () => {
     'plugin:microsoft-teams:toggle-mute',
   );
   assert.equal(actionKey(null), null);
+});
+
+test('applies plugin appearance after required settings become valid', () => {
+  const appearance = { label: 'Search', icon: 'search' };
+  const action = {
+    type: 'plugin',
+    pluginId: 'search-tools',
+    actionId: 'search',
+    settings: { query: 'Stream32' },
+  };
+  let change;
+  const editor = Object.create(ActionEditor.prototype);
+  editor.selectedDefinition = () => ({ appearance });
+  editor.buildAction = () => action;
+  editor.onChange = (...values) => {
+    change = values;
+  };
+
+  editor.emit();
+
+  assert.deepEqual(change, [action, appearance]);
 });

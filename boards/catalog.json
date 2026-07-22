@@ -1,6 +1,7 @@
 {
   "schemaVersion": 1,
   "boards": [
-    "waveshare-esp32-s3-touch-lcd-4-v3/board.json"
+    "waveshare-esp32-s3-touch-lcd-4-v3/board.json",
+    "elecrow-crowpanel-advanced-10-1-esp32-p4/board.json"
   ]
 }

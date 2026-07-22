@@ -19,9 +19,9 @@ Everything needed to reproduce and modify the project will live here in the open
 ## Project status
 
 > [!NOTE]
-> Stream32 is in its earliest stage. Initial firmware supports the Waveshare
-> ESP32-S3-Touch-LCD-4 hardware Rev 3.0; custom hardware designs have not been
-> published yet.
+> Stream32 is in its earliest stage. Firmware supports the Waveshare
+> ESP32-S3-Touch-LCD-4 hardware Rev 3.0 and the Elecrow CrowPanel Advanced
+> 10.1" ESP32-P4 HMI; custom hardware designs have not been published yet.
 
 The project is currently taking shape. Planned areas include:
 
@@ -59,11 +59,12 @@ checks its declared size and SHA-256 hash, and caches it for offline
 reflashing. Adding a compatible profile therefore does not require a desktop
 release.
 
-The current profile is specifically for the 4-inch, 480×480 Waveshare
-`ESP32-S3-Touch-LCD-4` with a **Rev 3.0** silkscreen. Rev 4 and the 4.3-inch
-product are not interchangeable. See [`boards/README.md`](./boards/README.md)
-for firmware builds, profile publishing, the USB protocol, and BOOT-mode
-recovery.
+Two profiles exist today: the 4-inch, 480×480 Waveshare
+`ESP32-S3-Touch-LCD-4` with a **Rev 3.0** silkscreen (Rev 4 and the 4.3-inch
+product are not interchangeable), and the 10.1-inch, 1024×600 Elecrow
+`CrowPanel Advanced` ESP32-P4 HMI (hardware revisions 1.0–1.2). See
+[`boards/README.md`](./boards/README.md) for firmware builds, profile
+publishing, the USB protocol, and BOOT-mode recovery.
 
 ### Publishing a desktop release
 

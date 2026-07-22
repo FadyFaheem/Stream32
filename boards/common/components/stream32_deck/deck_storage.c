@@ -11,7 +11,9 @@
 #define DECK_PAGE_MAGIC 0x50323353u   /* "S32P" */
 #define DECK_STORAGE_VERSION 1u
 #define DECK_SECTOR 4096u
-#define DECK_POOL_OFFSET ((uint32_t)DECK_SECTOR * (1u + DECK_MAX_PAGES))
+#define DECK_PAGE_BYTES ((uint32_t)DECK_SECTOR * DECK_PAGE_SECTORS)
+#define DECK_PAGE_OFFSET(page) (DECK_SECTOR + (uint32_t)(page) * DECK_PAGE_BYTES)
+#define DECK_POOL_OFFSET (DECK_SECTOR + (uint32_t)DECK_MAX_PAGES * DECK_PAGE_BYTES)
 #define DECK_PARTITION_SUBTYPE 0x40
 
 typedef struct __attribute__((packed)) {
@@ -40,16 +42,16 @@ _Static_assert(
     "Deck header must fit one erase sector"
 );
 _Static_assert(
-    sizeof(deck_page_header_t) + DECK_PAGE_JSON_CAPACITY <= DECK_SECTOR,
-    "Deck page metadata must fit one erase sector"
+    sizeof(deck_page_header_t) + DECK_PAGE_JSON_CAPACITY <= DECK_PAGE_BYTES,
+    "Deck page metadata must fit its erase sectors"
 );
 
 static const char *TAG = "deck_storage";
 static const esp_partition_t *s_partition;
 static deck_header_t s_header;
 static bool s_header_valid;
-/* The USB protocol task is the only writer, so one scratch sector is safe. */
-static uint8_t s_sector[DECK_SECTOR];
+/* The USB protocol task is the only writer, so one scratch buffer is safe. */
+static uint8_t s_sector[DECK_PAGE_BYTES];
 
 static uint32_t compute_header_crc(const deck_header_t *header)
 {
@@ -147,7 +149,7 @@ bool deck_storage_read_page_json(
         return false;
     }
 
-    const uint32_t offset = DECK_SECTOR * (1u + page);
+    const uint32_t offset = DECK_PAGE_OFFSET(page);
     deck_page_header_t page_header;
 
     if (esp_partition_read(
@@ -203,7 +205,7 @@ esp_err_t deck_storage_write_page_json(
     }
 
     const uint32_t json_crc = esp_rom_crc32_le(0, (const uint8_t *)json, length);
-    const uint32_t offset = DECK_SECTOR * (1u + page);
+    const uint32_t offset = DECK_PAGE_OFFSET(page);
     deck_page_header_t existing;
     const bool page_matches =
         esp_partition_read(s_partition, offset, &existing, sizeof(existing)) ==
@@ -226,7 +228,7 @@ esp_err_t deck_storage_write_page_json(
         esp_err_t error = esp_partition_erase_range(
             s_partition,
             offset,
-            DECK_SECTOR
+            DECK_PAGE_BYTES
         );
 
         if (error == ESP_OK) {

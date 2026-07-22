@@ -12,6 +12,9 @@ sdkconfig.old
 *.map
 *.uf2
 
+# Generated board bundles (published by CI, never committed)
+boards/dist/
+
 # Editor files
 .idea/
 .vscode/

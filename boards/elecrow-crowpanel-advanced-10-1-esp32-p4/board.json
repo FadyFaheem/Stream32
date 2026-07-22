@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "elecrow-crowpanel-advanced-10-1-esp32-p4",
+  "name": "Elecrow CrowPanel Advanced 10.1in ESP32-P4 HMI",
+  "vendor": "Elecrow",
+  "hardwareRevision": "1.0-1.2",
+  "chip": "ESP32-P4",
+  "protocolVersion": 1,
+  "minimumDesktopVersion": "0.6.0",
+  "usbFilters": [
+    {
+      "usbVendorId": 6790,
+      "usbProductId": 29987
+    }
+  ],
+  "deck": {
+    "maxRows": 10,
+    "maxCols": 10,
+    "maxKeys": 40,
+    "maxPages": 8
+  },
+  "firmware": {
+    "version": "0.1.0",
+    "projectPath": "firmware",
+    "imageName": "elecrow-crowpanel-advanced-10-1-esp32-p4-0.1.0.bin",
+    "offset": 0
+  },
+  "capabilities": [
+    "display",
+    "touch",
+    "usb-uart-bridge"
+  ],
+  "recoveryInstructions": [
+    "Use the USB port labeled UART0, slide POWER to ON, and close other serial monitors.",
+    "Also connect the USB 2.0 port for power; the 10.1 inch screen draws more than UART0 alone can supply.",
+    "Hold BOOT, press and release RST, then release BOOT to enter download mode.",
+    "Run Flash again. After a successful flash, press RST or reconnect power."
+  ]
+}

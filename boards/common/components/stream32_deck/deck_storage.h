@@ -15,12 +15,21 @@
 #include <stdint.h>
 
 #include "esp_err.h"
+#include "sdkconfig.h"
 
 #define DECK_MAX_PAGES 8
-#define DECK_MAX_KEYS 25
-#define DECK_MAX_SLOTS 190
+#define DECK_MAX_KEYS CONFIG_STREAM32_DECK_MAX_KEYS
+/* Budgets above 30 keys produce layout lines past one 4 KB erase sector,
+   so those boards store each page in two sectors. */
+#define DECK_PAGE_SECTORS (DECK_MAX_KEYS > 30 ? 2 : 1)
+/* 12 bytes of page metadata (magic, length, CRC) lead each stored page. */
+#define DECK_PAGE_JSON_CAPACITY (DECK_PAGE_SECTORS * 4096 - 12)
+/* The 0xBF0000 deck partition holds 3056 erase sectors. After the header
+   sector and 8 pages of DECK_PAGE_SECTORS each, the remaining sectors form
+   64 KB slots: floor(3047/16) = 190, or floor(3039/16) = 189 with
+   two-sector pages. */
+#define DECK_MAX_SLOTS (DECK_PAGE_SECTORS == 2 ? 189 : 190)
 #define DECK_SLOT_BYTES 0x10000
-#define DECK_PAGE_JSON_CAPACITY 4084
 
 #ifdef __cplusplus
 extern "C" {

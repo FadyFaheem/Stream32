@@ -5,20 +5,28 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "bsp/esp-bsp.h"
 #include "deck_storage.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_rom_crc.h"
 #include "lvgl.h"
 #include "mbedtls/base64.h"
+#include "sdkconfig.h"
 
-#define DECK_SCREEN_PX 480
+/* The LVGL lock comes from whichever board BSP the application links; the
+   BSP component name differs per board, so the header is not included. */
+extern bool bsp_display_lock(uint32_t timeout_ms);
+extern void bsp_display_unlock(void);
+
+/* Panel and grid limits are per-board Kconfig values (see this component's
+   Kconfig for the protocol line-budget ceiling behind the ranges). */
+#define DECK_SCREEN_W CONFIG_STREAM32_DECK_SCREEN_WIDTH
+#define DECK_SCREEN_H CONFIG_STREAM32_DECK_SCREEN_HEIGHT
+#define DECK_MAX_ROWS CONFIG_STREAM32_DECK_MAX_ROWS
+#define DECK_MAX_COLS CONFIG_STREAM32_DECK_MAX_COLS
 #define DECK_KEY_GAP 8
 /* 180 px keys are the largest that fit a 64 KB flash slot in RGB565. */
 #define DECK_KEY_MAX_PX 180
-#define DECK_MAX_ROWS 5
-#define DECK_MAX_COLS 5
 #define DECK_LABEL_CAPACITY 33
 #define DECK_LINE_CAPACITY 128
 
@@ -60,8 +68,8 @@ static uint32_t s_staging_received;
 
 static int compute_key_px(int rows, int cols)
 {
-    const int width = (DECK_SCREEN_PX - DECK_KEY_GAP * (cols + 1)) / cols;
-    const int height = (DECK_SCREEN_PX - DECK_KEY_GAP * (rows + 1)) / rows;
+    const int width = (DECK_SCREEN_W - DECK_KEY_GAP * (cols + 1)) / cols;
+    const int height = (DECK_SCREEN_H - DECK_KEY_GAP * (rows + 1)) / rows;
     const int size = width < height ? width : height;
 
     return size > DECK_KEY_MAX_PX ? DECK_KEY_MAX_PX : size;
@@ -201,8 +209,8 @@ static void build_page(uint8_t page_index)
         page->cols * key_px + (page->cols - 1) * DECK_KEY_GAP;
     const int grid_height =
         page->rows * key_px + (page->rows - 1) * DECK_KEY_GAP;
-    const int origin_x = (DECK_SCREEN_PX - grid_width) / 2;
-    const int origin_y = (DECK_SCREEN_PX - grid_height) / 2;
+    const int origin_x = (DECK_SCREEN_W - grid_width) / 2;
+    const int origin_y = (DECK_SCREEN_H - grid_height) / 2;
 
     if (!bsp_display_lock(1000)) {
         ESP_LOGW(TAG, "Could not lock LVGL to build the deck");
@@ -372,7 +380,10 @@ static const char *parse_page_message(
     if (page_index < 0 || page_count < 1 || page_count > DECK_MAX_PAGES ||
         page_index >= page_count || rows->valueint < 1 ||
         rows->valueint > DECK_MAX_ROWS || cols->valueint < 1 ||
-        cols->valueint > DECK_MAX_COLS) {
+        cols->valueint > DECK_MAX_COLS ||
+        /* Axes are individually valid, but the per-page key budget (and
+           the keys[] array) is rows x cols bounded. */
+        rows->valueint * cols->valueint > DECK_MAX_KEYS) {
         return "layout-invalid";
     }
 

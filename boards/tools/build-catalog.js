@@ -17,6 +17,13 @@ const BOARD_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PROFILE_PATH_PATTERN = /^[a-z0-9][a-z0-9./-]+\.json$/;
 const IMAGE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.bin$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+// idfTarget feeds the CI build matrix; bootOffset is where the chip's ROM
+// expects the second-stage bootloader, i.e. where the 0xE9 image magic sits
+// inside a merged image flashed at 0x0.
+const SUPPORTED_CHIPS = new Map([
+  ['ESP32-S3', { bootOffset: 0x0, idfTarget: 'esp32s3' }],
+  ['ESP32-P4', { bootOffset: 0x2000, idfTarget: 'esp32p4' }],
+]);
 
 function fail(message) {
   throw new Error(message);
@@ -116,7 +123,7 @@ function validateProfile(source, profilePath) {
   }
 
   const chip = requireString(source.chip, `${profilePath} chip`);
-  if (chip !== 'ESP32-S3') {
+  if (!SUPPORTED_CHIPS.has(chip)) {
     fail(`${profilePath} uses a chip unsupported by catalog schema 1.`);
   }
 
@@ -176,18 +183,31 @@ function validateProfile(source, profilePath) {
       fail(`${profilePath} deck limits are invalid.`);
     }
 
+    // Caps mirror the protocol ceiling: grids up to 10 in either
+    // direction, bounded by maxKeys per page. Budgets above 30 keys
+    // require firmware built for the extended (8 KB) layout line; the
+    // baseline 4096-byte line fits 30 fully decorated keys.
+    const maxRows = requireInteger(
+      source.deck.maxRows ?? 5,
+      `${profilePath} deck maxRows`,
+      1,
+      10,
+    );
+    const maxCols = requireInteger(
+      source.deck.maxCols ?? 5,
+      `${profilePath} deck maxCols`,
+      1,
+      10,
+    );
+
     deck = {
-      maxRows: requireInteger(
-        source.deck.maxRows ?? 5,
-        `${profilePath} deck maxRows`,
+      maxRows,
+      maxCols,
+      maxKeys: requireInteger(
+        source.deck.maxKeys ?? Math.min(maxRows * maxCols, 30),
+        `${profilePath} deck maxKeys`,
         1,
-        5,
-      ),
-      maxCols: requireInteger(
-        source.deck.maxCols ?? 5,
-        `${profilePath} deck maxCols`,
-        1,
-        5,
+        40,
       ),
       maxPages: requireInteger(
         source.deck.maxPages ?? 8,
@@ -280,6 +300,7 @@ if (matrixOnly) {
           path.posix.dirname(profile.sourcePath),
           profile.firmware.projectPath,
         ),
+        target: SUPPORTED_CHIPS.get(profile.chip).idfTarget,
       })),
     }),
   );
@@ -301,8 +322,9 @@ const boards = profiles.map((profile) => {
   const image = readFileSync(imagePath);
   const size = statSync(imagePath).size;
   const hash = createHash('sha256').update(image).digest('hex');
+  const { bootOffset } = SUPPORTED_CHIPS.get(profile.chip);
 
-  if (image[0] !== 0xe9) {
+  if (image[bootOffset] !== 0xe9) {
     fail(`${imagePath} is not an Espressif boot image.`);
   }
 

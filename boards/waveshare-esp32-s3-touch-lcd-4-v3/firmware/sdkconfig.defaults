@@ -23,6 +23,14 @@ CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 # Return display/touch initialization errors instead of rebooting on assert.
 # CONFIG_BSP_ERROR_CHECK is not set
 
+# Stream32 deck grid: this square 480x480 panel maxes out at 5x5, which
+# keeps its layout lines and page storage on the baseline 4 KB format.
+CONFIG_STREAM32_DECK_SCREEN_WIDTH=480
+CONFIG_STREAM32_DECK_SCREEN_HEIGHT=480
+CONFIG_STREAM32_DECK_MAX_ROWS=5
+CONFIG_STREAM32_DECK_MAX_COLS=5
+CONFIG_STREAM32_DECK_MAX_KEYS=25
+
 CONFIG_FREERTOS_HZ=1000
 # The default light theme renders card/label text near-black on the dark UI.
 CONFIG_LV_THEME_DEFAULT_DARK=y

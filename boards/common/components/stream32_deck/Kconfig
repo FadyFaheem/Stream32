@@ -1,0 +1,36 @@
+menu "Stream32 deck"
+
+    config STREAM32_DECK_SCREEN_WIDTH
+        int "Deck screen width in pixels"
+        range 240 4096
+        default 480
+
+    config STREAM32_DECK_SCREEN_HEIGHT
+        int "Deck screen height in pixels"
+        range 240 4096
+        default 480
+
+    # A page layout is one JSON protocol line, and the firmware persists
+    # that raw line to flash. A fully decorated key costs about 131 bytes:
+    # up to 30 keys fit the baseline 4096-byte line and one 4 KB flash
+    # sector per page. A budget of 31-40 keys switches page storage to two
+    # sectors per page and requires the board's protocol line buffer to be
+    # 8192 bytes (see the board's main.c). The desktop applies the same
+    # budgets based on the board.json deck.maxKeys value, which must match
+    # STREAM32_DECK_MAX_KEYS.
+    config STREAM32_DECK_MAX_ROWS
+        int "Maximum deck rows"
+        range 1 10
+        default 5
+
+    config STREAM32_DECK_MAX_COLS
+        int "Maximum deck columns"
+        range 1 10
+        default 5
+
+    config STREAM32_DECK_MAX_KEYS
+        int "Maximum keys per page (rows x cols budget)"
+        range 1 40
+        default 25
+
+endmenu

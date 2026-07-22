@@ -1155,6 +1155,7 @@ class DeckController {
         image.src = key.image;
         image.alt = '';
         cell.append(image);
+        cell.dataset.hasImage = 'true';
       }
 
       if (key?.label) {

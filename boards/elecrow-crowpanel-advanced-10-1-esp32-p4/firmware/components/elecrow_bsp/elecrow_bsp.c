@@ -15,6 +15,7 @@
 #include "esp_lcd_mipi_dsi.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
+#include "esp_lcd_touch.h"
 #include "esp_lcd_touch_gt911.h"
 #include "esp_ldo_regulator.h"
 #include "esp_log.h"
@@ -333,12 +334,16 @@ lv_display_t *bsp_display_start(void)
         return display;
     }
 
-    /* The GT911 edge can be lost after display/flash traffic. Keep the
-       interrupt wake-up, but poll often enough that one missed edge cannot
-       leave the panel unresponsive. */
-    lvgl_port_lock(0);
-    lv_indev_set_mode(touch, LV_INDEV_MODE_TIMER);
-    lvgl_port_unlock();
+    /* ponytail: use one 15 ms polling path instead of mixing the GT911's
+       100 Hz interrupt wake-up with LVGL's timer reads. Revisit event mode
+       only with a driver that cannot lose or duplicate readiness edges. */
+    if (esp_lcd_touch_register_interrupt_callback(s_touch, NULL) == ESP_OK) {
+        lvgl_port_lock(0);
+        lv_indev_set_mode(touch, LV_INDEV_MODE_TIMER);
+        lvgl_port_unlock();
+    } else {
+        ESP_LOGW(TAG, "Could not disable touch interrupt; using event mode");
+    }
 
     s_status = "display-ready";
     return display;

@@ -715,6 +715,10 @@ input:disabled {
   white-space: nowrap;
 }
 
+.deck-key[data-has-image="true"] span {
+  align-self: end;
+}
+
 .deck-key[data-badge]::after {
   position: absolute;
   top: 0.25rem;

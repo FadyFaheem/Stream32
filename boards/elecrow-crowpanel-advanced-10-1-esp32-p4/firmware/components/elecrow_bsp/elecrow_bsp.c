@@ -253,7 +253,7 @@ lv_display_t *bsp_display_start(void)
         .task_priority = 4,
         .task_stack = 16384,
         .task_affinity = -1,
-        .task_max_sleep_ms = 500,
+        .task_max_sleep_ms = 20,
         .timer_period_ms = 5,
     };
 
@@ -325,11 +325,20 @@ lv_display_t *bsp_display_start(void)
         .handle = s_touch,
     };
 
-    if (lvgl_port_add_touch(&touch_config) == NULL) {
+    lv_indev_t *touch = lvgl_port_add_touch(&touch_config);
+
+    if (touch == NULL) {
         ESP_LOGW(TAG, "Could not register touch with LVGL");
         s_status = "display-ready-no-touch";
         return display;
     }
+
+    /* The GT911 edge can be lost after display/flash traffic. Keep the
+       interrupt wake-up, but poll often enough that one missed edge cannot
+       leave the panel unresponsive. */
+    lvgl_port_lock(0);
+    lv_indev_set_mode(touch, LV_INDEV_MODE_TIMER);
+    lvgl_port_unlock();
 
     s_status = "display-ready";
     return display;

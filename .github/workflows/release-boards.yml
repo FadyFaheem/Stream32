@@ -22,9 +22,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.boards.outputs.matrix }}
+      has_boards: ${{ steps.boards.outputs.has_boards }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
@@ -34,13 +37,35 @@ jobs:
       - name: Validate board profiles
         run: node boards/tools/build-catalog.js --validate-only
 
+      - name: Test board tooling
+        run: node --test boards/tools/*.test.js
+
       - name: Discover firmware projects
         id: boards
-        run: echo "matrix=$(node boards/tools/build-catalog.js --matrix)" >> "$GITHUB_OUTPUT"
+        env:
+          BASE_SHA: ${{ github.event.before }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] ||
+             [ -z "$BASE_SHA" ] ||
+             [[ "$BASE_SHA" =~ ^0+$ ]]; then
+            matrix="$(node boards/tools/build-catalog.js --matrix)"
+          else
+            matrix="$(
+              git diff --name-only "$BASE_SHA" "$GITHUB_SHA" |
+                node boards/tools/build-catalog.js --matrix --changed-stdin
+            )"
+          fi
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          if jq -e '.include | length > 0' <<< "$matrix" >/dev/null; then
+            echo "has_boards=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_boards=false" >> "$GITHUB_OUTPUT"
+          fi
 
   build:
     name: Build ${{ matrix.id }}
     needs: validate
+    if: needs.validate.outputs.has_boards == 'true'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -66,7 +91,13 @@ jobs:
 
   publish:
     name: Publish board catalog
-    needs: build
+    needs:
+      - validate
+      - build
+    if: >-
+      always() &&
+      needs.validate.outputs.has_boards == 'true' &&
+      needs.build.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -84,8 +115,23 @@ jobs:
           path: boards/dist
           merge-multiple: true
 
+      - name: Download current board catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release download boards-current
+          --pattern catalog-v1.json
+          --output "${RUNNER_TEMP}/previous-catalog-v1.json"
+          || true
+
       - name: Generate catalog and checksums
-        run: node boards/tools/build-catalog.js
+        run: |
+          if [ -f "${RUNNER_TEMP}/previous-catalog-v1.json" ]; then
+            node boards/tools/build-catalog.js \
+              --previous-catalog "${RUNNER_TEMP}/previous-catalog-v1.json"
+          else
+            node boards/tools/build-catalog.js
+          fi
 
       - name: Enforce immutable firmware versions
         env:

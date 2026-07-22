@@ -56,7 +56,6 @@ static bool s_active;
 static volatile int s_pending_page = -1;
 
 static lv_obj_t *s_deck_screen;
-static lv_obj_t *s_key_objects[DECK_MAX_KEYS];
 static uint8_t *s_key_buffers[DECK_MAX_KEYS];
 static lv_image_dsc_t s_key_dsc[DECK_MAX_KEYS];
 
@@ -159,6 +158,8 @@ static void attach_key_image(lv_obj_t *parent, int index)
 
     lv_image_set_src(image, &s_key_dsc[index]);
     lv_obj_center(image);
+    /* The parent key owns the full touch target; artwork is visual only. */
+    lv_obj_remove_flag(image, LV_OBJ_FLAG_CLICKABLE);
     /* Labels stay above artwork. */
     lv_obj_move_to_index(image, 0);
 }
@@ -232,7 +233,6 @@ static void build_page(uint8_t page_index)
     }
 
     lv_obj_clean(s_deck_screen);
-    memset(s_key_objects, 0, sizeof(s_key_objects));
     s_visible_page = page_index;
 
     free_key_buffers();
@@ -244,7 +244,6 @@ static void build_page(uint8_t page_index)
         const int col = index % page->cols;
         lv_obj_t *cell = lv_obj_create(s_deck_screen);
 
-        s_key_objects[index] = cell;
         lv_obj_set_size(cell, key_px, key_px);
         lv_obj_set_pos(
             cell,
@@ -614,18 +613,6 @@ const char *deck_ui_handle_layout(
         deck_storage_gc(live, live_count);
     }
 
-    if (!s_active) {
-        /* First contact: show the first page; the host restores the real
-           active page right after the sync. */
-        if (page_index == 0) {
-            build_page(0);
-        }
-    } else if (s_visible_page == page_index) {
-        build_page((uint8_t)page_index);
-    } else if (s_visible_page >= page_count) {
-        build_page((uint8_t)(page_count - 1));
-    }
-
     const int key_px = compute_key_px(parsed.rows, parsed.cols);
     int written = snprintf(
         reply,
@@ -761,31 +748,6 @@ const char *deck_ui_handle_image(
             return "storage-failed";
         }
 
-        /* Show the artwork immediately when its page is on screen. */
-        if (s_active && s_visible_page == page_index &&
-            s_key_objects[key_index] != NULL) {
-            const int key_px =
-                compute_key_px(s_pages[page_index].rows, s_pages[page_index].cols);
-
-            if ((uint32_t)key_px * key_px * 2 == total_size &&
-                bsp_display_lock(1000)) {
-                if (s_key_buffers[key_index] == NULL) {
-                    s_key_buffers[key_index] =
-                        heap_caps_malloc(total_size, MALLOC_CAP_SPIRAM);
-
-                    if (s_key_buffers[key_index] != NULL) {
-                        memcpy(s_key_buffers[key_index], s_staging, total_size);
-                        set_key_image_dsc(key_index, key_px);
-                        attach_key_image(s_key_objects[key_index], key_index);
-                    }
-                } else {
-                    memcpy(s_key_buffers[key_index], s_staging, total_size);
-                    lv_obj_invalidate(s_key_objects[key_index]);
-                }
-
-                bsp_display_unlock();
-            }
-        }
     }
 
     snprintf(
@@ -808,6 +770,8 @@ const char *deck_ui_handle_page(const cJSON *message)
         return "page-invalid";
     }
 
+    /* Layouts and artwork are staged first; the final page message commits
+       the whole sync in one render instead of exposing each incoming key. */
     build_page((uint8_t)index->valueint);
     deck_storage_set_active_page((uint8_t)index->valueint);
     return NULL;

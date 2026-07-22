@@ -271,28 +271,25 @@
             </div>
 
             <div class="usb-picker">
-              <div>
-                <p class="field-label">USB / COM port</p>
+              <div class="usb-port-field">
+                <label class="field-label" for="usb-port-select">
+                  USB / COM port
+                </label>
+                <select id="usb-port-select" disabled>
+                  <option value="">Refresh to find USB / COM ports</option>
+                </select>
                 <p id="usb-port-status" class="helper" data-state="idle">
                   No USB or COM port selected.
                 </p>
               </div>
               <div class="usb-actions">
                 <button
-                  id="choose-usb"
+                  id="refresh-usb"
                   class="button button-secondary"
                   type="button"
                   disabled
                 >
-                  Choose USB / COM port
-                </button>
-                <button
-                  id="refresh-usb"
-                  class="button button-quiet"
-                  type="button"
-                  disabled
-                >
-                  Refresh USB / COM ports
+                  Refresh ports
                 </button>
               </div>
             </div>

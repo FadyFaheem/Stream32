@@ -9,8 +9,9 @@ const {
   serialDeviceMatches,
 } = require('../src/serial');
 
-test('serial selection always settles when no supported port exists', async () => {
+test('publishes an empty inline port list and settles cancellation', async () => {
   let selectionHandler;
+  const messages = [];
   const session = {
     on(eventName, handler) {
       if (eventName === 'select-serial-port') {
@@ -20,10 +21,17 @@ test('serial selection always settles when no supported port exists', async () =
     setDevicePermissionHandler() {},
     setPermissionCheckHandler() {},
   };
-  const window = { webContents: { session } };
+  const window = {
+    webContents: {
+      send(channel, payload) {
+        messages.push({ channel, payload });
+      },
+      session,
+    },
+  };
   const selected = [];
 
-  configureSerialAccess(window, {
+  const access = configureSerialAccess(window, {
     getRememberedDevice: () => null,
   });
   await selectionHandler(
@@ -33,12 +41,20 @@ test('serial selection always settles when no supported port exists', async () =
     (portId) => selected.push(portId),
   );
 
+  assert.deepEqual(messages, [
+    {
+      channel: 'serial:port-list',
+      payload: { ports: [], requestId: 1 },
+    },
+  ]);
+  assert.deepEqual(selected, []);
+  assert.equal(access.selectPort(1, ''), true);
   assert.deepEqual(selected, ['']);
 });
 
-test('serial selection always asks which supported USB port to flash', async () => {
+test('selects a USB port from the inline renderer list', async () => {
   let selectionHandler;
-  let dialogOptions;
+  const messages = [];
   const session = {
     on(eventName, handler) {
       if (eventName === 'select-serial-port') {
@@ -48,7 +64,14 @@ test('serial selection always asks which supported USB port to flash', async () 
     setDevicePermissionHandler() {},
     setPermissionCheckHandler() {},
   };
-  const window = { webContents: { session } };
+  const window = {
+    webContents: {
+      send(channel, payload) {
+        messages.push({ channel, payload });
+      },
+      session,
+    },
+  };
   const port = {
     displayName: 'USB-SERIAL CH340',
     portId: 'port-1',
@@ -59,13 +82,9 @@ test('serial selection always asks which supported USB port to flash', async () 
   };
   const selected = [];
 
-  configureSerialAccess(window, {
+  const access = configureSerialAccess(window, {
     getRememberedDevice: () => null,
     rememberDevice: serialDeviceIdentity,
-    showMessageBox: async (_window, options) => {
-      dialogOptions = options;
-      return { response: 0 };
-    },
   });
   await selectionHandler(
     { preventDefault() {} },
@@ -74,12 +93,24 @@ test('serial selection always asks which supported USB port to flash', async () 
     (portId) => selected.push(portId),
   );
 
-  assert.deepEqual(selected, ['port-1']);
-  assert.equal(dialogOptions.title, 'Select a USB or COM port');
-  assert.deepEqual(dialogOptions.buttons, [
-    'USB-SERIAL CH340 (COM7 · aabbccddeeff)',
-    'Cancel',
+  assert.deepEqual(messages, [
+    {
+      channel: 'serial:port-list',
+      payload: {
+        ports: [
+          {
+            id: 'port-1',
+            label: 'USB-SERIAL CH340 (COM7 · aabbccddeeff)',
+          },
+        ],
+        requestId: 1,
+      },
+    },
   ]);
+  assert.equal(access.selectPort(1, 'not-a-port'), false);
+  assert.deepEqual(selected, []);
+  assert.equal(access.selectPort(1, 'port-1'), true);
+  assert.deepEqual(selected, ['port-1']);
 });
 
 test('normalizes USB IDs from Electron metadata', () => {

@@ -138,7 +138,7 @@ select {
 }
 
 .sidebar .status-pill {
-  max-width: 100%;
+  display: none;
 }
 
 .content {
@@ -361,6 +361,19 @@ summary:focus-visible {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(11, 17, 22, 0.48);
+}
+
+.usb-port-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.usb-port-field .field-label {
+  display: block;
+}
+
+.usb-port-field select {
+  margin-bottom: 0.35rem;
 }
 
 .field-label {

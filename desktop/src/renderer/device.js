@@ -20,7 +20,7 @@ function sleep(milliseconds) {
 
 function errorMessage(error) {
   if (error?.name === 'NotFoundError') {
-    return 'No ESP32-S3 was selected.';
+    return 'No serial port was selected.';
   }
 
   if (error?.name === 'NetworkError') {
@@ -45,12 +45,13 @@ class DeviceController {
     this.operation = null;
     this.selectedPort = null;
     this.selectedPortBoardId = null;
+    this.serialPortRequestId = null;
+    this.usbPortListEmpty = false;
     this.sessions = new Map();
 
     this.boardSelect = document.querySelector('#board-select');
     this.boardDetails = document.querySelector('#board-details');
     this.catalogStatus = document.querySelector('#catalog-status');
-    this.chooseUsbButton = document.querySelector('#choose-usb');
     this.confirmRevision = document.querySelector('#confirm-revision');
     this.confirmationBoard = document.querySelector('#confirmation-board');
     this.deviceStatus = document.querySelector('#device-status');
@@ -66,6 +67,7 @@ class DeviceController {
     this.refreshUsbButton = document.querySelector('#refresh-usb');
     this.testStep = document.querySelector('#test-step');
     this.touchStatus = document.querySelector('#touch-status');
+    this.usbPortSelect = document.querySelector('#usb-port-select');
     this.usbPortStatus = document.querySelector('#usb-port-status');
   }
 
@@ -75,12 +77,16 @@ class DeviceController {
       this.clearUsbSelection();
       this.updateSelectedBoard();
     });
-    this.chooseUsbButton.addEventListener('click', () => {
-      this.selectUsbPort();
-    });
     this.refreshUsbButton.addEventListener('click', () => {
-      this.selectUsbPort();
+      if (this.operation === 'usb-select') {
+        this.cancelUsbPortSelection();
+      } else {
+        this.selectUsbPort();
+      }
     });
+    this.usbPortSelect.addEventListener('change', () =>
+      this.confirmUsbPortSelection(),
+    );
     this.confirmRevision.addEventListener('change', () =>
       this.updateFlashButton(),
     );
@@ -113,6 +119,9 @@ class DeviceController {
         ? 'Using verified cached firmware…'
         : `Downloading firmware… ${percent}%`;
     });
+    this.api.onSerialPortList((request) => {
+      this.showUsbPorts(request);
+    });
 
     if (!this.serial) {
       this.setDeviceStatus(
@@ -120,8 +129,8 @@ class DeviceController {
         'error',
       );
       this.flashButton.disabled = true;
-      this.chooseUsbButton.disabled = true;
       this.refreshUsbButton.disabled = true;
+      this.usbPortSelect.disabled = true;
       this.reconnectButton.disabled = true;
       return;
     }
@@ -161,6 +170,7 @@ class DeviceController {
       if (ports.length === 1) {
         this.selectedPort = ports[0];
         this.selectedPortBoardId = board.id;
+        this.setUsbPortDisplay('Previously authorized USB port');
         this.usbPortStatus.textContent =
           'Previously authorized USB port restored.';
         this.usbPortStatus.dataset.state = 'ready';
@@ -183,8 +193,8 @@ class DeviceController {
     this.operation = operation;
     this.busy = operation === 'flash';
     this.boardSelect.disabled = true;
-    this.chooseUsbButton.disabled = true;
     this.refreshUsbButton.disabled = true;
+    this.usbPortSelect.disabled = true;
     this.refreshButton.disabled = true;
     this.reconnectButton.disabled = true;
     this.confirmRevision.disabled = true;
@@ -200,10 +210,10 @@ class DeviceController {
     this.operation = null;
     this.busy = false;
     this.boardSelect.disabled = false;
-    this.chooseUsbButton.disabled =
-      !this.serial || !this.selectedBoard();
     this.refreshUsbButton.disabled =
       !this.serial || !this.selectedBoard();
+    this.refreshUsbButton.textContent = 'Refresh ports';
+    this.usbPortSelect.disabled = true;
     this.refreshButton.disabled = false;
     this.reconnectButton.disabled = !this.serial;
     this.confirmRevision.disabled = false;
@@ -214,12 +224,112 @@ class DeviceController {
     this.flashProgress.value = Math.max(0, Math.min(100, value));
   }
 
+  setUsbPortDisplay(message) {
+    const option = this.document.createElement('option');
+    option.value = '';
+    option.textContent = message;
+    this.usbPortSelect.replaceChildren(option);
+    this.usbPortSelect.disabled = true;
+  }
+
   clearUsbSelection(message = 'No USB or COM port selected.') {
     this.selectedPort = null;
     this.selectedPortBoardId = null;
+    this.setUsbPortDisplay(message);
     this.usbPortStatus.textContent = message;
     this.usbPortStatus.dataset.state = 'idle';
     this.updateFlashButton();
+  }
+
+  showUsbPorts(request) {
+    if (
+      !Number.isSafeInteger(request?.requestId) ||
+      !Array.isArray(request.ports)
+    ) {
+      return;
+    }
+
+    if (this.operation !== 'usb-select') {
+      this.api.selectSerialPort(request.requestId, '').catch(console.error);
+      return;
+    }
+
+    this.serialPortRequestId = request.requestId;
+    this.usbPortListEmpty = request.ports.length === 0;
+    this.usbPortSelect.replaceChildren();
+
+    const placeholder = this.document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = this.usbPortListEmpty
+      ? 'No USB / COM ports found'
+      : 'Select a USB / COM port';
+    placeholder.disabled = !this.usbPortListEmpty;
+    placeholder.selected = true;
+    this.usbPortSelect.append(placeholder);
+
+    if (this.usbPortListEmpty) {
+      this.usbPortStatus.textContent = 'No USB / COM ports found.';
+      this.api.selectSerialPort(request.requestId, '').catch(console.error);
+      return;
+    }
+
+    for (const port of request.ports) {
+      const option = this.document.createElement('option');
+      option.value = port.id;
+      option.textContent = port.label;
+      this.usbPortSelect.append(option);
+    }
+
+    this.usbPortSelect.disabled = false;
+    this.usbPortStatus.textContent =
+      `${request.ports.length} USB / COM ` +
+      `${request.ports.length === 1 ? 'port' : 'ports'} found.`;
+    this.refreshUsbButton.textContent = 'Cancel';
+    this.refreshUsbButton.disabled = false;
+    this.usbPortSelect.focus();
+  }
+
+  async confirmUsbPortSelection() {
+    const portId = this.usbPortSelect.value;
+
+    if (!this.serialPortRequestId || !portId) {
+      return;
+    }
+
+    this.usbPortSelect.disabled = true;
+    this.refreshUsbButton.disabled = true;
+    this.usbPortStatus.textContent =
+      `Selecting ${this.usbPortSelect.selectedOptions[0].textContent}…`;
+
+    try {
+      const accepted = await this.api.selectSerialPort(
+        this.serialPortRequestId,
+        portId,
+      );
+
+      if (!accepted) {
+        throw new Error('The serial port list expired. Refresh and try again.');
+      }
+    } catch (error) {
+      this.clearUsbSelection(`Could not select USB/COM: ${errorMessage(error)}`);
+      this.endOperation('usb-select');
+    }
+  }
+
+  async cancelUsbPortSelection() {
+    if (!this.serialPortRequestId) {
+      return;
+    }
+
+    this.usbPortSelect.disabled = true;
+    this.refreshUsbButton.disabled = true;
+
+    try {
+      await this.api.selectSerialPort(this.serialPortRequestId, '');
+    } catch (error) {
+      this.clearUsbSelection(`Could not cancel USB/COM: ${errorMessage(error)}`);
+      this.endOperation('usb-select');
+    }
   }
 
   async selectUsbPort() {
@@ -233,10 +343,18 @@ class DeviceController {
       return;
     }
 
+    this.serialPortRequestId = null;
+    this.usbPortListEmpty = false;
+    this.setUsbPortDisplay('Scanning for USB / COM ports…');
+    this.usbPortStatus.textContent = 'Scanning for USB / COM ports…';
+    this.refreshUsbButton.textContent = 'Scanning…';
+
     try {
       // requestPort must run directly from this click before user activation
-      // expires; downloading firmware first prevents Chromium's picker.
+      // expires. Electron sends its port list back to this screen.
       const port = await this.serial.requestPort();
+      const selectedLabel =
+        this.usbPortSelect.selectedOptions[0]?.textContent || 'Serial port';
       await this.closeSessionForPort(port);
       await sleep(300);
       const info = port.getInfo();
@@ -251,15 +369,18 @@ class DeviceController {
 
       this.selectedPort = port;
       this.selectedPortBoardId = board.id;
-      this.usbPortStatus.textContent = `Serial port selected${usbId}`;
+      this.usbPortStatus.textContent = `${selectedLabel}${usbId}`;
       this.usbPortStatus.dataset.state = 'ready';
     } catch (error) {
       this.clearUsbSelection(
         error?.name === 'NotFoundError'
-          ? 'USB/COM selection cancelled.'
+          ? this.usbPortListEmpty
+            ? 'No USB / COM ports found.'
+            : 'USB/COM selection cancelled.'
           : `Could not select USB/COM: ${errorMessage(error)}`,
       );
     } finally {
+      this.serialPortRequestId = null;
       this.endOperation('usb-select');
     }
   }
@@ -348,7 +469,6 @@ class DeviceController {
     const board = this.selectedBoard();
 
     if (!board) {
-      this.chooseUsbButton.disabled = true;
       this.refreshUsbButton.disabled = true;
       this.boardDetails.textContent = 'No supported board is available.';
       this.confirmationBoard.textContent = 'the selected board and revision';
@@ -358,7 +478,6 @@ class DeviceController {
       return;
     }
 
-    this.chooseUsbButton.disabled = Boolean(this.operation);
     this.refreshUsbButton.disabled = Boolean(this.operation);
     this.boardDetails.textContent =
       `${board.vendor} · ${board.chip} · hardware Rev ` +
@@ -422,7 +541,8 @@ class DeviceController {
       await sleep(500);
       const firmware = await this.api.getBoardFirmware(board.id);
 
-      this.flashStatus.textContent = 'Connecting to the ESP32-S3 bootloader…';
+      this.flashStatus.textContent =
+        `Connecting to the ${firmware.board.chip} bootloader…`;
       transport = new Transport(port, false);
 
       const loader = new ESPLoader({

@@ -77,6 +77,37 @@ test('validates a full multi-page profile', () => {
   });
 });
 
+test('accepts free-form grids within the key budget', () => {
+  // Landscape 9x4 and its portrait mirror both validate.
+  const wide = sampleProfile();
+  wide.keyPx = { '4x9': 104 };
+  wide.pages[0].rows = 4;
+  wide.pages[0].cols = 9;
+
+  const validated = validateProfile(wide);
+  assert.equal(validated.pages[0].cols, 9);
+  assert.equal(validated.keyPx['4x9'], 104);
+
+  const tall = sampleProfile();
+  tall.pages[0].rows = 9;
+  tall.pages[0].cols = 4;
+  assert.equal(validateProfile(tall).pages[0].rows, 9);
+
+  // Axis cap and the per-page key budget both hold.
+  const tooWide = sampleProfile();
+  tooWide.pages[0].cols = 11;
+  assert.throws(() => validateProfile(tooWide), /Page cols/);
+
+  const overBudget = sampleProfile();
+  overBudget.pages[0].rows = 10;
+  overBudget.pages[0].cols = 5;
+  assert.throws(() => validateProfile(overBudget), /keys per page/);
+
+  const badGridKey = sampleProfile();
+  badGridKey.keyPx = { '11x1': 110 };
+  assert.throws(() => validateProfile(badGridKey), /grid key/);
+});
+
 test('rejects invalid profiles', () => {
   assert.throws(
     () => validateProfile({ boardId: BOARD_ID, pages: [] }),

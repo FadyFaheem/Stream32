@@ -10,6 +10,7 @@ const {
   encodeLayoutMessage,
   encodePageMessage,
   isExpectedChip,
+  layoutLineLimitFor,
   validateDeviceHello,
   validateImageAck,
   validateLayoutAck,
@@ -180,6 +181,71 @@ test('encodes layout pages and rejects invalid keys', () => {
   );
 });
 
+test('page layouts respect the per-board line budgets', () => {
+  function decoratedKeys(count) {
+    return Array.from({ length: count }, (_, index) => ({
+      index,
+      label: 'W'.repeat(32),
+      color: '#aabbcc',
+      labelColor: '#ddeeff',
+      imageCrc: '9a3f11d2',
+      goPage: 7,
+    }));
+  }
+
+  // 30 fully decorated keys are the most the baseline 4096-byte line fits.
+  const baseline = encodeLayoutMessage({
+    page: 7,
+    of: 8,
+    rows: 5,
+    cols: 6,
+    keys: decoratedKeys(30),
+  });
+  assert.ok(baseline.length <= MAX_PROTOCOL_LINE_LENGTH);
+
+  // A fully decorated 9x4 page exceeds the baseline but fits the extended
+  // budget advertised by boards with deck.maxKeys above 30.
+  const nineByFour = {
+    page: 0,
+    of: 8,
+    rows: 4,
+    cols: 9,
+    keys: decoratedKeys(36),
+  };
+  assert.throws(() => encodeLayoutMessage(nineByFour), RangeError);
+  assert.equal(layoutLineLimitFor({ maxKeys: 25 }), 4096);
+  assert.equal(layoutLineLimitFor({ maxKeys: 40 }), 8180);
+  const extended = encodeLayoutMessage(
+    nineByFour,
+    layoutLineLimitFor({ maxKeys: 40 }),
+  );
+  assert.ok(extended.length <= 8180);
+
+  // Axis and per-page key budgets stay bounded.
+  assert.throws(
+    () =>
+      encodeLayoutMessage({
+        page: 0,
+        of: 1,
+        rows: 5,
+        cols: 11,
+        keys: [],
+      }),
+    /cols/,
+  );
+  assert.throws(
+    () =>
+      encodeLayoutMessage({
+        page: 0,
+        of: 1,
+        rows: 10,
+        cols: 5,
+        keys: [],
+      }),
+    /keys per page/,
+  );
+});
+
 test('chunks images under the protocol line limit', () => {
   const pixels = new Uint8Array(96 * 96 * 2).fill(0xa5);
   const chunks = encodeImageChunks({
@@ -269,21 +335,32 @@ test('validates deck acknowledgements and events', () => {
 });
 
 test('validates touch bounds and chip names', () => {
+  // A 1024x600 panel reports coordinates past the old 480px square limit.
   assert.deepEqual(
     validateTouchMessage({
       phase: 'down',
       type: 'touch',
-      x: 479,
-      y: 0,
+      x: 1023,
+      y: 599,
     }),
-    { phase: 'down', x: 479, y: 0 },
+    { phase: 'down', x: 1023, y: 599 },
   );
   assert.throws(
     () =>
       validateTouchMessage({
         phase: 'down',
         type: 'touch',
-        x: 480,
+        x: 4096,
+        y: 0,
+      }),
+    /invalid/,
+  );
+  assert.throws(
+    () =>
+      validateTouchMessage({
+        phase: 'down',
+        type: 'touch',
+        x: -1,
         y: 0,
       }),
     /invalid/,
@@ -295,5 +372,6 @@ test('validates touch bounds and chip names', () => {
     ),
     true,
   );
+  assert.equal(isExpectedChip('ESP32-P4', 'ESP32-P4'), true);
   assert.equal(isExpectedChip('ESP32-C3', 'ESP32-S3'), false);
 });

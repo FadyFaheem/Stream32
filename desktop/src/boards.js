@@ -26,7 +26,14 @@ const ASSET_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.bin$/;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const VERSION_PATTERN =
   /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
-const SUPPORTED_CHIPS = new Set(['ESP32-S3']);
+const BOOT_MAGIC = 0xe9;
+// bootMagicOffset is where the chip's ROM expects the second-stage
+// bootloader, i.e. where the 0xE9 image magic sits inside a merged image
+// flashed at offset 0.
+const SUPPORTED_CHIPS = new Map([
+  ['ESP32-S3', { bootMagicOffset: 0x0 }],
+  ['ESP32-P4', { bootMagicOffset: 0x2000 }],
+]);
 
 function parseVersion(version) {
   const match = VERSION_PATTERN.exec(version);
@@ -166,40 +173,60 @@ function validateStringList(values, field, maximumItems) {
   );
 }
 
+// Boards without explicit limits get the conservative default. The caps
+// mirror the protocol ceiling: any grid up to 10 in either direction, and
+// maxKeys bounds rows x cols per page. Budgets above 30 keys require
+// firmware built for the extended layout line, which the board declares by
+// publishing the higher maxKeys.
 const DEFAULT_DECK_LIMITS = { maxCols: 5, maxPages: 8, maxRows: 5 };
+const DECK_LIMIT_CAPS = { maxCols: 10, maxKeys: 40, maxPages: 8, maxRows: 10 };
+const DEFAULT_DECK_KEY_BUDGET = 30;
 
 function validateDeckLimits(deck, boardId) {
   if (deck === undefined) {
-    return { ...DEFAULT_DECK_LIMITS };
+    return {
+      ...DEFAULT_DECK_LIMITS,
+      maxKeys: DEFAULT_DECK_LIMITS.maxCols * DEFAULT_DECK_LIMITS.maxRows,
+    };
   }
 
   if (!deck || typeof deck !== 'object' || Array.isArray(deck)) {
     throw new TypeError(`${boardId} deck limits are invalid.`);
   }
 
+  const maxCols = requireInteger(
+    deck.maxCols ?? DEFAULT_DECK_LIMITS.maxCols,
+    `${boardId} deck maxCols`,
+    1,
+    DECK_LIMIT_CAPS.maxCols,
+  );
+  const maxRows = requireInteger(
+    deck.maxRows ?? DEFAULT_DECK_LIMITS.maxRows,
+    `${boardId} deck maxRows`,
+    1,
+    DECK_LIMIT_CAPS.maxRows,
+  );
+
   return {
-    maxCols: requireInteger(
-      deck.maxCols ?? DEFAULT_DECK_LIMITS.maxCols,
-      `${boardId} deck maxCols`,
+    maxCols,
+    maxKeys: requireInteger(
+      deck.maxKeys ??
+        Math.min(maxCols * maxRows, DEFAULT_DECK_KEY_BUDGET),
+      `${boardId} deck maxKeys`,
       1,
-      DEFAULT_DECK_LIMITS.maxCols,
+      DECK_LIMIT_CAPS.maxKeys,
     ),
     maxPages: requireInteger(
       deck.maxPages ?? DEFAULT_DECK_LIMITS.maxPages,
       `${boardId} deck maxPages`,
       1,
-      DEFAULT_DECK_LIMITS.maxPages,
+      DECK_LIMIT_CAPS.maxPages,
     ),
-    maxRows: requireInteger(
-      deck.maxRows ?? DEFAULT_DECK_LIMITS.maxRows,
-      `${boardId} deck maxRows`,
-      1,
-      DEFAULT_DECK_LIMITS.maxRows,
-    ),
+    maxRows,
   };
 }
 
-function validateImages(images, boardId) {
+function validateImages(images, boardId, bootMagicOffset) {
   if (!Array.isArray(images) || images.length === 0 || images.length > 8) {
     throw new TypeError(`${boardId} must define 1-8 firmware images.`);
   }
@@ -235,6 +262,7 @@ function validateImages(images, boardId) {
 
     return {
       assetName,
+      bootMagicOffset,
       offset: requireInteger(
         image.offset,
         `${boardId} image offset`,
@@ -264,9 +292,21 @@ function validateBoard(board, appVersion) {
   }
 
   const chip = requireString(board.chip, `${id} chip`, 32);
+  // A chip or deck shape this build does not support only disables the one
+  // board; rejecting the whole catalog would break every other board for
+  // users who have not updated yet.
+  const chipSupport = SUPPORTED_CHIPS.get(chip) || null;
+  let deck;
+  let deckSupported = true;
 
-  if (!SUPPORTED_CHIPS.has(chip)) {
-    throw new TypeError(`${id} uses an unsupported chip: ${chip}`);
+  try {
+    deck = validateDeckLimits(board.deck, id);
+  } catch {
+    deck = {
+      ...DEFAULT_DECK_LIMITS,
+      maxKeys: DEFAULT_DECK_LIMITS.maxCols * DEFAULT_DECK_LIMITS.maxRows,
+    };
+    deckSupported = false;
   }
 
   const minimumDesktopVersion = requireString(
@@ -311,6 +351,8 @@ function validateBoard(board, appVersion) {
     protocolVersion,
     minimumDesktopVersion,
     compatible:
+      chipSupport !== null &&
+      deckSupported &&
       protocolVersion === SUPPORTED_PROTOCOL_VERSION &&
       isVersionAtLeast(appVersion, minimumDesktopVersion),
     usbFilters: validateUsbFilters(board.usbFilters, id),
@@ -319,7 +361,7 @@ function validateBoard(board, appVersion) {
       `${id} capabilities`,
       16,
     ),
-    deck: validateDeckLimits(board.deck, id),
+    deck,
     recoveryInstructions: validateStringList(
       board.recoveryInstructions,
       `${id} recoveryInstructions`,
@@ -327,7 +369,11 @@ function validateBoard(board, appVersion) {
     ),
     firmware: {
       version: firmwareVersion,
-      images: validateImages(board.firmware.images, id),
+      images: validateImages(
+        board.firmware.images,
+        id,
+        chipSupport ? chipSupport.bootMagicOffset : 0,
+      ),
     },
   };
 }
@@ -655,7 +701,7 @@ function createBoardService({
         return null;
       }
 
-      if (image.offset === 0 && data[0] !== 0xe9) {
+      if (image.offset === 0 && data[image.bootMagicOffset] !== BOOT_MAGIC) {
         await rm(imagePath, { force: true });
         return null;
       }
@@ -719,7 +765,7 @@ function createBoardService({
         throw new Error('Firmware SHA-256 does not match the board catalog.');
       }
 
-      if (image.offset === 0 && data[0] !== 0xe9) {
+      if (image.offset === 0 && data[image.bootMagicOffset] !== BOOT_MAGIC) {
         throw new Error('Firmware is not an Espressif boot image.');
       }
 

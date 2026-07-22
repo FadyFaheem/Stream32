@@ -2,10 +2,23 @@ const MAX_PROTOCOL_LINE_LENGTH = 4096;
 const BOARD_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const DEVICE_ID_PATTERN = /^[a-f0-9]{12}$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+// Sanity bound only: panels differ per board (480x480, 1024x600, ...), and
+// the coordinates are just echoed in the touch test UI.
+const MAX_TOUCH_COORDINATE = 4095;
 
+// A page layout is one protocol line, and the firmware persists that raw
+// line to flash. A fully decorated key costs about 131 bytes, so:
+// - up to 30 keys fit the baseline 4096-byte line every firmware accepts;
+// - 31-40 keys need a board whose firmware takes the extended layout line
+//   (8 KB receive buffer, two 4 KB flash sectors per page). The board
+//   advertises this by setting deck.maxKeys above 30.
+// Grids are otherwise free-form: up to 10 in either direction, bounded by
+// the per-board key budget (e.g. 9x4, 4x9, or 10x3).
 const MAX_DECK_PAGES = 8;
-const MAX_DECK_ROWS = 5;
-const MAX_DECK_COLS = 5;
+const MAX_DECK_ROWS = 10;
+const MAX_DECK_COLS = 10;
+const MAX_DECK_KEYS = 40;
+const MAX_EXTENDED_LAYOUT_LINE_LENGTH = 8180;
 const MAX_KEY_LABEL_LENGTH = 32;
 const MAX_KEY_PIXELS = 512;
 const KEY_COLOR_PATTERN = /^#[0-9a-f]{6}$/;
@@ -112,9 +125,9 @@ function validateTouchMessage(message) {
     !Number.isInteger(message.x) ||
     !Number.isInteger(message.y) ||
     message.x < 0 ||
-    message.x > 479 ||
+    message.x > MAX_TOUCH_COORDINATE ||
     message.y < 0 ||
-    message.y > 479
+    message.y > MAX_TOUCH_COORDINATE
   ) {
     throw new TypeError('Device touch message is invalid.');
   }
@@ -162,21 +175,25 @@ function requireProtocolInteger(value, field, minimum, maximum) {
   return value;
 }
 
-function encodeLine(message) {
+function encodeLine(message, maxLineLength = MAX_PROTOCOL_LINE_LENGTH) {
   const line = `${JSON.stringify(message)}\n`;
 
-  if (line.length > MAX_PROTOCOL_LINE_LENGTH) {
+  if (line.length > maxLineLength) {
     throw new RangeError('Encoded protocol line exceeds the limit.');
   }
 
   return new TextEncoder().encode(line);
 }
 
-function encodeLayoutMessage({ page, of, rows, cols, keys }) {
+function encodeLayoutMessage(
+  { page, of, rows, cols, keys },
+  maxLineLength = MAX_PROTOCOL_LINE_LENGTH,
+) {
   requireProtocolInteger(page, 'layout page', 0, MAX_DECK_PAGES - 1);
   requireProtocolInteger(of, 'layout page count', 1, MAX_DECK_PAGES);
   requireProtocolInteger(rows, 'layout rows', 1, MAX_DECK_ROWS);
   requireProtocolInteger(cols, 'layout cols', 1, MAX_DECK_COLS);
+  requireProtocolInteger(rows * cols, 'layout keys per page', 1, MAX_DECK_KEYS);
 
   if (page >= of || !Array.isArray(keys)) {
     throw new TypeError('Layout pages are inconsistent.');
@@ -256,14 +273,25 @@ function encodeLayoutMessage({ page, of, rows, cols, keys }) {
     return encoded;
   });
 
-  return encodeLine({
-    type: 'layout',
-    page,
-    of,
-    rows,
-    cols,
-    keys: encodedKeys,
-  });
+  return encodeLine(
+    {
+      type: 'layout',
+      page,
+      of,
+      rows,
+      cols,
+      keys: encodedKeys,
+    },
+    maxLineLength,
+  );
+}
+
+// Boards advertising more than 30 keys per page run firmware that accepts
+// the extended layout line; everything else gets the baseline limit.
+function layoutLineLimitFor(deckLimits) {
+  return (deckLimits?.maxKeys ?? 0) > 30
+    ? MAX_EXTENDED_LAYOUT_LINE_LENGTH
+    : MAX_PROTOCOL_LINE_LENGTH;
 }
 
 function toBase64(bytes) {
@@ -278,7 +306,7 @@ function toBase64(bytes) {
 
 function encodeImageChunks({ page, index, width, height, pixels }) {
   requireProtocolInteger(page, 'image page', 0, MAX_DECK_PAGES - 1);
-  requireProtocolInteger(index, 'image key index', 0, MAX_DECK_ROWS * MAX_DECK_COLS - 1);
+  requireProtocolInteger(index, 'image key index', 0, MAX_DECK_KEYS - 1);
   requireProtocolInteger(width, 'image width', 1, MAX_KEY_PIXELS);
   requireProtocolInteger(height, 'image height', 1, MAX_KEY_PIXELS);
 
@@ -335,6 +363,12 @@ function validateLayoutAck(message) {
     1,
     MAX_DECK_COLS,
   );
+  requireProtocolInteger(
+    rows * cols,
+    'layout-ack keys per page',
+    1,
+    MAX_DECK_KEYS,
+  );
   const keyPx = requireProtocolInteger(
     message.keyPx,
     'layout-ack keyPx',
@@ -365,7 +399,7 @@ function validateImageAck(message) {
       message.index,
       'image-ack index',
       0,
-      MAX_DECK_ROWS * MAX_DECK_COLS - 1,
+      MAX_DECK_KEYS - 1,
     ),
     seq: requireProtocolInteger(message.seq, 'image-ack seq', 0, 65535),
   };
@@ -393,7 +427,7 @@ function validatePressMessage(message) {
       message.index,
       'press index',
       0,
-      MAX_DECK_ROWS * MAX_DECK_COLS - 1,
+      MAX_DECK_KEYS - 1,
     ),
     phase: message.phase,
   };
@@ -450,11 +484,13 @@ function createLineDecoder({ onError, onMessage }) {
 
 module.exports = {
   MAX_DECK_COLS,
+  MAX_DECK_KEYS,
   MAX_DECK_PAGES,
   MAX_DECK_ROWS,
   MAX_KEY_LABEL_LENGTH,
   MAX_PROTOCOL_LINE_LENGTH,
   crc32,
+  layoutLineLimitFor,
   createLineDecoder,
   encodeHostHello,
   encodeImageChunks,

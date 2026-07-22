@@ -1,4 +1,3 @@
-const { dialog } = require('electron');
 const { readSettings, updateSettings } = require('./settings');
 
 const ESPRESSIF_USB_SERIAL_JTAG = {
@@ -182,7 +181,7 @@ function rememberSerialDevice(device) {
 }
 
 function portLabel(port) {
-  const name = port.displayName || port.portName || 'ESP32-S3';
+  const name = port.displayName || port.portName || 'Serial device';
   const details = [
     port.portName && port.portName !== name ? port.portName : null,
     port.serialNumber || null,
@@ -197,11 +196,53 @@ function configureSerialAccess(
   {
     getRememberedDevice = getRememberedSerialDevice,
     rememberDevice = rememberSerialDevice,
-    showMessageBox = (...args) => dialog.showMessageBox(...args),
   } = {},
 ) {
   const session = window.webContents.session;
   let pendingIdentity = null;
+  let pendingRequest = null;
+  let nextRequestId = 1;
+
+  function settlePendingRequest(selected = null) {
+    if (!pendingRequest) {
+      return false;
+    }
+
+    const { callback } = pendingRequest;
+    pendingRequest = null;
+
+    if (selected) {
+      try {
+        pendingIdentity = rememberDevice(selected);
+      } catch (error) {
+        console.error('Serial port selection failed:', error);
+        callback('');
+        return true;
+      }
+    }
+
+    callback(selected?.portId || '');
+    return true;
+  }
+
+  function selectPort(requestId, portId) {
+    if (
+      !pendingRequest ||
+      pendingRequest.id !== requestId ||
+      typeof portId !== 'string'
+    ) {
+      return false;
+    }
+
+    if (portId === '') {
+      return settlePendingRequest();
+    }
+
+    const selected = pendingRequest.ports.find(
+      (port) => port.portId === portId,
+    );
+    return selected ? settlePendingRequest(selected) : false;
+  }
 
   session.setPermissionCheckHandler(
     (_webContents, permission, requestingOrigin, details) =>
@@ -226,55 +267,38 @@ function configureSerialAccess(
 
   session.on(
     'select-serial-port',
-    async (event, portList, _webContents, callback) => {
+    (event, portList, _webContents, callback) => {
       event.preventDefault();
-      let settled = false;
-
-      function settle(portId = '') {
-        if (!settled) {
-          settled = true;
-          callback(portId);
-        }
-      }
 
       try {
-        const ports = portList.filter((port) =>
-          Boolean(serialDeviceIdentity(port)),
+        settlePendingRequest();
+        const ports = portList.filter(
+          (port) =>
+            typeof port.portId === 'string' &&
+            port.portId.length > 0 &&
+            Boolean(serialDeviceIdentity(port)),
         );
+        const id = nextRequestId++;
+        pendingRequest = { callback, id, ports };
 
-        if (ports.length === 0) {
-          settle();
-          return;
-        }
-
-        const cancelId = ports.length;
-        const result = await showMessageBox(window, {
-          type: 'question',
-          title: 'Select a USB or COM port',
-          message: 'Choose the serial port connected to your ESP32-S3.',
-          detail:
-            'Stream32 shows the USB name, COM port, and serial number when ' +
-            'the operating system provides them.',
-          buttons: [...ports.map(portLabel), 'Cancel'],
-          cancelId,
-          defaultId: 0,
-          noLink: true,
+        window.webContents.send('serial:port-list', {
+          requestId: id,
+          ports: ports.map((port) => ({
+            id: port.portId,
+            label: portLabel(port),
+          })),
         });
-
-        if (result.response === cancelId) {
-          settle();
-          return;
-        }
-
-        const selected = ports[result.response];
-        pendingIdentity = rememberDevice(selected);
-        settle(selected.portId);
       } catch (error) {
         console.error('Serial port selection failed:', error);
-        settle();
+        if (!settlePendingRequest()) {
+          callback('');
+        }
       }
     },
   );
+
+  window.on?.('closed', () => settlePendingRequest());
+  return { selectPort };
 }
 
 module.exports = {

@@ -2,6 +2,7 @@ const ICON_NAMES = require('./icon-names.json');
 const { canonicalKeyFromCode } = require('../keymap');
 const {
   MAX_DECK_COLS,
+  MAX_DECK_KEYS,
   MAX_DECK_PAGES,
   MAX_DECK_ROWS,
   MAX_KEY_LABEL_LENGTH,
@@ -9,6 +10,7 @@ const {
   encodeImageChunks,
   encodeLayoutMessage,
   encodePageMessage,
+  layoutLineLimitFor,
   validateImageAck,
   validateLayoutAck,
   validatePageMessage,
@@ -483,9 +485,13 @@ class DeckController {
   }
 
   limitsFor(profile) {
+    // The fallback (board missing from the catalog) allows any grid shape
+    // but keeps the conservative 30-key baseline budget, since only boards
+    // listed with a larger maxKeys accept the extended layout line.
     return (
       this.boardLimits.get(profile?.boardId) || {
         maxCols: MAX_DECK_COLS,
+        maxKeys: 30,
         maxPages: MAX_DECK_PAGES,
         maxRows: MAX_DECK_ROWS,
       }
@@ -942,13 +948,16 @@ class DeckController {
 
     const reply = this.awaitReply(deviceId);
     await session.send(
-      encodeLayoutMessage({
-        page: pageIndex,
-        of: profile.pages.length,
-        rows: page.rows,
-        cols: page.cols,
-        keys,
-      }),
+      encodeLayoutMessage(
+        {
+          page: pageIndex,
+          of: profile.pages.length,
+          rows: page.rows,
+          cols: page.cols,
+          keys,
+        },
+        layoutLineLimitFor(this.limitsFor(profile)),
+      ),
     );
     return validateLayoutAck(await reply);
   }
@@ -1115,12 +1124,19 @@ class DeckController {
     const page = profile.pages[this.selectedPage];
     this.pageName.value = page.name;
 
+    // Each axis is also bounded by the board's per-page key budget given
+    // the current value of the other axis, so shapes like 9x4 are
+    // reachable by lowering one side before raising the other.
     for (const option of this.rowsSelect.options) {
-      option.disabled = Number(option.value) > limits.maxRows;
+      const rows = Number(option.value);
+      option.disabled =
+        rows > limits.maxRows || rows * page.cols > limits.maxKeys;
     }
 
     for (const option of this.colsSelect.options) {
-      option.disabled = Number(option.value) > limits.maxCols;
+      const cols = Number(option.value);
+      option.disabled =
+        cols > limits.maxCols || page.rows * cols > limits.maxKeys;
     }
 
     this.rowsSelect.value = String(page.rows);

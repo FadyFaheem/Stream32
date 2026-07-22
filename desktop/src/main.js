@@ -25,6 +25,7 @@ const actionRunner = createActionRunner();
 let boardService = null;
 let isQuitting = false;
 let mainWindow = null;
+let serialAccess = null;
 let trayController = null;
 let updaterController = null;
 
@@ -81,7 +82,7 @@ function createMainWindow() {
     },
   });
 
-  configureSerialAccess(window);
+  serialAccess = configureSerialAccess(window);
   window.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   window.once('ready-to-show', () => {
@@ -127,6 +128,19 @@ function registerIpcHandlers() {
     }
 
     return boardService.getFirmware(boardId);
+  });
+  ipcMain.handle('serial:select-port', (event, requestId, portId) => {
+    if (
+      event.sender !== mainWindow?.webContents ||
+      !Number.isSafeInteger(requestId) ||
+      requestId < 1 ||
+      typeof portId !== 'string' ||
+      portId.length > 256
+    ) {
+      throw new TypeError('Serial port selection is invalid.');
+    }
+
+    return serialAccess?.selectPort(requestId, portId) ?? false;
   });
   ipcMain.handle('deck:list', () => readDecks(getDecksPath()));
   ipcMain.handle('deck:save', (_event, deviceId, profile) => {

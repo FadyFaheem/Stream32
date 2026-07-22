@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('stream32', {
   runAction: (action) => ipcRenderer.invoke('action:run', action),
   saveDeck: (deviceId, profile) =>
     ipcRenderer.invoke('deck:save', deviceId, profile),
+  selectSerialPort: (requestId, portId) =>
+    ipcRenderer.invoke('serial:select-port', requestId, portId),
   onBoardDownloadProgress(callback) {
     if (typeof callback !== 'function') {
       throw new TypeError('Board download listener must be a function.');
@@ -23,6 +25,16 @@ contextBridge.exposeInMainWorld('stream32', {
 
     return () =>
       ipcRenderer.removeListener('boards:download-progress', listener);
+  },
+  onSerialPortList(callback) {
+    if (typeof callback !== 'function') {
+      throw new TypeError('Serial port list listener must be a function.');
+    }
+
+    const listener = (_event, request) => callback(request);
+    ipcRenderer.on('serial:port-list', listener);
+
+    return () => ipcRenderer.removeListener('serial:port-list', listener);
   },
   onUpdateStatus(callback) {
     if (typeof callback !== 'function') {

@@ -8,8 +8,10 @@ const DECKS_FILENAME = 'decks.json';
 const EXPORT_SCHEMA_VERSION = 1;
 const MAX_DEVICES = 32;
 const MAX_PAGES = 8;
-const MAX_ROWS = 5;
-const MAX_COLS = 5;
+const MAX_ROWS = 10;
+const MAX_COLS = 10;
+// Protocol ceiling: rows x cols per page (one layout line per page).
+const MAX_KEYS_PER_PAGE = 40;
 const MAX_LABEL_LENGTH = 32;
 const MAX_NAME_LENGTH = 60;
 const MAX_URL_LENGTH = 2048;
@@ -22,7 +24,8 @@ const BOARD_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const COLOR_PATTERN = /^#[0-9a-f]{6}$/;
 const IMAGE_DATA_URL_PATTERN =
   /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
-const KEY_PX_GRID_PATTERN = /^[1-5]x[1-5]$/;
+// "<rows>x<cols>"; bounds mirror MAX_ROWS / MAX_COLS.
+const KEY_PX_GRID_PATTERN = /^(10|[1-9])x(10|[1-9])$/;
 const URL_PATTERN = /^https?:\/\//i;
 
 function getDecksPath() {
@@ -164,7 +167,12 @@ function validatePage(page, pageCount) {
 
   const rows = requireInteger(page.rows, 'Page rows', 1, MAX_ROWS);
   const cols = requireInteger(page.cols, 'Page cols', 1, MAX_COLS);
-  const keyCount = rows * cols;
+  const keyCount = requireInteger(
+    rows * cols,
+    'Page keys per page',
+    1,
+    MAX_KEYS_PER_PAGE,
+  );
 
   if (!Array.isArray(page.keys) || page.keys.length > keyCount) {
     throw new TypeError('Page keys are invalid.');

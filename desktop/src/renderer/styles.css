@@ -488,6 +488,33 @@ input:disabled {
   text-align: center;
 }
 
+.deck-connect {
+  max-height: 10rem;
+  margin: 0 0 1rem;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    max-height 240ms ease,
+    margin 240ms ease,
+    padding-top 240ms ease,
+    padding-bottom 240ms ease,
+    border-width 240ms ease,
+    opacity 160ms ease,
+    transform 220ms ease;
+}
+
+.deck-connect[data-hidden="true"] {
+  max-height: 0;
+  margin: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  pointer-events: none;
+  border-width: 0;
+  opacity: 0;
+  transform: translateY(-0.5rem);
+}
+
 .deck-empty h2 {
   font-size: 1.6rem;
 }

@@ -48,6 +48,34 @@
 
       <div class="content">
         <section id="view-deck" class="view view-deck" aria-label="Deck">
+          <div id="deck-connect" class="usb-picker deck-connect">
+            <div class="usb-port-field">
+              <label class="field-label" for="deck-port-select">
+                Manual connection
+              </label>
+              <select id="deck-port-select" disabled hidden>
+                <option value="">Choose a USB / COM port</option>
+              </select>
+              <p
+                id="deck-port-status"
+                class="helper"
+                data-state="idle"
+                aria-live="polite"
+              >
+                If auto-connect misses your deck, choose its USB / COM port.
+              </p>
+            </div>
+            <div class="usb-actions">
+              <button
+                id="deck-connect-device"
+                class="button button-secondary"
+                type="button"
+              >
+                Connect COM port
+              </button>
+            </div>
+          </div>
+
           <div id="deck-empty" class="deck-empty">
             <p class="kicker">Deck</p>
             <h2>No Stream32 deck yet</h2>

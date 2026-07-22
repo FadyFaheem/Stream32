@@ -244,6 +244,7 @@ static void build_page(uint8_t page_index)
             origin_y + row * (key_px + DECK_KEY_GAP)
         );
         lv_obj_set_style_radius(cell, 14, LV_PART_MAIN);
+        lv_obj_set_style_clip_corner(cell, true, LV_PART_MAIN);
         lv_obj_set_style_border_width(cell, 2, LV_PART_MAIN);
         lv_obj_set_style_border_color(
             cell,

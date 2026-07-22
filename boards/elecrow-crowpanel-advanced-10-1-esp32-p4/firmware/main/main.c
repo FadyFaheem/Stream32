@@ -6,6 +6,7 @@
 #include "bsp/esp-bsp.h"
 #include "cJSON.h"
 #include "deck_ui.h"
+#include "driver/gpio.h"
 #include "driver/uart.h"
 #include "esp_app_desc.h"
 #include "esp_err.h"
@@ -22,6 +23,8 @@
    console is disabled in sdkconfig so protocol lines stay clean. */
 #define STREAM32_UART UART_NUM_0
 #define STREAM32_UART_BAUD 115200
+#define STREAM32_UART_TX GPIO_NUM_37
+#define STREAM32_UART_RX GPIO_NUM_38
 /* This board advertises a 40-key page budget, so it accepts the extended
    8 KB layout line (the desktop's baseline for other messages is 4 KB). */
 #define STREAM32_LINE_CAPACITY 8192
@@ -34,6 +37,7 @@ static QueueHandle_t event_queue;
 static lv_obj_t *connection_label;
 static lv_obj_t *touch_label;
 static lv_obj_t *touch_surface;
+static volatile bool system_ready;
 
 static void serial_write_line(const char *json)
 {
@@ -123,6 +127,8 @@ static void handle_host_message(const char *line, size_t length)
         if (!cJSON_IsNumber(protocol) ||
             protocol->valueint != STREAM32_PROTOCOL_VERSION) {
             send_error("unsupported-protocol");
+        } else if (!system_ready) {
+            send_error(bsp_display_status());
         } else {
             update_connection_label("USB connected to Stream32");
             send_hello();
@@ -204,7 +210,15 @@ static void serial_protocol_task(void *argument)
         0
     ));
     ESP_ERROR_CHECK(uart_param_config(STREAM32_UART, &config));
-    /* Keep the ROM's default UART0 pins; they are wired to the CH340. */
+    /* Do not rely on ROM routing surviving the console-disabled app startup:
+       the CrowPanel schematic wires CH340 RXD/TXD to P4 GPIO37/GPIO38. */
+    ESP_ERROR_CHECK(uart_set_pin(
+        STREAM32_UART,
+        STREAM32_UART_TX,
+        STREAM32_UART_RX,
+        UART_PIN_NO_CHANGE,
+        UART_PIN_NO_CHANGE
+    ));
 
     while (true) {
         const int received = uart_read_bytes(
@@ -360,6 +374,23 @@ void app_main(void)
         return;
     }
 
+    /* Start communication before display bring-up. A slow panel init no
+       longer misses every desktop hello, and UART remains available for
+       startup diagnostics if the BSP fails. */
+    const BaseType_t task_created = xTaskCreate(
+        serial_protocol_task,
+        "stream32_uart",
+        8192,
+        NULL,
+        5,
+        NULL
+    );
+
+    if (task_created != pdPASS) {
+        ESP_LOGE(TAG, "Could not create the serial protocol task");
+        return;
+    }
+
     lv_display_t *display = bsp_display_start();
 
     if (display == NULL) {
@@ -367,7 +398,7 @@ void app_main(void)
         return;
     }
 
-    if (!bsp_display_lock(0)) {
+    if (!bsp_display_lock(1000)) {
         ESP_LOGE(TAG, "Could not lock LVGL");
         return;
     }
@@ -381,16 +412,5 @@ void app_main(void)
         ESP_LOGW(TAG, "Deck storage is unavailable; decks will not persist");
     }
 
-    const BaseType_t task_created = xTaskCreate(
-        serial_protocol_task,
-        "stream32_uart",
-        8192,
-        NULL,
-        5,
-        NULL
-    );
-
-    if (task_created != pdPASS) {
-        ESP_LOGE(TAG, "Could not create the serial protocol task");
-    }
+    system_ready = true;
 }

@@ -36,6 +36,11 @@ extern "C" {
 lv_display_t *bsp_display_start(void);
 
 /**
+ * @brief Current display startup stage, suitable for protocol diagnostics.
+ */
+const char *bsp_display_status(void);
+
+/**
  * @brief Take the LVGL lock before touching any LVGL object from a task.
  */
 bool bsp_display_lock(uint32_t timeout_ms);

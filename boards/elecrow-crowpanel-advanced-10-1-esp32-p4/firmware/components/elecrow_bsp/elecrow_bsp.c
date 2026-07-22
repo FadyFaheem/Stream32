@@ -39,6 +39,7 @@ static esp_lcd_dsi_bus_handle_t s_dsi_bus;
 static esp_lcd_panel_io_handle_t s_dbi_io;
 static esp_lcd_panel_handle_t s_panel;
 static esp_lcd_touch_handle_t s_touch;
+static const char *s_status = "display-not-started";
 
 static esp_err_t backlight_init(void)
 {
@@ -148,23 +149,28 @@ static esp_err_t panel_init(void)
         .vendor_config = &vendor_config,
     };
 
+    s_status = "display-dsi-bus";
     ESP_RETURN_ON_ERROR(
         esp_lcd_new_dsi_bus(&bus_config, &s_dsi_bus),
         TAG,
         "dsi bus"
     );
     vendor_config.mipi_config.dsi_bus = s_dsi_bus;
+    s_status = "display-dbi-io";
     ESP_RETURN_ON_ERROR(
         esp_lcd_new_panel_io_dbi(s_dsi_bus, &dbi_config, &s_dbi_io),
         TAG,
         "dbi io"
     );
+    s_status = "display-panel-create";
     ESP_RETURN_ON_ERROR(
         esp_lcd_new_panel_ek79007(s_dbi_io, &panel_config, &s_panel),
         TAG,
         "ek79007"
     );
+    s_status = "display-panel-reset";
     ESP_RETURN_ON_ERROR(esp_lcd_panel_reset(s_panel), TAG, "panel reset");
+    s_status = "display-controller-init";
     return esp_lcd_panel_init(s_panel);
 }
 
@@ -237,6 +243,7 @@ static esp_err_t touch_init(void)
 
 lv_display_t *bsp_display_start(void)
 {
+    s_status = "display-power-init";
     if (power_init() != ESP_OK || backlight_init() != ESP_OK) {
         ESP_LOGE(TAG, "Power or backlight init failed");
         return NULL;
@@ -250,8 +257,16 @@ lv_display_t *bsp_display_start(void)
         .timer_period_ms = 5,
     };
 
-    if (lvgl_port_init(&lvgl_config) != ESP_OK || panel_init() != ESP_OK) {
-        ESP_LOGE(TAG, "LVGL or panel init failed");
+    /* Elecrow's factory sequence initializes the DSI panel before LVGL. */
+    s_status = "display-panel-init";
+    if (panel_init() != ESP_OK) {
+        ESP_LOGE(TAG, "Panel init failed");
+        return NULL;
+    }
+
+    s_status = "display-lvgl-init";
+    if (lvgl_port_init(&lvgl_config) != ESP_OK) {
+        ESP_LOGE(TAG, "LVGL init failed");
         return NULL;
     }
 
@@ -282,6 +297,7 @@ lv_display_t *bsp_display_start(void)
     const lvgl_port_display_dsi_cfg_t dsi_config = {
         .flags.avoid_tearing = false,
     };
+    s_status = "display-lvgl-register";
     lv_display_t *display =
         lvgl_port_add_disp_dsi(&display_config, &dsi_config);
 
@@ -290,9 +306,18 @@ lv_display_t *bsp_display_start(void)
         return NULL;
     }
 
-    if (touch_init() != ESP_OK) {
-        ESP_LOGE(TAG, "Touch init failed");
+    /* Make display failures visible even if touch initialization fails. */
+    s_status = "display-backlight";
+    if (backlight_set(100) != ESP_OK) {
+        ESP_LOGE(TAG, "Could not turn the backlight on");
         return NULL;
+    }
+
+    s_status = "display-touch-init";
+    if (touch_init() != ESP_OK) {
+        ESP_LOGW(TAG, "Touch init failed; continuing without touch");
+        s_status = "display-ready-no-touch";
+        return display;
     }
 
     const lvgl_port_touch_cfg_t touch_config = {
@@ -301,16 +326,18 @@ lv_display_t *bsp_display_start(void)
     };
 
     if (lvgl_port_add_touch(&touch_config) == NULL) {
-        ESP_LOGE(TAG, "Could not register the touch input with LVGL");
-        return NULL;
+        ESP_LOGW(TAG, "Could not register touch with LVGL");
+        s_status = "display-ready-no-touch";
+        return display;
     }
 
-    if (backlight_set(100) != ESP_OK) {
-        ESP_LOGE(TAG, "Could not turn the backlight on");
-        return NULL;
-    }
-
+    s_status = "display-ready";
     return display;
+}
+
+const char *bsp_display_status(void)
+{
+    return s_status;
 }
 
 bool bsp_display_lock(uint32_t timeout_ms)

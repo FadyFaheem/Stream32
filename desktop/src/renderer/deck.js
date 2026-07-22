@@ -69,6 +69,7 @@ class DeckController {
     this.selectedPage = 0;
     this.selectedKey = null;
 
+    this.connectPanel = document.querySelector('#deck-connect');
     this.deviceSelect = document.querySelector('#deck-device');
     this.deviceStatus = document.querySelector('#deck-device-status');
     this.deviceName = document.querySelector('#deck-device-name');
@@ -1014,6 +1015,12 @@ class DeckController {
     this.renderSyncStatus();
   }
 
+  setManualConnectionHidden(hidden) {
+    this.connectPanel.dataset.hidden = String(hidden);
+    this.connectPanel.inert = hidden;
+    this.connectPanel.setAttribute('aria-hidden', String(hidden));
+  }
+
   renderDevicePicker() {
     const deviceIds = Object.keys(this.devices);
     this.deviceSelect.replaceChildren();
@@ -1031,6 +1038,7 @@ class DeckController {
 
     if (!hasDevices) {
       this.selectedDeviceId = null;
+      this.setManualConnectionHidden(false);
       return;
     }
 
@@ -1042,12 +1050,12 @@ class DeckController {
 
     const profile = this.selectedProfile();
     this.deviceName.value = profile.name;
-    this.deviceStatus.textContent = this.sessions.has(this.selectedDeviceId)
+    const connected = this.sessions.has(this.selectedDeviceId);
+    this.deviceStatus.textContent = connected
       ? 'Connected'
       : 'Offline';
-    this.deviceStatus.dataset.state = this.sessions.has(this.selectedDeviceId)
-      ? 'ready'
-      : 'idle';
+    this.deviceStatus.dataset.state = connected ? 'ready' : 'idle';
+    this.setManualConnectionHidden(connected);
   }
 
   renderPages() {

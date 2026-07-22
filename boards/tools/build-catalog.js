@@ -8,11 +8,17 @@ const {
 } = require('node:fs');
 const path = require('node:path');
 
+const {
+  reusePublishedImage,
+  selectAffectedProfiles,
+} = require('./catalog-helpers');
+
 const boardsDirectory = path.resolve(__dirname, '..');
 const sourceCatalogPath = path.join(boardsDirectory, 'catalog.json');
 const outputDirectory = path.join(boardsDirectory, 'dist');
 const validateOnly = process.argv.includes('--validate-only');
 const matrixOnly = process.argv.includes('--matrix');
+const changedStdin = process.argv.includes('--changed-stdin');
 const BOARD_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PROFILE_PATH_PATTERN = /^[a-z0-9][a-z0-9./-]+\.json$/;
 const IMAGE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.bin$/;
@@ -35,6 +41,22 @@ function readJson(filePath) {
   } catch (error) {
     fail(`Could not read ${filePath}: ${error.message}`);
   }
+}
+
+function argumentValue(flag) {
+  const index = process.argv.indexOf(flag);
+
+  if (index < 0) {
+    return null;
+  }
+
+  const value = process.argv[index + 1];
+
+  if (!value || value.startsWith('--')) {
+    fail(`${flag} requires a file path.`);
+  }
+
+  return value;
 }
 
 function requireString(value, field) {
@@ -291,9 +313,16 @@ const profiles = sourceCatalog.boards.map((relativeProfilePath) => {
 });
 
 if (matrixOnly) {
+  const matrixProfiles = changedStdin
+    ? selectAffectedProfiles(
+        profiles,
+        readFileSync(0, 'utf8').split(/\r?\n/),
+      )
+    : profiles;
+
   console.log(
     JSON.stringify({
-      include: profiles.map((profile) => ({
+      include: matrixProfiles.map((profile) => ({
         id: profile.id,
         path: path.posix.join(
           'boards',
@@ -312,20 +341,37 @@ if (validateOnly) {
   process.exit(0);
 }
 
+const previousCatalogPath = argumentValue('--previous-catalog');
+const previousCatalog = previousCatalogPath
+  ? readJson(path.resolve(previousCatalogPath))
+  : null;
+
 const boards = profiles.map((profile) => {
   const imagePath = path.join(outputDirectory, profile.firmware.imageName);
+  let imageMetadata;
 
-  if (!existsSync(imagePath)) {
-    fail(`Built firmware image is missing: ${imagePath}`);
-  }
+  if (existsSync(imagePath)) {
+    const image = readFileSync(imagePath);
+    const size = statSync(imagePath).size;
+    const hash = createHash('sha256').update(image).digest('hex');
+    const { bootOffset } = SUPPORTED_CHIPS.get(profile.chip);
 
-  const image = readFileSync(imagePath);
-  const size = statSync(imagePath).size;
-  const hash = createHash('sha256').update(image).digest('hex');
-  const { bootOffset } = SUPPORTED_CHIPS.get(profile.chip);
+    if (image[bootOffset] !== 0xe9) {
+      fail(`${imagePath} is not an Espressif boot image.`);
+    }
 
-  if (image[bootOffset] !== 0xe9) {
-    fail(`${imagePath} is not an Espressif boot image.`);
+    imageMetadata = {
+      assetName: profile.firmware.imageName,
+      offset: profile.firmware.offset,
+      size,
+      sha256: hash,
+    };
+  } else {
+    try {
+      imageMetadata = reusePublishedImage(profile, previousCatalog);
+    } catch (error) {
+      fail(`Built firmware image is missing: ${imagePath}. ${error.message}`);
+    }
   }
 
   return {
@@ -342,14 +388,7 @@ const boards = profiles.map((profile) => {
     recoveryInstructions: profile.recoveryInstructions,
     firmware: {
       version: profile.firmware.version,
-      images: [
-        {
-          assetName: profile.firmware.imageName,
-          offset: profile.firmware.offset,
-          size,
-          sha256: hash,
-        },
-      ],
+      images: [imageMetadata],
     },
   };
 });

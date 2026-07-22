@@ -6,6 +6,7 @@ const {
   macInvocation,
   windowsKeyLine,
 } = require('../src/actions');
+const { validateHostAction } = require('../src/deck-store');
 const { canonicalKeyFromCode } = require('../src/keymap');
 
 test('maps media commands to extended Windows virtual keys', () => {
@@ -76,4 +77,26 @@ test('canonicalizes KeyboardEvent codes for hotkey capture', () => {
   assert.equal(canonicalKeyFromCode('Comma'), 'Comma');
   assert.equal(canonicalKeyFromCode('ControlLeft'), null);
   assert.equal(canonicalKeyFromCode('MetaRight'), null);
+});
+
+test('validates renderer actions before privileged execution', () => {
+  assert.deepEqual(
+    validateHostAction({ type: 'hotkey', key: 'M', ctrl: true }),
+    {
+      type: 'hotkey',
+      key: 'M',
+      alt: false,
+      ctrl: true,
+      meta: false,
+      shift: false,
+    },
+  );
+  assert.throws(
+    () => validateHostAction({ type: 'hotkey', key: 'NotAKey' }),
+    /Unknown hotkey/,
+  );
+  assert.throws(
+    () => validateHostAction({ type: 'page', page: 0 }),
+    /never reach/,
+  );
 });

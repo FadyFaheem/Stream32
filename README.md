@@ -51,6 +51,13 @@ Run `npm test` and `npm run check` before opening a pull request. Pull requests
 that touch the desktop app are packaged on Windows, macOS, and Linux. To build
 an installer for your current platform locally, run `npm run dist`.
 
+Deck actions can come from built-in controls or declarative JSON plugins.
+Plugins add searchable actions and generated fields without running
+third-party code in Electron or changing ESP32 firmware. See
+[`desktop/PLUGINS.md`](./desktop/PLUGINS.md) for the manifest format,
+installation, supported capabilities, and the bundled Microsoft Teams
+controls.
+
 ### Board firmware and flashing
 
 The desktop app loads board support independently from the rolling

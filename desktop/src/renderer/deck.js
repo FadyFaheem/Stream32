@@ -1,5 +1,5 @@
 const ICON_NAMES = require('./icon-names.json');
-const { canonicalKeyFromCode } = require('../keymap');
+const { ActionEditor } = require('./action-editor');
 const {
   MAX_DECK_COLS,
   MAX_DECK_KEYS,
@@ -23,14 +23,6 @@ const STORED_IMAGE_PIXELS = 192;
 const DEFAULT_KEY_COLOR = '#172630';
 const ICON_FONT = 'Material Symbols Rounded';
 const MAX_ICON_RESULTS = 96;
-const MEDIA_LABELS = {
-  mute: 'Mute',
-  next: 'Next track',
-  'play-pause': 'Play / Pause',
-  previous: 'Previous track',
-  'volume-down': 'Volume down',
-  'volume-up': 'Volume up',
-};
 
 function deviceLabel(deviceId, profile) {
   return `${profile.name} · ${deviceId.slice(-4)}`;
@@ -76,9 +68,6 @@ class DeckController {
     this.selectedDeviceId = null;
     this.selectedPage = 0;
     this.selectedKey = null;
-    // Keeps the chosen action type's field visible while its value is
-    // still empty (an empty URL/hotkey is not a storable action yet).
-    this.pendingActionType = null;
 
     this.deviceSelect = document.querySelector('#deck-device');
     this.deviceStatus = document.querySelector('#deck-device-status');
@@ -107,21 +96,26 @@ class DeckController {
     this.iconSearch = document.querySelector('#deck-icon-search');
     this.iconGrid = document.querySelector('#deck-icon-grid');
     this.iconClose = document.querySelector('#deck-icon-close');
-    this.actionType = document.querySelector('#deck-action-type');
-    this.actionMedia = document.querySelector('#deck-action-media');
-    this.actionUrl = document.querySelector('#deck-action-url');
-    this.actionLaunch = document.querySelector('#deck-action-launch');
-    this.actionHotkey = document.querySelector('#deck-action-hotkey');
-    this.actionPage = document.querySelector('#deck-action-page');
     this.keyTest = document.querySelector('#deck-key-test');
     this.keyClear = document.querySelector('#deck-key-clear');
-
-    this.hotkeyValue = null;
+    this.actionEditor = new ActionEditor({
+      document,
+      onChange: (action, appearance) => {
+        this.applyActionSelection(action, appearance);
+      },
+      onReload: () => this.api.listPlugins(true),
+    });
   }
 
   async initialize() {
     this.populateStaticControls();
     this.bindEvents();
+
+    try {
+      this.actionEditor.setCatalog(await this.api.listPlugins());
+    } catch (error) {
+      this.actionEditor.setCatalogError(error.message);
+    }
 
     try {
       const registry = await this.api.listDecks();
@@ -142,13 +136,6 @@ class DeckController {
   }
 
   populateStaticControls() {
-    for (const [value, label] of Object.entries(MEDIA_LABELS)) {
-      const option = this.document.createElement('option');
-      option.value = value;
-      option.textContent = label;
-      this.actionMedia.append(option);
-    }
-
     for (let size = 1; size <= MAX_DECK_ROWS; size++) {
       const option = this.document.createElement('option');
       option.value = String(size);
@@ -169,7 +156,6 @@ class DeckController {
       this.selectedDeviceId = this.deviceSelect.value || null;
       this.selectedPage = this.selectedProfile()?.activePage ?? 0;
       this.selectedKey = null;
-      this.pendingActionType = null;
       this.renderAll();
     });
     this.deviceName.addEventListener('change', () => {
@@ -311,40 +297,6 @@ class DeckController {
         this.iconDialog.close();
       }
     });
-    this.actionType.addEventListener('change', () => {
-      this.applyActionFromEditor();
-    });
-    this.actionMedia.addEventListener('change', () => {
-      this.applyActionFromEditor();
-    });
-    this.actionUrl.addEventListener('change', () => {
-      this.applyActionFromEditor();
-    });
-    this.actionLaunch.addEventListener('change', () => {
-      this.applyActionFromEditor();
-    });
-    this.actionPage.addEventListener('change', () => {
-      this.applyActionFromEditor();
-    });
-    this.actionHotkey.addEventListener('keydown', (event) => {
-      event.preventDefault();
-
-      const key = canonicalKeyFromCode(event.code);
-
-      if (!key) {
-        return;
-      }
-
-      this.hotkeyValue = {
-        key,
-        alt: event.altKey,
-        ctrl: event.ctrlKey,
-        meta: event.metaKey,
-        shift: event.shiftKey,
-      };
-      this.actionHotkey.value = this.describeHotkey(this.hotkeyValue);
-      this.applyActionFromEditor();
-    });
     this.keyTest.addEventListener('click', () => {
       const key = this.selectedKeyData();
 
@@ -360,18 +312,6 @@ class DeckController {
         );
       });
     });
-  }
-
-  describeHotkey(hotkey) {
-    const parts = [];
-
-    if (hotkey.ctrl) parts.push('Ctrl');
-    if (hotkey.shift) parts.push('Shift');
-    if (hotkey.alt) parts.push('Alt');
-    if (hotkey.meta) parts.push('Win');
-
-    parts.push(hotkey.key);
-    return parts.join('+');
   }
 
   renderIconGrid(query) {
@@ -417,25 +357,7 @@ class DeckController {
 
   async pickIcon(name) {
     try {
-      // The glyph draws as its ligature text until the font is ready.
-      await this.document.fonts.load(`128px "${ICON_FONT}"`);
-
-      const canvas = this.document.createElement('canvas');
-      canvas.width = STORED_IMAGE_PIXELS;
-      canvas.height = STORED_IMAGE_PIXELS;
-
-      const context = canvas.getContext('2d');
-      context.font = `${Math.round(STORED_IMAGE_PIXELS * 0.78)}px "${ICON_FONT}"`;
-      context.textAlign = 'center';
-      context.textBaseline = 'middle';
-      context.fillStyle = '#f3f7f9';
-      context.fillText(
-        name,
-        STORED_IMAGE_PIXELS / 2,
-        STORED_IMAGE_PIXELS / 2,
-      );
-
-      const dataUrl = canvas.toDataURL('image/webp', 0.92);
+      const dataUrl = await this.renderMaterialIcon(name);
       this.updateSelectedKey((key) => {
         key.image = dataUrl;
       });
@@ -443,6 +365,27 @@ class DeckController {
     } catch (error) {
       this.setSyncStatus(`Could not render the icon: ${error.message}`, 'error');
     }
+  }
+
+  async renderMaterialIcon(name, color = '#f3f7f9') {
+    // The glyph draws as its ligature text until the font is ready.
+    await this.document.fonts.load(`128px "${ICON_FONT}"`);
+
+    const canvas = this.document.createElement('canvas');
+    canvas.width = STORED_IMAGE_PIXELS;
+    canvas.height = STORED_IMAGE_PIXELS;
+
+    const context = canvas.getContext('2d');
+    context.font = `${Math.round(STORED_IMAGE_PIXELS * 0.78)}px "${ICON_FONT}"`;
+    context.textAlign = 'center';
+    context.textBaseline = 'middle';
+    context.fillStyle = color;
+    context.fillText(
+      name,
+      STORED_IMAGE_PIXELS / 2,
+      STORED_IMAGE_PIXELS / 2,
+    );
+    return canvas.toDataURL('image/webp', 0.92);
   }
 
   async readImageFile(file) {
@@ -561,55 +504,70 @@ class DeckController {
     }, true, true);
   }
 
-  applyActionFromEditor() {
-    const type = this.actionType.value;
-    this.pendingActionType = type === 'none' ? null : type;
-
+  applyActionSelection(action, appearance) {
+    const deviceId = this.selectedDeviceId;
+    const pageIndex = this.selectedPage;
+    const keyIndex = this.selectedKey;
+    let addSuggestedIcon = false;
     this.updateSelectedKey((key) => {
-      switch (type) {
-        case 'media':
-          key.action = { type: 'media', command: this.actionMedia.value };
-          break;
-        case 'url': {
-          const url = this.actionUrl.value.trim();
-
-          if (url) {
-            key.action = { type: 'url', url };
-          } else {
-            delete key.action;
-          }
-
-          break;
-        }
-        case 'launch': {
-          const command = this.actionLaunch.value.trim();
-
-          if (command) {
-            key.action = { type: 'launch', command };
-          } else {
-            delete key.action;
-          }
-
-          break;
-        }
-        case 'hotkey':
-          if (this.hotkeyValue) {
-            key.action = { type: 'hotkey', ...this.hotkeyValue };
-          } else {
-            delete key.action;
-          }
-
-          break;
-        case 'page':
-          key.action = {
-            type: 'page',
-            page: Number(this.actionPage.value),
-          };
-          break;
-        default:
-          delete key.action;
-          break;
+      if (action) {
+        key.action = action;
+      } else {
+        delete key.action;
       }
+
+      if (!action || !appearance) {
+        return;
+      }
+
+      if (!key.label && appearance.label) {
+        key.label = appearance.label;
+      }
+
+      if (!key.color && appearance.color) {
+        key.color = appearance.color;
+      }
+
+      if (!key.labelColor && appearance.labelColor) {
+        key.labelColor = appearance.labelColor;
+      }
+
+      addSuggestedIcon = Boolean(!key.image && appearance.icon);
+    });
+
+    if (!addSuggestedIcon) {
+      return;
+    }
+
+    this.renderMaterialIcon(
+      appearance.icon,
+      appearance.labelColor || '#f3f7f9',
+    ).then((dataUrl) => {
+      if (
+        this.selectedDeviceId !== deviceId ||
+        this.selectedPage !== pageIndex ||
+        this.selectedKey !== keyIndex
+      ) {
+        return;
+      }
+
+      const key = this.selectedKeyData();
+
+      if (
+        key?.image ||
+        JSON.stringify(key?.action) !== JSON.stringify(action)
+      ) {
+        return;
+      }
+
+      this.updateSelectedKey((current) => {
+        current.image = dataUrl;
+      });
+    }).catch((error) => {
+      this.setSyncStatus(
+        `Could not render the action icon: ${error.message}`,
+        'error',
+      );
     });
   }
 
@@ -1111,7 +1069,6 @@ class DeckController {
       tab.addEventListener('click', () => {
         this.selectedPage = index;
         this.selectedKey = null;
-        this.pendingActionType = null;
         this.renderAll();
       });
       this.pageTabs.append(tab);
@@ -1194,10 +1151,6 @@ class DeckController {
       }
 
       cell.addEventListener('click', () => {
-        if (this.selectedKey !== index) {
-          this.pendingActionType = null;
-        }
-
         this.selectedKey = index;
         this.renderAll();
       });
@@ -1226,55 +1179,12 @@ class DeckController {
     this.keyLabelColor.value = key.labelColor || '#f3f7f9';
     this.keyImageClear.disabled = !key.image;
 
-    this.actionPage.replaceChildren();
-
-    for (const [index, target] of profile.pages.entries()) {
-      const option = this.document.createElement('option');
-      option.value = String(index);
-      option.textContent = target.name;
-      this.actionPage.append(option);
-    }
-
     const action = key.action || null;
-    const displayType = action?.type || this.pendingActionType || 'none';
-
-    this.actionType.value = displayType;
-    this.actionMedia.hidden = displayType !== 'media';
-    this.actionUrl.hidden = displayType !== 'url';
-    this.actionLaunch.hidden = displayType !== 'launch';
-    this.actionHotkey.hidden = displayType !== 'hotkey';
-    this.actionPage.hidden = displayType !== 'page';
-
-    switch (action?.type) {
-      case 'media':
-        this.actionMedia.value = action.command;
-        break;
-      case 'url':
-        this.actionUrl.value = action.url;
-        break;
-      case 'launch':
-        this.actionLaunch.value = action.command;
-        break;
-      case 'hotkey':
-        this.hotkeyValue = {
-          key: action.key,
-          alt: action.alt,
-          ctrl: action.ctrl,
-          meta: action.meta,
-          shift: action.shift,
-        };
-        this.actionHotkey.value = this.describeHotkey(this.hotkeyValue);
-        break;
-      case 'page':
-        this.actionPage.value = String(action.page);
-        break;
-      default:
-        this.actionUrl.value = '';
-        this.actionLaunch.value = '';
-        this.actionHotkey.value = '';
-        this.hotkeyValue = null;
-        break;
-    }
+    this.actionEditor.render({
+      action,
+      context: `${this.selectedDeviceId}:${this.selectedPage}:${this.selectedKey}`,
+      pages: profile.pages,
+    });
 
     this.keyTest.disabled = !action;
   }

@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('stream32', {
   installUpdate: () => ipcRenderer.invoke('updater:install'),
   listBoards: (force = false) => ipcRenderer.invoke('boards:list', force),
   listDecks: () => ipcRenderer.invoke('deck:list'),
+  listPlugins: (force = false) => ipcRenderer.invoke('plugins:list', force),
   runAction: (action) => ipcRenderer.invoke('action:run', action),
   saveDeck: (deviceId, profile) =>
     ipcRenderer.invoke('deck:save', deviceId, profile),

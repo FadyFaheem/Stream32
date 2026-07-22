@@ -2,10 +2,12 @@ const { app } = require('electron');
 const path = require('node:path');
 
 const { HOTKEY_KEY_NAMES, MEDIA_COMMANDS } = require('./keymap');
+const { validatePluginReference } = require('./plugin-manifest');
 const { readSettings, writeSettings } = require('./settings');
 
 const DECKS_FILENAME = 'decks.json';
-const EXPORT_SCHEMA_VERSION = 1;
+const EXPORT_SCHEMA_VERSION = 2;
+const IMPORT_SCHEMA_VERSIONS = new Set([1, EXPORT_SCHEMA_VERSION]);
 const MAX_DEVICES = 32;
 const MAX_PAGES = 8;
 const MAX_ROWS = 10;
@@ -110,9 +112,19 @@ function validateAction(action, pageCount) {
         type: 'page',
         page: requireInteger(action.page, 'Action page', 0, pageCount - 1),
       };
+    case 'plugin':
+      return validatePluginReference(action);
     default:
       throw new TypeError(`Unknown action type: ${action?.type}`);
   }
+}
+
+function validateHostAction(action) {
+  if (action?.type === 'page') {
+    throw new TypeError('Page actions never reach the main process.');
+  }
+
+  return validateAction(action, 1);
 }
 
 function validateKey(key, keyCount, pageCount) {
@@ -327,7 +339,7 @@ function importProfile(text) {
     throw new TypeError('Deck profile file is not valid JSON.');
   }
 
-  if (!parsed || parsed.stream32Deck !== EXPORT_SCHEMA_VERSION) {
+  if (!parsed || !IMPORT_SCHEMA_VERSIONS.has(parsed.stream32Deck)) {
     throw new TypeError('Deck profile file has an unsupported format.');
   }
 
@@ -343,5 +355,7 @@ module.exports = {
   importProfile,
   readDecks,
   saveDeviceProfile,
+  validateAction,
+  validateHostAction,
   validateProfile,
 };

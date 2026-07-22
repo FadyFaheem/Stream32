@@ -400,12 +400,31 @@ class ActionEditor {
 
     if (type === 'hotkey') {
       const input = this.document.createElement('input');
+      const windowsKey = this.document.createElement('input');
+      const windowsKeyLabel = this.document.createElement('label');
       input.type = 'text';
       input.readOnly = true;
-      input.placeholder = 'Click, then press keys';
+      input.placeholder = 'Click, then press a key';
       input.value = this.draft.key ? describeHotkey(this.draft) : '';
+      windowsKey.type = 'checkbox';
+      windowsKey.checked = Boolean(this.draft.meta);
+      windowsKeyLabel.className = 'hotkey-modifier';
+      windowsKeyLabel.append(windowsKey, 'Windows key');
       input.addEventListener('keydown', (event) => {
         event.preventDefault();
+
+        if (/^Meta(Left|Right)$/.test(event.code)) {
+          windowsKey.checked = true;
+          this.draft.meta = true;
+
+          if (this.draft.key) {
+            input.value = describeHotkey(this.draft);
+            this.emit();
+          }
+
+          return;
+        }
+
         const key = canonicalKeyFromCode(event.code);
 
         if (!key) {
@@ -416,13 +435,25 @@ class ActionEditor {
           key,
           alt: event.altKey,
           ctrl: event.ctrlKey,
-          meta: event.metaKey,
+          meta: event.metaKey || windowsKey.checked,
           shift: event.shiftKey,
         };
+        windowsKey.checked = this.draft.meta;
         input.value = describeHotkey(this.draft);
         this.emit();
       });
-      this.config.append(this.makeField('Keyboard shortcut', input));
+      windowsKey.addEventListener('change', () => {
+        this.draft.meta = windowsKey.checked;
+
+        if (this.draft.key) {
+          input.value = describeHotkey(this.draft);
+          this.emit();
+        }
+      });
+      this.config.append(
+        this.makeField('Keyboard shortcut', input),
+        windowsKeyLabel,
+      );
       return;
     }
 

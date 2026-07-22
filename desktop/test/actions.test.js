@@ -31,7 +31,11 @@ test('maps hotkeys to ordered Windows key sequences', () => {
   );
   assert.equal(
     windowsKeyLine({ type: 'hotkey', key: 'Up', meta: true }),
-    '91 38e',
+    '91e 38e',
+  );
+  assert.equal(
+    windowsKeyLine({ type: 'hotkey', key: 'L', meta: true }),
+    'lock',
   );
 });
 

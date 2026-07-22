@@ -920,6 +920,23 @@ input:disabled {
   flex: 1 1 180px;
 }
 
+.hotkey-modifier {
+  display: flex;
+  align-items: center;
+  min-height: 2.55rem;
+  gap: 0.45rem;
+  cursor: pointer;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.deck-key-fields .hotkey-modifier input {
+  width: 1rem;
+  min-height: 1rem;
+  padding: 0;
+  accent-color: var(--accent);
+}
+
 .deck-action-config .helper {
   margin: 0;
 }

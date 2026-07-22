@@ -65,3 +65,57 @@ test('applies plugin appearance after required settings become valid', () => {
 
   assert.deepEqual(change, [action, appearance]);
 });
+
+test('records the Windows modifier separately from a reserved shortcut', () => {
+  const elements = [];
+  const document = {
+    createElement() {
+      const listeners = {};
+      const element = {
+        listeners,
+        append(...children) {
+          this.children = children;
+        },
+        addEventListener(type, listener) {
+          listeners[type] = listener;
+        },
+      };
+      elements.push(element);
+      return element;
+    },
+  };
+  const editor = Object.create(ActionEditor.prototype);
+  editor.document = document;
+  editor.draft = {};
+  editor.config = { append() {} };
+  let changes = 0;
+  editor.emit = () => {
+    changes++;
+  };
+
+  editor.renderCoreConfig('hotkey');
+  const shortcut = elements.find((element) => element.type === 'text');
+  const windowsKey = elements.find((element) => element.type === 'checkbox');
+  const keyboardEvent = (code) => ({
+    code,
+    altKey: false,
+    ctrlKey: false,
+    metaKey: false,
+    shiftKey: false,
+    preventDefault() {},
+  });
+
+  shortcut.listeners.keydown(keyboardEvent('MetaLeft'));
+  shortcut.listeners.keydown(keyboardEvent('KeyL'));
+
+  assert.equal(changes, 1);
+  assert.deepEqual(editor.draft, {
+    key: 'L',
+    alt: false,
+    ctrl: false,
+    meta: true,
+    shift: false,
+  });
+  assert.equal(shortcut.value, 'Win+L');
+  assert.equal(windowsKey.checked, true);
+});

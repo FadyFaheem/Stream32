@@ -13,12 +13,19 @@ const MODIFIER_ORDER = ['ctrl', 'shift', 'alt', 'meta'];
 const URL_PATTERN = /^https?:\/\//i;
 
 // Runs inside one persistent PowerShell child. Each stdin line is a
-// space-separated press sequence of "<vk>" or "<vk>e" (extended) tokens;
-// keys go down in order and up in reverse, like a human chord.
+// "lock" command or a space-separated sequence of "<vk>" or "<vk>e"
+// (extended) tokens; keys go down in order and up in reverse, like a chord.
 const WINDOWS_KEY_SCRIPT = `
-$definition = '[DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System.UIntPtr dwExtraInfo);'
+$definition = @'
+[DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, System.UIntPtr dwExtraInfo);
+[DllImport("user32.dll")] public static extern bool LockWorkStation();
+'@
 Add-Type -Namespace Stream32 -Name Keys -MemberDefinition $definition
 while ($line = [Console]::In.ReadLine()) {
+  if ($line.Trim() -eq 'lock') {
+    [void][Stream32.Keys]::LockWorkStation()
+    continue
+  }
   $tokens = $line.Trim().Split(' ') | Where-Object { $_ }
   $codes = @()
   foreach ($token in $tokens) {
@@ -49,9 +56,19 @@ function windowsKeyLine(action) {
     return vkToken(MEDIA_VK[action.command], true);
   }
 
+  if (
+    action.key === 'L' &&
+    action.meta &&
+    !action.alt &&
+    !action.ctrl &&
+    !action.shift
+  ) {
+    return 'lock';
+  }
+
   const key = KEY_TABLE[action.key];
   const tokens = hotkeyModifiers(action).map((modifier) =>
-    vkToken(MODIFIER_VK[modifier], false),
+    vkToken(MODIFIER_VK[modifier], modifier === 'meta'),
   );
 
   tokens.push(vkToken(key.vk, Boolean(key.ext)));

@@ -1,13 +1,19 @@
 const assert = require('node:assert/strict');
+const { mkdtempSync, rmSync } = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
   configureSerialAccess,
+  getRememberedSerialDevices,
   isEspressifUsbSerialJtag,
   normalizeUsbId,
+  rememberSerialDevice,
   serialDeviceIdentity,
   serialDeviceMatches,
 } = require('../src/serial');
+const { readSettings, writeSettings } = require('../src/settings');
 
 test('publishes an empty inline port list and settles cancellation', async () => {
   let selectionHandler;
@@ -32,7 +38,7 @@ test('publishes an empty inline port list and settles cancellation', async () =>
   const selected = [];
 
   const access = configureSerialAccess(window, {
-    getRememberedDevice: () => null,
+    getRememberedDevices: () => [],
   });
   await selectionHandler(
     { preventDefault() {} },
@@ -83,7 +89,7 @@ test('selects a USB port from the inline renderer list', async () => {
   const selected = [];
 
   const access = configureSerialAccess(window, {
-    getRememberedDevice: () => null,
+    getRememberedDevices: () => [],
     rememberDevice: serialDeviceIdentity,
   });
   await selectionHandler(
@@ -111,6 +117,82 @@ test('selects a USB port from the inline renderer list', async () => {
   assert.deepEqual(selected, []);
   assert.equal(access.selectPort(1, 'port-1'), true);
   assert.deepEqual(selected, ['port-1']);
+});
+
+test('authorizes every remembered serial panel', () => {
+  let permissionHandler;
+  const remembered = [
+    serialDeviceIdentity({
+      deviceInstanceId: 'USB\\VID_303A&PID_1001\\panel-a',
+      portName: 'COM4',
+    }),
+    serialDeviceIdentity({
+      deviceInstanceId: 'USB\\VID_303A&PID_1001\\panel-b',
+      portName: 'COM5',
+    }),
+  ];
+  const session = {
+    on() {},
+    setDevicePermissionHandler(handler) {
+      permissionHandler = handler;
+    },
+    setPermissionCheckHandler() {},
+  };
+
+  configureSerialAccess(
+    { webContents: { session } },
+    { getRememberedDevices: () => remembered },
+  );
+
+  for (const identity of remembered) {
+    assert.equal(
+      permissionHandler({
+        device: {
+          device_instance_id: identity.deviceInstanceId,
+          name: identity.portName,
+        },
+        deviceType: 'serial',
+        origin: 'file://',
+      }),
+      true,
+    );
+  }
+  assert.equal(
+    permissionHandler({
+      device: {
+        device_instance_id: 'USB\\VID_303A&PID_1001\\panel-c',
+        name: 'COM6',
+      },
+      deviceType: 'serial',
+      origin: 'file://',
+    }),
+    false,
+  );
+});
+
+test('migrates and retains remembered serial panels', () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'stream32-serial-'));
+  const settingsPath = path.join(directory, 'settings.json');
+  const first = serialDeviceIdentity({
+    deviceInstanceId: 'USB\\VID_303A&PID_1001\\panel-a',
+    portName: 'COM4',
+  });
+  const second = serialDeviceIdentity({
+    deviceInstanceId: 'USB\\VID_303A&PID_1001\\panel-b',
+    portName: 'COM5',
+  });
+
+  try {
+    writeSettings({ serialDevice: first }, settingsPath);
+    rememberSerialDevice(second, settingsPath);
+
+    assert.deepEqual(
+      getRememberedSerialDevices(readSettings(settingsPath)),
+      [first, second],
+    );
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
 });
 
 test('normalizes USB IDs from Electron metadata', () => {

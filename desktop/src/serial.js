@@ -165,18 +165,29 @@ function serialDeviceMatches(identity, device) {
   );
 }
 
-function getRememberedSerialDevice() {
-  return readSettings().serialDevice || null;
+function getRememberedSerialDevices(settings = readSettings()) {
+  const devices = Array.isArray(settings.serialDevices)
+    ? settings.serialDevices
+    : settings.serialDevice
+      ? [settings.serialDevice]
+      : [];
+
+  return devices.map(serialDeviceIdentity).filter(Boolean);
 }
 
-function rememberSerialDevice(device) {
+function rememberSerialDevice(device, settingsPath) {
   const identity = serialDeviceIdentity(device);
 
   if (!identity) {
     throw new TypeError('The selected serial device has no stable identity.');
   }
 
-  updateSettings({ serialDevice: identity });
+  const remembered = getRememberedSerialDevices(readSettings(settingsPath));
+  const serialDevices = remembered.filter(
+    (candidate) => !serialDeviceMatches(candidate, identity),
+  );
+  serialDevices.push(identity);
+  updateSettings({ serialDevices }, settingsPath);
   return identity;
 }
 
@@ -194,7 +205,7 @@ function portLabel(port) {
 function configureSerialAccess(
   window,
   {
-    getRememberedDevice = getRememberedSerialDevice,
+    getRememberedDevices = getRememberedSerialDevices,
     rememberDevice = rememberSerialDevice,
   } = {},
 ) {
@@ -261,7 +272,9 @@ function configureSerialAccess(
 
     return (
       serialDeviceMatches(pendingIdentity, details.device) ||
-      serialDeviceMatches(getRememberedDevice(), details.device)
+      getRememberedDevices().some((identity) =>
+        serialDeviceMatches(identity, details.device),
+      )
     );
   });
 
@@ -304,7 +317,7 @@ function configureSerialAccess(
 module.exports = {
   ESPRESSIF_USB_SERIAL_JTAG,
   configureSerialAccess,
-  getRememberedSerialDevice,
+  getRememberedSerialDevices,
   isEspressifUsbSerialJtag,
   normalizeUsbId,
   rememberSerialDevice,

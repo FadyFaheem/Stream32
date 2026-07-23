@@ -41,6 +41,8 @@ static esp_lcd_panel_io_handle_t s_dbi_io;
 static esp_lcd_panel_handle_t s_panel;
 static esp_lcd_touch_handle_t s_touch;
 static const char *s_status = "display-not-started";
+static uint32_t s_brightness_percent = 100;
+static bool s_display_awake;
 
 static esp_err_t backlight_init(void)
 {
@@ -309,10 +311,11 @@ lv_display_t *bsp_display_start(void)
 
     /* Make display failures visible even if touch initialization fails. */
     s_status = "display-backlight";
-    if (backlight_set(100) != ESP_OK) {
+    if (backlight_set(s_brightness_percent) != ESP_OK) {
         ESP_LOGE(TAG, "Could not turn the backlight on");
         return NULL;
     }
+    s_display_awake = true;
 
     s_status = "display-touch-init";
     if (touch_init() != ESP_OK) {
@@ -362,4 +365,57 @@ bool bsp_display_lock(uint32_t timeout_ms)
 void bsp_display_unlock(void)
 {
     lvgl_port_unlock();
+}
+
+esp_err_t bsp_display_set_awake(bool awake)
+{
+    if (s_panel == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (awake) {
+        ESP_RETURN_ON_ERROR(
+            esp_lcd_panel_disp_on_off(s_panel, true),
+            TAG,
+            "panel on"
+        );
+        ESP_RETURN_ON_ERROR(
+            backlight_set(s_brightness_percent),
+            TAG,
+            "backlight on"
+        );
+        s_display_awake = true;
+        return ESP_OK;
+    }
+
+    ESP_RETURN_ON_ERROR(backlight_set(0), TAG, "backlight off");
+    ESP_RETURN_ON_ERROR(
+        esp_lcd_panel_disp_on_off(s_panel, false),
+        TAG,
+        "panel off"
+    );
+    s_display_awake = false;
+    return ESP_OK;
+}
+
+esp_err_t bsp_display_set_brightness(uint32_t brightness_percent)
+{
+    if (brightness_percent > 100) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (s_panel == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    if (s_display_awake) {
+        ESP_RETURN_ON_ERROR(
+            backlight_set(brightness_percent),
+            TAG,
+            "backlight brightness"
+        );
+    }
+
+    s_brightness_percent = brightness_percent;
+    return ESP_OK;
 }

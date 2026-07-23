@@ -2,6 +2,7 @@ const { ESPLoader, Transport } = require('esptool-js');
 const { calculateFirmwareMd5 } = require('./firmware-hash');
 const {
   createLineDecoder,
+  encodeDisplayMessage,
   encodeHostHello,
   isExpectedChip,
   validateDeviceHello,
@@ -13,6 +14,7 @@ const HELLO_RETRY_MS = 1000;
 const RECONNECT_ATTEMPTS = 8;
 const RECONNECT_DELAY_MS = 750;
 const MAX_LOG_LINES = 80;
+const FALLBACK_FLASH_BAUD = 460800;
 const MANUAL_CONNECTION_HELP =
   'If auto-connect misses your deck, choose its USB / COM port.';
 
@@ -35,10 +37,31 @@ function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
 
+async function runFlashWithFallback({
+  preferredBaud,
+  runAttempt,
+  onFallback = () => {},
+}) {
+  try {
+    return await runAttempt(preferredBaud);
+  } catch (error) {
+    if (
+      preferredBaud === FALLBACK_FLASH_BAUD ||
+      error?.noBaudFallback === true
+    ) {
+      throw error;
+    }
+
+    await onFallback(error);
+    return runAttempt(FALLBACK_FLASH_BAUD);
+  }
+}
+
 class DeviceController {
-  constructor({ api, deck = null, document, serial }) {
+  constructor({ api, deck = null, deckRuntime = null, document, serial }) {
     this.api = api;
     this.deck = deck;
+    this.deckRuntime = deckRuntime;
     this.document = document;
     this.serial = serial;
     this.boards = new Map();
@@ -50,6 +73,12 @@ class DeviceController {
     this.serialPortRequestId = null;
     this.serialPortListEmpty = false;
     this.sessions = new Map();
+    this.displayPolicy = {
+      brightnessPercent: 100,
+      idleTimeoutMinutes: 10,
+      sleepWhenLocked: true,
+    };
+    this.machineLocked = false;
 
     this.boardSelect = document.querySelector('#board-select');
     this.boardDetails = document.querySelector('#board-details');
@@ -62,6 +91,7 @@ class DeviceController {
     this.deviceStatus = document.querySelector('#device-status');
     this.firmwareVersion = document.querySelector('#firmware-version');
     this.flashButton = document.querySelector('#flash-device');
+    this.fullErase = document.querySelector('#full-erase');
     this.flashLog = document.querySelector('#flash-log');
     this.flashProgress = document.querySelector('#flash-progress');
     this.flashStep = document.querySelector('#flash-step');
@@ -92,6 +122,7 @@ class DeviceController {
     );
     this.boardSelect.addEventListener('change', () => {
       this.confirmRevision.checked = false;
+      this.fullErase.checked = false;
       this.clearUsbSelection();
       this.updateSelectedBoard();
     });
@@ -152,6 +183,7 @@ class DeviceController {
       this.refreshUsbButton.disabled = true;
       this.usbPortSelect.disabled = true;
       this.reconnectButton.disabled = true;
+      this.fullErase.disabled = true;
       return;
     }
 
@@ -220,6 +252,7 @@ class DeviceController {
     this.refreshButton.disabled = true;
     this.reconnectButton.disabled = true;
     this.confirmRevision.disabled = true;
+    this.fullErase.disabled = true;
     this.updateFlashButton();
     return true;
   }
@@ -243,6 +276,7 @@ class DeviceController {
     this.refreshButton.disabled = false;
     this.reconnectButton.disabled = !this.serial;
     this.confirmRevision.disabled = false;
+    this.fullErase.disabled = false;
     this.updateFlashButton();
   }
 
@@ -421,7 +455,9 @@ class DeviceController {
     try {
       // requestPort must run directly from this click before user activation
       // expires. Electron sends its port list back to this screen.
-      const port = await this.serial.requestPort();
+      const port = await this.serial.requestPort({
+        filters: board.usbFilters,
+      });
       const selectedLabel =
         this.usbPortSelect.selectedOptions[0]?.textContent || 'Serial port';
       await this.closeSessionForPort(port);
@@ -505,6 +541,13 @@ class DeviceController {
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
+
+    for (const line of lines) {
+      const kind = /^(?:Device error|Display control|Protocol):/.test(line)
+        ? 'protocol'
+        : 'flash';
+      this.api.logDiagnosticLine?.(kind, line.slice(0, 2048));
+    }
 
     this.logLines.push(...lines);
     this.logLines = this.logLines.slice(-MAX_LOG_LINES);
@@ -625,6 +668,67 @@ class DeviceController {
     this.testStep.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
+  async flashFirmwareAttempt(port, firmware, baudrate, fullErase) {
+    const transport = new Transport(port, false);
+
+    try {
+      this.flashStatus.textContent =
+        `Connecting to the ${firmware.board.chip} bootloader at ` +
+        `${baudrate} baud…`;
+      const loader = new ESPLoader({
+        transport,
+        baudrate,
+        debugLogging: false,
+        terminal: {
+          clean: () => {},
+          write: (message) => this.appendLog(message),
+          writeLine: (message) => this.appendLog(message),
+        },
+      });
+      const chipName = await loader.main();
+      const detectedChipName = loader.chip?.CHIP_NAME || chipName;
+
+      if (!isExpectedChip(detectedChipName, firmware.board.chip)) {
+        const error = new Error(
+          `Wrong chip detected: expected ${firmware.board.chip}, ` +
+            `found ${chipName}. Nothing was erased.`,
+        );
+        error.noBaudFallback = true;
+        throw error;
+      }
+
+      this.flashStatus.textContent = fullErase
+        ? 'Fully erasing the chip and writing firmware…'
+        : 'Writing verified firmware sectors…';
+      await loader.writeFlash({
+        fileArray: firmware.images.map((image) => ({
+          address: image.address,
+          data: new Uint8Array(image.data),
+        })),
+        flashMode: 'keep',
+        flashFreq: 'keep',
+        flashSize: 'keep',
+        eraseAll: fullErase,
+        compress: true,
+        calculateMD5Hash: calculateFirmwareMd5,
+        reportProgress: (_fileIndex, written, total) => {
+          const percent = Math.round((written / total) * 100);
+          this.setProgress(percent);
+          this.flashStatus.textContent = `Flashing firmware… ${percent}%`;
+        },
+      });
+
+      return { loader, transport };
+    } catch (error) {
+      try {
+        await transport.disconnect();
+      } catch {
+        // A failed attempt may already have closed or reset the port.
+      }
+      throw error;
+    }
+  }
+
   async flashSelectedBoard() {
     const board = this.selectedBoard();
     const port = this.selectedPort;
@@ -650,49 +754,24 @@ class DeviceController {
       await this.closeSessionForPort(port);
       await sleep(500);
       const firmware = await this.api.getBoardFirmware(board.id);
-
-      this.flashStatus.textContent =
-        `Connecting to the ${firmware.board.chip} bootloader…`;
-      transport = new Transport(port, false);
-
-      const loader = new ESPLoader({
-        transport,
-        baudrate: 460800,
-        debugLogging: false,
-        terminal: {
-          clean: () => this.clearLog(),
-          write: (message) => this.appendLog(message),
-          writeLine: (message) => this.appendLog(message),
+      const fullErase = this.fullErase.checked;
+      const result = await runFlashWithFallback({
+        preferredBaud: firmware.board.preferredFlashBaud,
+        runAttempt: (baudrate) =>
+          this.flashFirmwareAttempt(port, firmware, baudrate, fullErase),
+        onFallback: async (error) => {
+          this.appendLog(
+            `High-speed flash failed: ${errorMessage(error)}. ` +
+              `Restarting the complete write at ${FALLBACK_FLASH_BAUD} baud.`,
+          );
+          this.setProgress(0);
+          this.flashStatus.textContent =
+            `Retrying the complete write at ${FALLBACK_FLASH_BAUD} baud…`;
+          await sleep(500);
         },
       });
-      const chipName = await loader.main();
-      const detectedChipName = loader.chip?.CHIP_NAME || chipName;
-
-      if (!isExpectedChip(detectedChipName, firmware.board.chip)) {
-        throw new Error(
-          `Wrong chip detected: expected ${firmware.board.chip}, ` +
-            `found ${chipName}. Nothing was erased.`,
-        );
-      }
-
-      this.flashStatus.textContent = 'Erasing and writing firmware…';
-      await loader.writeFlash({
-        fileArray: firmware.images.map((image) => ({
-          address: image.address,
-          data: new Uint8Array(image.data),
-        })),
-        flashMode: 'keep',
-        flashFreq: 'keep',
-        flashSize: 'keep',
-        eraseAll: true,
-        compress: true,
-        calculateMD5Hash: calculateFirmwareMd5,
-        reportProgress: (_fileIndex, written, total) => {
-          const percent = Math.round((written / total) * 100);
-          this.setProgress(percent);
-          this.flashStatus.textContent = `Flashing firmware… ${percent}%`;
-        },
-      });
+      const { loader } = result;
+      transport = result.transport;
 
       this.flashStatus.textContent = 'Restarting the board…';
       await loader.after('hard_reset');
@@ -781,6 +860,61 @@ class DeviceController {
         'connected',
       );
     }
+  }
+
+  displayControlSupported(session) {
+    return session.hello?.features?.includes('display-control') === true;
+  }
+
+  displayBrightnessSupported(session) {
+    return session.hello?.features?.includes('display-brightness') === true;
+  }
+
+  async applyDisplayPolicyToSession(session) {
+    if (!session.handshakeComplete || !this.displayControlSupported(session)) {
+      return;
+    }
+
+    await session.send(
+      encodeDisplayMessage({
+        awake: !(this.displayPolicy.sleepWhenLocked && this.machineLocked),
+        idleTimeoutSeconds: this.displayPolicy.idleTimeoutMinutes * 60,
+        ...(this.displayBrightnessSupported(session)
+          ? { brightness: this.displayPolicy.brightnessPercent }
+          : {}),
+      }),
+    );
+  }
+
+  async broadcastDisplayPolicy() {
+    const tasks = this.connectedSessions()
+      .filter((session) => this.displayControlSupported(session))
+      .map((session) => this.applyDisplayPolicyToSession(session));
+    const results = await Promise.allSettled(tasks);
+
+    for (const result of results) {
+      if (result.status === 'rejected') {
+        this.appendLog(`Display control: ${errorMessage(result.reason)}`);
+      }
+    }
+  }
+
+  setDisplayPolicy(policy) {
+    this.displayPolicy = {
+      brightnessPercent: policy.brightnessPercent,
+      idleTimeoutMinutes: policy.idleTimeoutMinutes,
+      sleepWhenLocked: policy.sleepWhenLocked,
+    };
+    return this.broadcastDisplayPolicy();
+  }
+
+  setMachineLocked(locked) {
+    if (this.machineLocked === locked) {
+      return Promise.resolve();
+    }
+
+    this.machineLocked = locked;
+    return this.broadcastDisplayPolicy();
   }
 
   async reconnectAuthorizedDevice(force = false) {
@@ -929,17 +1063,23 @@ class DeviceController {
             session.handshakeComplete = true;
             this.updateDeviceStatusSummary();
             this.touchStatus.textContent = 'Touch the display to test input.';
-            this.deck?.attachSession(session, this.boards.get(hello.boardId));
+            this.applyDisplayPolicyToSession(session).catch((error) => {
+              this.appendLog(`Display control: ${errorMessage(error)}`);
+            });
+            this.deckRuntime?.attachSession(
+              session,
+              this.boards.get(hello.boardId),
+            );
             resolveHandshake(hello);
           } else if (message.type === 'touch' && session.handshakeComplete) {
             const touch = validateTouchMessage(message);
             this.touchStatus.textContent =
               `${touch.phase === 'down' ? 'Pressed' : 'Released'} at ` +
               `X ${touch.x}, Y ${touch.y}`;
-          } else if (session.handshakeComplete && this.deck) {
+          } else if (session.handshakeComplete && this.deckRuntime) {
             // layout-ack, image-ack, page, press, and error replies belong
             // to the deck sync engine after the handshake.
-            this.deck.handleDeviceMessage(session, message);
+            this.deckRuntime.handleDeviceMessage(session, message);
           } else if (message.type === 'error') {
             this.appendLog(`Device error: ${message.code || 'unknown'}`);
           }
@@ -986,7 +1126,7 @@ class DeviceController {
           }
 
           if (session.handshakeComplete) {
-            this.deck?.detachSession(session);
+            this.deckRuntime?.detachSession(session);
             this.updateDeviceStatusSummary();
           }
         }
@@ -1044,7 +1184,7 @@ class DeviceController {
     this.sessions.delete(port);
 
     if (session.handshakeComplete) {
-      this.deck?.detachSession(session);
+      this.deckRuntime?.detachSession(session);
     }
 
     try {
@@ -1076,4 +1216,5 @@ class DeviceController {
 module.exports = {
   DeviceController,
   errorMessage,
+  runFlashWithFallback,
 };

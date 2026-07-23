@@ -1,0 +1,178 @@
+{
+  "stream32Plugin": 1,
+  "id": "discord",
+  "name": "Discord",
+  "version": "1.0.0",
+  "description": "Voice and call controls using Discord desktop keyboard shortcuts.",
+  "actions": [
+    {
+      "id": "toggle-mute",
+      "name": "Toggle mute / unmute",
+      "description": "Toggle your microphone in the Discord desktop app, including while Discord is in the background.",
+      "category": "Voice Chat",
+      "icon": "mic_off",
+      "keywords": ["microphone", "audio", "voice", "mute", "unmute"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "M",
+          "ctrl": true,
+          "shift": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "M",
+          "meta": true,
+          "shift": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "M",
+          "ctrl": true,
+          "shift": true
+        }
+      },
+      "appearance": {
+        "label": "Discord Mic",
+        "icon": "mic_off",
+        "color": "#5865f2",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-deafen",
+      "name": "Toggle deafen / undeafen",
+      "description": "Toggle all Discord call audio and your microphone.",
+      "category": "Voice Chat",
+      "icon": "hearing_disabled",
+      "keywords": ["audio", "voice", "deafen", "undeafen", "mute"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "D",
+          "ctrl": true,
+          "shift": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "D",
+          "meta": true,
+          "shift": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "D",
+          "ctrl": true,
+          "shift": true
+        }
+      },
+      "appearance": {
+        "label": "Deafen",
+        "icon": "hearing_disabled",
+        "color": "#5865f2",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "return-to-call",
+      "name": "Return to active call",
+      "description": "Bring the active Discord call into view.",
+      "category": "Voice Chat",
+      "icon": "call",
+      "keywords": ["call", "voice", "return", "focus"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "V",
+          "ctrl": true,
+          "shift": true,
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "V",
+          "meta": true,
+          "shift": true,
+          "alt": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "V",
+          "ctrl": true,
+          "shift": true,
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "Active Call",
+        "icon": "call",
+        "color": "#5865f2",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "answer-call",
+      "name": "Answer incoming call",
+      "description": "Answer a ringing Discord call.",
+      "category": "Voice Chat",
+      "icon": "call",
+      "keywords": ["answer", "accept", "incoming", "call"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "Enter",
+          "ctrl": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "Enter",
+          "meta": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "Enter",
+          "ctrl": true
+        }
+      },
+      "appearance": {
+        "label": "Answer",
+        "icon": "call",
+        "color": "#248046",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "decline-call",
+      "name": "Decline incoming call",
+      "description": "Decline a ringing call when Discord is focused.",
+      "category": "Voice Chat",
+      "icon": "call_end",
+      "keywords": ["decline", "reject", "incoming", "call"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "Escape"
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "Escape"
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "Escape"
+        }
+      },
+      "appearance": {
+        "label": "Decline",
+        "icon": "call_end",
+        "color": "#da373c",
+        "labelColor": "#ffffff"
+      }
+    }
+  ]
+}

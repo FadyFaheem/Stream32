@@ -1,0 +1,67 @@
+{
+  "stream32Plugin": 1,
+  "id": "curated-web-search",
+  "name": "Web Search",
+  "version": "1.0.0",
+  "description": "Open an HTTPS web search for configurable text.",
+  "actions": [
+    {
+      "id": "search",
+      "name": "Search the web",
+      "description": "Open DuckDuckGo with the configured search text.",
+      "category": "Web",
+      "icon": "search",
+      "keywords": [
+        "browser",
+        "duckduckgo",
+        "find",
+        "query"
+      ],
+      "fields": [
+        {
+          "id": "query",
+          "type": "text",
+          "label": "Search text",
+          "required": true,
+          "maxLength": 160,
+          "placeholder": "ESP32 Stream Deck"
+        }
+      ],
+      "platforms": {
+        "win32": {
+          "type": "url",
+          "url": "https://duckduckgo.com/",
+          "query": {
+            "q": {
+              "setting": "query"
+            }
+          }
+        },
+        "darwin": {
+          "type": "url",
+          "url": "https://duckduckgo.com/",
+          "query": {
+            "q": {
+              "setting": "query"
+            }
+          }
+        },
+        "linux": {
+          "type": "url",
+          "url": "https://duckduckgo.com/",
+          "query": {
+            "q": {
+              "setting": "query"
+            }
+          }
+        }
+      },
+      "appearance": {
+        "label": "Search",
+        "icon": "search",
+        "color": "#172630",
+        "labelColor": "#f3f7f9"
+      }
+    }
+  ]
+}

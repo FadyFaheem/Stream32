@@ -1,0 +1,238 @@
+{
+  "stream32Plugin": 1,
+  "id": "zoom",
+  "name": "Zoom",
+  "version": "1.0.0",
+  "description": "Meeting controls using Zoom Workplace desktop keyboard shortcuts.",
+  "actions": [
+    {
+      "id": "toggle-mute",
+      "name": "Toggle mute / unmute",
+      "description": "Toggle your microphone. Enable this shortcut globally in Zoom to use it while another app is focused.",
+      "category": "Meetings",
+      "icon": "mic_off",
+      "keywords": ["microphone", "audio", "mute", "unmute"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "A",
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "A",
+          "meta": true,
+          "shift": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "A",
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "Zoom Mic",
+        "icon": "mic_off",
+        "color": "#2d8cff",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-camera",
+      "name": "Toggle camera",
+      "description": "Start or stop your camera. Enable this shortcut globally in Zoom to use it while another app is focused.",
+      "category": "Meetings",
+      "icon": "videocam",
+      "keywords": ["camera", "video"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "V",
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "V",
+          "meta": true,
+          "shift": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "V",
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "Camera",
+        "icon": "videocam",
+        "color": "#2d8cff",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "share-screen",
+      "name": "Open or stop screen sharing",
+      "description": "Open the share-screen window or stop sharing. On Windows and Linux, the meeting controls must be focused.",
+      "category": "Meetings",
+      "icon": "present_to_all",
+      "keywords": ["screen", "share", "present"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "S",
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "S",
+          "meta": true,
+          "shift": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "S",
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "Share",
+        "icon": "present_to_all",
+        "color": "#2d8cff",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-hand",
+      "name": "Raise / lower hand",
+      "description": "Toggle your raised hand in the current Zoom meeting.",
+      "category": "Meetings",
+      "icon": "front_hand",
+      "keywords": ["hand", "raise", "lower"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "Y",
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "Y",
+          "alt": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "Y",
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "Raise Hand",
+        "icon": "front_hand",
+        "color": "#2d8cff",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-participants",
+      "name": "Show / hide participants",
+      "description": "Show or hide the participants panel in the current meeting.",
+      "category": "Meetings",
+      "icon": "groups",
+      "keywords": ["participants", "people", "panel"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "U",
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "U",
+          "meta": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "U",
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "People",
+        "icon": "groups",
+        "color": "#2d8cff",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-chat",
+      "name": "Show / hide meeting chat",
+      "description": "Show or hide the in-meeting chat panel.",
+      "category": "Meetings",
+      "icon": "chat",
+      "keywords": ["chat", "message", "panel"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "H",
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "H",
+          "meta": true,
+          "shift": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "H",
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "Chat",
+        "icon": "chat",
+        "color": "#2d8cff",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-recording",
+      "name": "Start / stop local recording",
+      "description": "Start or stop a local meeting recording when your role and Zoom settings permit it.",
+      "category": "Meetings",
+      "icon": "fiber_manual_record",
+      "keywords": ["record", "recording", "local"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "R",
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "R",
+          "meta": true,
+          "shift": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "R",
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "Record",
+        "icon": "fiber_manual_record",
+        "color": "#c43e3e",
+        "labelColor": "#ffffff"
+      }
+    }
+  ]
+}

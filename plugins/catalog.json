@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "plugins": [
+    {
+      "manifest": "manifests/curated-web-search-1.0.0.json",
+      "minimumDesktopVersion": "0.8.2"
+    }
+  ]
+}

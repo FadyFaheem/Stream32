@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "esp_err.h"
 #include "lvgl.h"
 
 #define BSP_LCD_H_RES (1024)
@@ -46,6 +47,16 @@ const char *bsp_display_status(void);
 bool bsp_display_lock(uint32_t timeout_ms);
 
 void bsp_display_unlock(void);
+
+/**
+ * @brief Enable or disable panel output and backlight without stopping touch.
+ */
+esp_err_t bsp_display_set_awake(bool awake);
+
+/**
+ * @brief Set and remember the backlight brightness from 0 to 100 percent.
+ */
+esp_err_t bsp_display_set_brightness(uint32_t brightness_percent);
 
 #ifdef __cplusplus
 }

@@ -123,6 +123,79 @@
               </div>
             </div>
 
+            <div class="deck-profilebar">
+              <span class="field-label">Profiles</span>
+              <div
+                id="deck-profile-tabs"
+                class="deck-profile-tabs"
+                role="tablist"
+                aria-label="Device profiles"
+              ></div>
+              <div class="deck-profile-actions" aria-label="Profile actions">
+                <button id="deck-profile-create" class="button button-quiet" type="button">
+                  + Profile
+                </button>
+                <button id="deck-profile-duplicate" class="button button-quiet" type="button">
+                  Duplicate
+                </button>
+                <button id="deck-profile-rename" class="button button-quiet" type="button">
+                  Rename
+                </button>
+                <button id="deck-profile-delete" class="button button-quiet" type="button">
+                  Delete
+                </button>
+              </div>
+            </div>
+
+            <div class="deck-profile-rulebar">
+              <button
+                id="deck-profile-default"
+                class="button button-secondary"
+                type="button"
+              >
+                Make default
+              </button>
+              <div class="deck-profile-match-field">
+                <label for="deck-profile-match">App match on this computer</label>
+                <input
+                  id="deck-profile-match"
+                  type="text"
+                  maxlength="260"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+              </div>
+              <div class="deck-profile-match-actions">
+                <button
+                  id="deck-profile-match-focused"
+                  class="button button-secondary"
+                  type="button"
+                >
+                  Use focused app
+                </button>
+                <button
+                  id="deck-profile-match-save"
+                  class="button button-quiet"
+                  type="button"
+                >
+                  Save match
+                </button>
+                <button
+                  id="deck-profile-match-clear"
+                  class="button button-quiet"
+                  type="button"
+                >
+                  Clear
+                </button>
+              </div>
+              <p
+                id="deck-profile-match-status"
+                class="helper deck-profile-match-status"
+                data-state="idle"
+                aria-live="polite"
+              ></p>
+            </div>
+
             <div class="deck-pagebar">
               <div class="deck-pages">
                 <div id="deck-page-tabs" role="tablist" aria-label="Deck pages"></div>
@@ -161,6 +234,15 @@
               <div class="deck-key-editor-head">
                 <p id="deck-key-title" class="field-label"></p>
                 <div class="deck-key-actions">
+                  <button id="deck-key-copy" class="button button-quiet" type="button">
+                    Copy
+                  </button>
+                  <button id="deck-key-cut" class="button button-quiet" type="button">
+                    Cut
+                  </button>
+                  <button id="deck-key-paste" class="button button-quiet" type="button">
+                    Paste
+                  </button>
                   <button id="deck-key-test" class="button button-secondary" type="button">
                     Test action
                   </button>
@@ -202,6 +284,50 @@
                     </button>
                   </div>
                 </div>
+                <fieldset class="deck-field deck-live-state">
+                  <legend>Live state</legend>
+                  <label>
+                    Provider
+                    <select id="deck-live-provider">
+                      <option value="">None</option>
+                      <option value="toggle">Local toggle</option>
+                      <option value="clock">Clock</option>
+                      <option value="focused-app">Focused app</option>
+                    </select>
+                  </label>
+                  <p class="helper">
+                    Toggle status is local to Stream32 and does not report remote app truth.
+                  </p>
+                  <div id="deck-live-toggle-fields">
+                    <label>
+                      On label
+                      <input id="deck-live-on-label" type="text" maxlength="32">
+                    </label>
+                    <label class="deck-color-field">
+                      On key color
+                      <input id="deck-live-on-color" type="color" value="#2f8f5b">
+                    </label>
+                    <label class="deck-color-field">
+                      On text color
+                      <input id="deck-live-on-label-color" type="color" value="#ffffff">
+                    </label>
+                    <div class="deck-image-row">
+                      <label for="deck-live-on-image">On image</label>
+                      <input id="deck-live-on-image" type="file" accept="image/*">
+                      <button id="deck-live-on-image-clear" class="button button-quiet" type="button">
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                  <label id="deck-live-clock-field">
+                    Clock format
+                    <select id="deck-live-clock-format">
+                      <option value="24">24-hour</option>
+                      <option value="12">12-hour</option>
+                    </select>
+                  </label>
+                  <p id="deck-live-status" class="helper" aria-live="polite"></p>
+                </fieldset>
                 <div class="deck-field deck-action-field">
                   <span class="field-label">Action</span>
                   <div class="deck-action-summary">
@@ -361,7 +487,17 @@
                 <strong id="confirmation-board">
                   the selected board and revision
                 </strong>.
-                Flashing erases its current contents.
+                Normal flashing replaces firmware sectors and preserves the
+                saved deck partition.
+              </span>
+            </label>
+
+            <label class="confirmation full-erase" for="full-erase">
+              <input id="full-erase" type="checkbox">
+              <span>
+                <strong>Full erase (slow troubleshooting)</strong><br>
+                Erases the entire flash chip, including all saved layouts and
+                artwork. Leave this off for normal firmware updates.
               </span>
             </label>
 
@@ -421,6 +557,58 @@
         </section>
 
         <section id="view-settings" class="view" aria-label="Settings" hidden>
+          <details class="card settings-card plugin-manager-card" open>
+            <summary class="card-summary">
+              <h2>Action plugins</h2>
+            </summary>
+            <div class="card-body">
+              <div class="plugin-manager-heading">
+                <div>
+                  <p class="field-label">Curated JSON plugins</p>
+                  <p class="helper">
+                    Install reviewed declarative manifests. Plugins cannot run
+                    JavaScript, native code, commands, or shell operations.
+                  </p>
+                </div>
+                <button
+                  id="plugin-catalog-refresh"
+                  class="button button-secondary"
+                  type="button"
+                >
+                  Refresh
+                </button>
+              </div>
+              <p
+                id="plugin-catalog-status"
+                class="helper plugin-catalog-status"
+                aria-live="polite"
+              >
+                Loading curated plugins…
+              </p>
+              <div id="plugin-catalog-list" class="plugin-catalog-list"></div>
+
+              <div class="plugin-built-in-section">
+                <p class="field-label">Built into Stream32</p>
+                <div id="plugin-built-in-list" class="plugin-built-in-list"></div>
+              </div>
+
+              <div class="plugin-manual-section">
+                <p class="field-label">Manual manifests</p>
+                <p id="plugin-manual-instructions" class="helper">
+                  You can also copy a trusted JSON manifest into your user
+                  plugin directory, then reload.
+                </p>
+                <button
+                  id="plugin-manual-reload"
+                  class="button button-quiet"
+                  type="button"
+                >
+                  Reload manual plugins
+                </button>
+              </div>
+            </div>
+          </details>
+
           <details class="card settings-card" open>
             <summary class="card-summary">
               <h2 id="settings-title">Desktop settings</h2>
@@ -441,6 +629,56 @@
               >
             </div>
 
+            <div class="setting">
+              <div>
+                <label for="display-brightness">Display brightness</label>
+                <p>Applied to decks that advertise brightness control.</p>
+              </div>
+              <div class="setting-value">
+                <input
+                  id="display-brightness"
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="100"
+                  aria-describedby="display-brightness-unit"
+                  disabled
+                >
+                <span id="display-brightness-unit" aria-hidden="true">%</span>
+              </div>
+            </div>
+
+            <div class="setting">
+              <div>
+                <label for="display-idle-timeout">Display idle timeout</label>
+                <p>Turn deck displays off after no touch activity.</p>
+              </div>
+              <select id="display-idle-timeout" disabled>
+                <option value="1">1 minute</option>
+                <option value="5">5 minutes</option>
+                <option value="10" selected>10 minutes</option>
+                <option value="15">15 minutes</option>
+                <option value="30">30 minutes</option>
+                <option value="60">1 hour</option>
+              </select>
+            </div>
+
+            <div class="setting">
+              <div>
+                <label for="sleep-when-locked">Sleep displays when computer locks</label>
+                <p>Wake them after unlock; touch remains available for idle wake.</p>
+              </div>
+              <input
+                id="sleep-when-locked"
+                class="switch"
+                type="checkbox"
+                role="switch"
+                checked
+                disabled
+              >
+            </div>
+
             <div class="update-row" aria-live="polite">
               <span class="status-dot" aria-hidden="true"></span>
               <p id="update-status">Preparing Stream32…</p>
@@ -452,6 +690,45 @@
                 Check now
               </button>
             </div>
+
+            <div class="setting">
+              <div>
+                <span class="field-label">Backup and restore</span>
+                <p>
+                  Save or replace settings, all decks, artwork, and user plugins.
+                </p>
+              </div>
+              <div class="settings-actions">
+                <button id="backup-export" class="button button-secondary" type="button">
+                  Export backup
+                </button>
+                <button id="backup-restore" class="button button-quiet" type="button">
+                  Restore backup
+                </button>
+              </div>
+            </div>
+
+            <div class="setting">
+              <div>
+                <span class="field-label">Diagnostics</span>
+                <p>
+                  View persistent logs or export a redacted system summary.
+                </p>
+              </div>
+              <div class="settings-actions">
+                <button id="logs-open" class="button button-secondary" type="button">
+                  Open logs
+                </button>
+                <button id="diagnostics-export" class="button button-quiet" type="button">
+                  Export diagnostics
+                </button>
+              </div>
+            </div>
+            <p
+              id="data-tools-status"
+              class="helper settings-tools-status"
+              aria-live="polite"
+            ></p>
             </div>
           </details>
         </section>

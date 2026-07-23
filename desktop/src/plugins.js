@@ -42,6 +42,7 @@ function publicPlugin(plugin, platform) {
     name: plugin.name,
     version: plugin.version,
     description: plugin.description,
+    source: plugin.source,
     actions: plugin.actions.map((action) => ({
       id: action.id,
       name: action.name,
@@ -58,6 +59,7 @@ function publicPlugin(plugin, platform) {
 
 function createPluginService({
   bundledDirectory,
+  onEvent = () => {},
   userDirectory,
   platform = process.platform,
 } = {}) {
@@ -96,6 +98,12 @@ function createPluginService({
             );
           }
 
+          Object.defineProperty(plugin, 'source', {
+            configurable: false,
+            enumerable: false,
+            value: source,
+            writable: false,
+          });
           nextRegistry.set(plugin.id, plugin);
         } catch (error) {
           nextErrors.push({
@@ -108,6 +116,10 @@ function createPluginService({
 
     registry = nextRegistry;
     errors = nextErrors;
+    onEvent('loaded', {
+      errors: errors.length,
+      plugins: registry.size,
+    });
     return list();
   }
 
@@ -139,6 +151,10 @@ function createPluginService({
     }
 
     const settings = normalizeSettings(definition, reference.settings);
+    onEvent('resolved', {
+      pluginId: plugin.id,
+      version: plugin.version,
+    });
     return resolveExecution(definition, platform, settings);
   }
 
@@ -150,5 +166,6 @@ module.exports = {
   MAX_PLUGIN_BYTES,
   MAX_PLUGINS,
   createPluginService,
+  pluginFiles,
   readManifest,
 };

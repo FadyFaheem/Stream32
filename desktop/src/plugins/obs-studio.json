@@ -1,0 +1,405 @@
+{
+  "stream32Plugin": 1,
+  "id": "obs-studio",
+  "name": "OBS Studio Hotkeys",
+  "version": "1.0.0",
+  "description": "Configurable hotkeys for common OBS Studio controls.",
+  "actions": [
+    {
+      "id": "toggle-streaming",
+      "name": "Start / stop streaming hotkey",
+      "description": "Send a configurable chord. Assign the same chord to Start Streaming and Stop Streaming in OBS Settings > Hotkeys.",
+      "category": "Streaming",
+      "icon": "live_tv",
+      "keywords": ["obs", "stream", "streaming", "live"],
+      "fields": [
+        {
+          "id": "key",
+          "type": "select",
+          "label": "Key",
+          "options": [
+            { "value": "F1", "label": "F1" },
+            { "value": "F2", "label": "F2" },
+            { "value": "F3", "label": "F3" },
+            { "value": "F4", "label": "F4" },
+            { "value": "F5", "label": "F5" },
+            { "value": "F6", "label": "F6" },
+            { "value": "F7", "label": "F7" },
+            { "value": "F8", "label": "F8" },
+            { "value": "F9", "label": "F9" },
+            { "value": "F10", "label": "F10" },
+            { "value": "F11", "label": "F11" },
+            { "value": "F12", "label": "F12" }
+          ],
+          "default": "F8"
+        },
+        { "id": "ctrl", "type": "toggle", "label": "Control" },
+        { "id": "shift", "type": "toggle", "label": "Shift" },
+        { "id": "alt", "type": "toggle", "label": "Alt / Option" },
+        { "id": "meta", "type": "toggle", "label": "Windows / Command" }
+      ],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        }
+      },
+      "appearance": {
+        "label": "Stream",
+        "icon": "live_tv",
+        "color": "#302e45",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-recording",
+      "name": "Start / stop recording hotkey",
+      "description": "Send a configurable chord. Assign the same chord to Start Recording and Stop Recording in OBS Settings > Hotkeys.",
+      "category": "Streaming",
+      "icon": "fiber_manual_record",
+      "keywords": ["obs", "record", "recording"],
+      "fields": [
+        {
+          "id": "key",
+          "type": "select",
+          "label": "Key",
+          "options": [
+            { "value": "F1", "label": "F1" },
+            { "value": "F2", "label": "F2" },
+            { "value": "F3", "label": "F3" },
+            { "value": "F4", "label": "F4" },
+            { "value": "F5", "label": "F5" },
+            { "value": "F6", "label": "F6" },
+            { "value": "F7", "label": "F7" },
+            { "value": "F8", "label": "F8" },
+            { "value": "F9", "label": "F9" },
+            { "value": "F10", "label": "F10" },
+            { "value": "F11", "label": "F11" },
+            { "value": "F12", "label": "F12" }
+          ],
+          "default": "F9"
+        },
+        { "id": "ctrl", "type": "toggle", "label": "Control" },
+        { "id": "shift", "type": "toggle", "label": "Shift" },
+        { "id": "alt", "type": "toggle", "label": "Alt / Option" },
+        { "id": "meta", "type": "toggle", "label": "Windows / Command" }
+      ],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        }
+      },
+      "appearance": {
+        "label": "Record",
+        "icon": "fiber_manual_record",
+        "color": "#8b2323",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-recording-pause",
+      "name": "Pause / resume recording hotkey",
+      "description": "Send a configurable chord. Assign the same chord to Pause Recording and Unpause Recording in OBS Settings > Hotkeys.",
+      "category": "Streaming",
+      "icon": "pause",
+      "keywords": ["obs", "record", "pause", "resume"],
+      "fields": [
+        {
+          "id": "key",
+          "type": "select",
+          "label": "Key",
+          "options": [
+            { "value": "F1", "label": "F1" },
+            { "value": "F2", "label": "F2" },
+            { "value": "F3", "label": "F3" },
+            { "value": "F4", "label": "F4" },
+            { "value": "F5", "label": "F5" },
+            { "value": "F6", "label": "F6" },
+            { "value": "F7", "label": "F7" },
+            { "value": "F8", "label": "F8" },
+            { "value": "F9", "label": "F9" },
+            { "value": "F10", "label": "F10" },
+            { "value": "F11", "label": "F11" },
+            { "value": "F12", "label": "F12" }
+          ],
+          "default": "F10"
+        },
+        { "id": "ctrl", "type": "toggle", "label": "Control" },
+        { "id": "shift", "type": "toggle", "label": "Shift" },
+        { "id": "alt", "type": "toggle", "label": "Alt / Option" },
+        { "id": "meta", "type": "toggle", "label": "Windows / Command" }
+      ],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        }
+      },
+      "appearance": {
+        "label": "Pause Rec",
+        "icon": "pause",
+        "color": "#705b22",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "save-replay-buffer",
+      "name": "Save replay buffer hotkey",
+      "description": "Send a configurable chord. Assign it to Save Replay in OBS Settings > Hotkeys after enabling the replay buffer.",
+      "category": "Streaming",
+      "icon": "replay",
+      "keywords": ["obs", "replay", "buffer", "save"],
+      "fields": [
+        {
+          "id": "key",
+          "type": "select",
+          "label": "Key",
+          "options": [
+            { "value": "F1", "label": "F1" },
+            { "value": "F2", "label": "F2" },
+            { "value": "F3", "label": "F3" },
+            { "value": "F4", "label": "F4" },
+            { "value": "F5", "label": "F5" },
+            { "value": "F6", "label": "F6" },
+            { "value": "F7", "label": "F7" },
+            { "value": "F8", "label": "F8" },
+            { "value": "F9", "label": "F9" },
+            { "value": "F10", "label": "F10" },
+            { "value": "F11", "label": "F11" },
+            { "value": "F12", "label": "F12" }
+          ],
+          "default": "F11"
+        },
+        { "id": "ctrl", "type": "toggle", "label": "Control" },
+        { "id": "shift", "type": "toggle", "label": "Shift" },
+        { "id": "alt", "type": "toggle", "label": "Alt / Option" },
+        { "id": "meta", "type": "toggle", "label": "Windows / Command" }
+      ],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        }
+      },
+      "appearance": {
+        "label": "Save Replay",
+        "icon": "replay",
+        "color": "#302e45",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-microphone",
+      "name": "Mute / unmute source hotkey",
+      "description": "Send a configurable chord. Assign the same chord to Mute and Unmute for the desired audio source in OBS Settings > Hotkeys.",
+      "category": "Streaming",
+      "icon": "mic_off",
+      "keywords": ["obs", "microphone", "source", "mute", "unmute"],
+      "fields": [
+        {
+          "id": "key",
+          "type": "select",
+          "label": "Key",
+          "options": [
+            { "value": "F1", "label": "F1" },
+            { "value": "F2", "label": "F2" },
+            { "value": "F3", "label": "F3" },
+            { "value": "F4", "label": "F4" },
+            { "value": "F5", "label": "F5" },
+            { "value": "F6", "label": "F6" },
+            { "value": "F7", "label": "F7" },
+            { "value": "F8", "label": "F8" },
+            { "value": "F9", "label": "F9" },
+            { "value": "F10", "label": "F10" },
+            { "value": "F11", "label": "F11" },
+            { "value": "F12", "label": "F12" }
+          ],
+          "default": "F12"
+        },
+        { "id": "ctrl", "type": "toggle", "label": "Control" },
+        { "id": "shift", "type": "toggle", "label": "Shift" },
+        { "id": "alt", "type": "toggle", "label": "Alt / Option" },
+        { "id": "meta", "type": "toggle", "label": "Windows / Command" }
+      ],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        }
+      },
+      "appearance": {
+        "label": "OBS Mic",
+        "icon": "mic_off",
+        "color": "#302e45",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "switch-scene",
+      "name": "Switch scene hotkey",
+      "description": "Send a configurable chord. Assign it to the target scene in OBS Settings > Hotkeys.",
+      "category": "Streaming",
+      "icon": "movie",
+      "keywords": ["obs", "scene", "switch"],
+      "fields": [
+        {
+          "id": "key",
+          "type": "select",
+          "label": "Key",
+          "options": [
+            { "value": "F1", "label": "F1" },
+            { "value": "F2", "label": "F2" },
+            { "value": "F3", "label": "F3" },
+            { "value": "F4", "label": "F4" },
+            { "value": "F5", "label": "F5" },
+            { "value": "F6", "label": "F6" },
+            { "value": "F7", "label": "F7" },
+            { "value": "F8", "label": "F8" },
+            { "value": "F9", "label": "F9" },
+            { "value": "F10", "label": "F10" },
+            { "value": "F11", "label": "F11" },
+            { "value": "F12", "label": "F12" }
+          ],
+          "default": "F7"
+        },
+        { "id": "ctrl", "type": "toggle", "label": "Control" },
+        { "id": "shift", "type": "toggle", "label": "Shift" },
+        { "id": "alt", "type": "toggle", "label": "Alt / Option" },
+        { "id": "meta", "type": "toggle", "label": "Windows / Command" }
+      ],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": { "setting": "key" },
+          "ctrl": { "setting": "ctrl" },
+          "shift": { "setting": "shift" },
+          "alt": { "setting": "alt" },
+          "meta": { "setting": "meta" }
+        }
+      },
+      "appearance": {
+        "label": "Scene",
+        "icon": "movie",
+        "color": "#302e45",
+        "labelColor": "#ffffff"
+      }
+    }
+  ]
+}

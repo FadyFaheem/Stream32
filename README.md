@@ -53,10 +53,13 @@ an installer for your current platform locally, run `npm run dist`.
 
 Deck actions can come from built-in controls or declarative JSON plugins.
 Plugins add searchable actions and generated fields without running
-third-party code in Electron or changing ESP32 firmware. See
+third-party code in Electron or changing ESP32 firmware. Settings includes a
+curated install/update/remove catalog backed by the rolling, non-latest
+`plugins-current` GitHub Release; downloaded manifests are size/hash checked
+and validated before an atomic install. See
 [`desktop/PLUGINS.md`](./desktop/PLUGINS.md) for the manifest format,
-installation, supported capabilities, and the bundled Microsoft Teams
-controls.
+manual and curated installation, publishing, supported capabilities, and
+bundled controls.
 
 ### Board firmware and flashing
 
@@ -72,6 +75,16 @@ product are not interchangeable), and the 10.1-inch, 1024×600 Elecrow
 `CrowPanel Advanced` ESP32-P4 HMI (hardware revisions 1.0–1.2). See
 [`boards/README.md`](./boards/README.md) for firmware builds, profile
 publishing, the USB protocol, and BOOT-mode recovery.
+
+CrowPanel flashing recognizes the observed `USB-SERIAL CH340K`
+`1a86:7522` bridge, prefers 921600 baud, and automatically restarts once at
+460800 if that link is unstable. Normal writes preserve saved decks; the
+advanced full-erase checkbox is intentionally destructive. The display needs
+both UART0 data and USB 2.0 power (roughly 8–10 W), plus a reliable data cable
+and current WCH driver. Deck sync remains at the compatible 115200 runtime
+baud, but feature-gated RGB565 RLE greatly reduces flat/icon artwork transfers;
+photographic or noisy images fall back to raw bytes when compression is not
+smaller.
 
 ### Publishing a desktop release
 

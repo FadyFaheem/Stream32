@@ -337,6 +337,12 @@ function validateBoard(board, appVersion) {
     1,
     255,
   );
+  const preferredFlashBaud = requireInteger(
+    board.preferredFlashBaud ?? 460800,
+    `${id} preferredFlashBaud`,
+    115200,
+    2000000,
+  );
 
   return {
     id,
@@ -350,6 +356,7 @@ function validateBoard(board, appVersion) {
     chip,
     protocolVersion,
     minimumDesktopVersion,
+    preferredFlashBaud,
     compatible:
       chipSupport !== null &&
       deckSupported &&
@@ -519,6 +526,7 @@ function publicBoard(board) {
     protocolVersion: board.protocolVersion,
     minimumDesktopVersion: board.minimumDesktopVersion,
     compatible: board.compatible,
+    preferredFlashBaud: board.preferredFlashBaud,
     usbFilters: board.usbFilters,
     capabilities: board.capabilities,
     deck: board.deck,

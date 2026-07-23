@@ -248,6 +248,25 @@ test('matches remembered devices by stable serial identity', () => {
   );
 });
 
+test('matches the CrowPanel CH340K observed on COM6', () => {
+  const remembered = serialDeviceIdentity({
+    displayName: 'USB-SERIAL CH340K',
+    portName: 'COM6',
+    productId: '29986',
+    vendorId: '6790',
+  });
+
+  assert.equal(
+    serialDeviceMatches(remembered, {
+      name: 'USB-SERIAL CH340K',
+      portName: 'COM6',
+      product_id: 0x7522,
+      vendor_id: 0x1a86,
+    }),
+    true,
+  );
+});
+
 test('supports serial ports without USB VID/PID metadata', () => {
   const remembered = serialDeviceIdentity({ portName: 'COM8' });
 

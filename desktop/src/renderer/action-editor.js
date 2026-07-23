@@ -1,13 +1,14 @@
-const { canonicalKeyFromCode } = require('../keymap');
-
-const MEDIA_OPTIONS = [
-  ['play-pause', 'Play / Pause'],
-  ['previous', 'Previous track'],
-  ['next', 'Next track'],
-  ['mute', 'Mute'],
-  ['volume-down', 'Volume down'],
-  ['volume-up', 'Volume up'],
-];
+const {
+  MAX_DELAY_MS,
+  MAX_MULTI_STEPS,
+} = require('../action-model');
+const { validateAction } = require('../deck-model');
+const {
+  buildLeafAction,
+  newActionForDefinition,
+  pluginDraftError,
+  renderActionFields,
+} = require('./action-fields');
 
 const CORE_ACTIONS = [
   {
@@ -31,6 +32,38 @@ const CORE_ACTIONS = [
     keywords: ['hotkey', 'keys', 'shortcut'],
     available: true,
     coreType: 'hotkey',
+  },
+  {
+    key: 'core:text',
+    source: 'Stream32',
+    category: 'System',
+    name: 'Type Text',
+    description: 'Type bounded text into the focused application.',
+    icon: 'keyboard',
+    keywords: ['type', 'text', 'paste', 'input'],
+    available: true,
+    coreType: 'text',
+    appearance: {
+      label: 'Type',
+      icon: 'keyboard',
+      color: '#38556b',
+    },
+  },
+  {
+    key: 'core:mouse',
+    source: 'Stream32',
+    category: 'System',
+    name: 'Mouse',
+    description: 'Click, move, or scroll the system pointer.',
+    icon: 'mouse',
+    keywords: ['click', 'pointer', 'move', 'scroll'],
+    available: true,
+    coreType: 'mouse',
+    appearance: {
+      label: 'Mouse',
+      icon: 'mouse',
+      color: '#4c496d',
+    },
   },
   {
     key: 'core:url',
@@ -64,6 +97,22 @@ const CORE_ACTIONS = [
     keywords: ['navigation', 'page', 'switch'],
     available: true,
     coreType: 'page',
+  },
+  {
+    key: 'core:multi',
+    source: 'Stream32',
+    category: 'Deck',
+    name: 'Multi Action',
+    description: 'Run an ordered sequence of actions and bounded delays.',
+    icon: 'playlist_play',
+    keywords: ['sequence', 'steps', 'delay', 'ordered'],
+    available: true,
+    coreType: 'multi',
+    appearance: {
+      label: 'Multi',
+      icon: 'playlist_play',
+      color: '#34445c',
+    },
   },
 ];
 
@@ -113,17 +162,6 @@ function filterActions(actions, query) {
     .map(({ action }) => action);
 }
 
-function describeHotkey(hotkey) {
-  const parts = [];
-
-  if (hotkey.ctrl) parts.push('Ctrl');
-  if (hotkey.shift) parts.push('Shift');
-  if (hotkey.alt) parts.push('Alt');
-  if (hotkey.meta) parts.push('Win');
-  parts.push(hotkey.key);
-  return parts.join('+');
-}
-
 function pluginActions(catalog) {
   return catalog.plugins.flatMap((plugin) =>
     plugin.actions.map((action) => ({
@@ -135,12 +173,49 @@ function pluginActions(catalog) {
     })));
 }
 
+function multiStepError(step, actions, pages) {
+  const definition = actions.find((entry) => entry.key === actionKey(step));
+  const settingsError = pluginDraftError(step, definition);
+
+  if (settingsError) {
+    return settingsError;
+  }
+
+  try {
+    validateAction({ type: 'multi', steps: [step] }, pages.length);
+    return '';
+  } catch (error) {
+    return error.message.replace(/^Step 1:\s*/, '');
+  }
+}
+
+function multiDraftError(steps, actions, pages) {
+  if (Array.isArray(steps)) {
+    for (const [index, step] of steps.entries()) {
+      const definition = actions.find((entry) => entry.key === actionKey(step));
+      const error = pluginDraftError(step, definition);
+
+      if (error) {
+        return `Step ${index + 1}: ${error}`;
+      }
+    }
+  }
+
+  try {
+    validateAction({ type: 'multi', steps }, pages.length);
+    return '';
+  } catch (error) {
+    return error.message;
+  }
+}
+
 class ActionEditor {
   constructor({ document, onChange, onReload }) {
     this.document = document;
     this.onChange = onChange;
     this.onReload = onReload;
     this.actions = [...CORE_ACTIONS];
+    this.capabilities = {};
     this.action = null;
     this.context = null;
     this.draftKey = null;
@@ -202,6 +277,7 @@ class ActionEditor {
 
   setCatalog(catalog) {
     this.actions = [...CORE_ACTIONS, ...pluginActions(catalog)];
+    this.applyCapabilities();
     const invalid = catalog.errors.length;
     const errorSummary = catalog.errors
       .slice(0, 3)
@@ -214,6 +290,27 @@ class ActionEditor {
       : `Install JSON manifests in ${catalog.userDirectory}`;
     this.renderSummary();
     this.renderConfig();
+  }
+
+  setCapabilities(capabilities) {
+    this.capabilities = capabilities || {};
+    this.applyCapabilities();
+    this.renderSummary();
+    this.renderConfig();
+  }
+
+  applyCapabilities() {
+    this.actions = this.actions.map((definition) => {
+      const capability = this.capabilities[definition.coreType];
+
+      return capability
+        ? {
+            ...definition,
+            available: Boolean(capability.available),
+            limitation: capability.reason || '',
+          }
+        : definition;
+    });
   }
 
   setCatalogError(message) {
@@ -300,7 +397,8 @@ class ActionEditor {
       const description = this.document.createElement('span');
       description.textContent = action.available
         ? action.description
-        : `${action.description} Not supported on this platform.`;
+        : `${action.description} ${action.limitation ||
+            'Not supported on this platform.'}`;
       copy.append(name, description);
 
       const category = this.document.createElement('span');
@@ -314,16 +412,7 @@ class ActionEditor {
 
   choose(definition) {
     this.draftKey = definition.key;
-    this.draft = definition.coreType
-      ? {}
-      : {
-        type: 'plugin',
-        pluginId: definition.pluginId,
-        actionId: definition.actionId,
-        settings: Object.fromEntries(
-          definition.fields.map((field) => [field.id, field.default]),
-        ),
-      };
+    this.draft = newActionForDefinition(definition);
     this.dialog.close();
     this.emit(definition.appearance);
   }
@@ -340,184 +429,246 @@ class ActionEditor {
     this.config.replaceChildren();
     this.message.textContent = '';
 
-    if (!definition) {
-      if (this.action?.type === 'plugin') {
-        this.message.textContent =
-          'This action is kept in the deck, but its plugin is not installed.';
-      }
+    if (definition?.coreType === 'multi') {
+      this.renderMultiConfig();
       return;
     }
 
-    if (!definition.available) {
-      this.message.textContent = 'This action is not supported on this platform.';
-      return;
-    }
-
-    if (definition.coreType) {
-      this.renderCoreConfig(definition.coreType);
-    } else {
-      this.renderPluginConfig(definition);
-    }
+    renderActionFields({
+      action: this.draft,
+      capability: definition?.coreType
+        ? this.capabilities[definition.coreType]
+        : undefined,
+      commit: () => this.emit(),
+      container: this.config,
+      definition,
+      document: this.document,
+      pages: this.pages,
+      reportMessage: (message) => {
+        this.message.textContent = message;
+      },
+    });
   }
 
-  renderCoreConfig(type) {
-    if (type === 'media') {
-      const select = this.document.createElement('select');
+  addMultiStep(step) {
+    this.draft.steps ||= [];
 
-      for (const [value, label] of MEDIA_OPTIONS) {
-        const option = this.document.createElement('option');
-        option.value = value;
-        option.textContent = label;
-        select.append(option);
-      }
-
-      select.value = this.draft.command || 'play-pause';
-      select.addEventListener('change', () => {
-        this.draft.command = select.value;
-        this.emit();
-      });
-      this.config.append(this.makeField('Media command', select));
+    if (this.draft.steps.length >= MAX_MULTI_STEPS) {
       return;
     }
 
-    if (type === 'url' || type === 'launch') {
-      const input = this.document.createElement('input');
-      input.type = type === 'url' ? 'url' : 'text';
-      input.maxLength = type === 'url' ? 2048 : 1024;
-      input.placeholder = type === 'url'
-        ? 'https://example.com'
-        : 'notepad.exe or any command line';
-      input.value = this.draft[type === 'url' ? 'url' : 'command'] || '';
-      input.addEventListener('change', () => {
-        this.draft[type === 'url' ? 'url' : 'command'] = input.value.trim();
-        this.emit();
-      });
-      this.config.append(
-        this.makeField(type === 'url' ? 'Website address' : 'Command', input),
+    this.draft.steps.push(structuredClone(step));
+    this.emit();
+  }
+
+  moveMultiStep(index, offset) {
+    const destination = index + offset;
+
+    if (
+      !Array.isArray(this.draft.steps) ||
+      destination < 0 ||
+      destination >= this.draft.steps.length
+    ) {
+      return;
+    }
+
+    const [step] = this.draft.steps.splice(index, 1);
+    this.draft.steps.splice(destination, 0, step);
+    this.emit();
+  }
+
+  duplicateMultiStep(index) {
+    if (
+      !Array.isArray(this.draft.steps) ||
+      !this.draft.steps[index] ||
+      this.draft.steps.length >= MAX_MULTI_STEPS
+    ) {
+      return;
+    }
+
+    this.draft.steps.splice(
+      index + 1,
+      0,
+      structuredClone(this.draft.steps[index]),
+    );
+    this.emit();
+  }
+
+  removeMultiStep(index) {
+    if (!Array.isArray(this.draft.steps) || !this.draft.steps[index]) {
+      return;
+    }
+
+    this.draft.steps.splice(index, 1);
+    this.emit();
+  }
+
+  makeStepButton(text, label, onClick, disabled = false) {
+    const button = this.document.createElement('button');
+    button.type = 'button';
+    button.className = 'button button-quiet multi-step-button';
+    button.textContent = text;
+    button.setAttribute('aria-label', label);
+    button.disabled = disabled;
+    button.addEventListener('click', onClick);
+    return button;
+  }
+
+  renderMultiConfig() {
+    const steps = Array.isArray(this.draft.steps) ? this.draft.steps : [];
+    const list = this.document.createElement('ol');
+    list.className = 'multi-step-list';
+    list.setAttribute('aria-label', 'Ordered Multi Action steps');
+
+    for (const [index, step] of steps.entries()) {
+      const item = this.document.createElement('li');
+      item.className = 'multi-step';
+      const header = this.document.createElement('div');
+      header.className = 'multi-step-header';
+      const title = this.document.createElement('strong');
+      title.textContent = `Step ${index + 1}`;
+      const controls = this.document.createElement('div');
+      controls.className = 'multi-step-controls';
+      controls.append(
+        this.makeStepButton(
+          '↑',
+          `Move step ${index + 1} up`,
+          () => this.moveMultiStep(index, -1),
+          index === 0,
+        ),
+        this.makeStepButton(
+          '↓',
+          `Move step ${index + 1} down`,
+          () => this.moveMultiStep(index, 1),
+          index === steps.length - 1,
+        ),
+        this.makeStepButton(
+          'Duplicate',
+          `Duplicate step ${index + 1}`,
+          () => this.duplicateMultiStep(index),
+          steps.length >= MAX_MULTI_STEPS,
+        ),
+        this.makeStepButton(
+          'Remove',
+          `Remove step ${index + 1}`,
+          () => this.removeMultiStep(index),
+        ),
       );
-      return;
-    }
+      header.append(title, controls);
+      item.append(header);
 
-    if (type === 'hotkey') {
-      const input = this.document.createElement('input');
-      const windowsKey = this.document.createElement('input');
-      const windowsKeyLabel = this.document.createElement('label');
-      input.type = 'text';
-      input.readOnly = true;
-      input.placeholder = 'Click, then press a key';
-      input.value = this.draft.key ? describeHotkey(this.draft) : '';
-      windowsKey.type = 'checkbox';
-      windowsKey.checked = Boolean(this.draft.meta);
-      windowsKeyLabel.className = 'hotkey-modifier';
-      windowsKeyLabel.append(windowsKey, 'Windows key');
-      input.addEventListener('keydown', (event) => {
-        event.preventDefault();
+      if (step.type === 'delay') {
+        const input = this.document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.max = String(MAX_DELAY_MS);
+        input.step = '100';
+        input.value = String(step.ms);
+        input.addEventListener('change', () => {
+          step.ms = Number(input.value);
+          this.emit();
+        });
+        item.append(this.makeField('Delay (milliseconds)', input));
+      } else {
+        const definitions = this.actions.filter(
+          (definition) => definition.coreType !== 'multi',
+        );
+        const selectedKey = actionKey(step);
+        const definition =
+          definitions.find((entry) => entry.key === selectedKey) || null;
+        const select = this.document.createElement('select');
 
-        if (/^Meta(Left|Right)$/.test(event.code)) {
-          windowsKey.checked = true;
-          this.draft.meta = true;
+        if (!definition) {
+          const missing = this.document.createElement('option');
+          missing.value = selectedKey;
+          missing.textContent =
+            `Missing plugin · ${step.pluginId} / ${step.actionId}`;
+          select.append(missing);
+        }
 
-          if (this.draft.key) {
-            input.value = describeHotkey(this.draft);
+        for (const candidate of definitions) {
+          const option = this.document.createElement('option');
+          option.value = candidate.key;
+          option.textContent = `${candidate.source} · ${candidate.name}`;
+          option.disabled = !candidate.available && candidate.key !== selectedKey;
+          select.append(option);
+        }
+
+        select.value = selectedKey;
+        select.addEventListener('change', () => {
+          const next = definitions.find(
+            (candidate) => candidate.key === select.value,
+          );
+
+          if (next) {
+            this.draft.steps[index] = newActionForDefinition(next);
             this.emit();
           }
+        });
+        item.append(this.makeField('Action', select));
 
-          return;
-        }
-
-        const key = canonicalKeyFromCode(event.code);
-
-        if (!key) {
-          return;
-        }
-
-        this.draft = {
-          key,
-          alt: event.altKey,
-          ctrl: event.ctrlKey,
-          meta: event.metaKey || windowsKey.checked,
-          shift: event.shiftKey,
-        };
-        windowsKey.checked = this.draft.meta;
-        input.value = describeHotkey(this.draft);
-        this.emit();
-      });
-      windowsKey.addEventListener('change', () => {
-        this.draft.meta = windowsKey.checked;
-
-        if (this.draft.key) {
-          input.value = describeHotkey(this.draft);
-          this.emit();
-        }
-      });
-      this.config.append(
-        this.makeField('Keyboard shortcut', input),
-        windowsKeyLabel,
-      );
-      return;
-    }
-
-    const select = this.document.createElement('select');
-
-    for (const [index, page] of this.pages.entries()) {
-      const option = this.document.createElement('option');
-      option.value = String(index);
-      option.textContent = page.name;
-      select.append(option);
-    }
-
-    select.value = String(this.draft.page ?? 0);
-    select.addEventListener('change', () => {
-      this.draft.page = Number(select.value);
-      this.emit();
-    });
-    this.config.append(this.makeField('Target page', select));
-  }
-
-  renderPluginConfig(definition) {
-    for (const field of definition.fields) {
-      let control;
-
-      if (field.type === 'select') {
-        control = this.document.createElement('select');
-
-        for (const optionDefinition of field.options) {
-          const option = this.document.createElement('option');
-          option.value = optionDefinition.value;
-          option.textContent = optionDefinition.label;
-          control.append(option);
-        }
-
-        control.value = this.draft.settings?.[field.id] ?? field.default;
-      } else {
-        control = this.document.createElement('input');
-        control.type = field.type === 'toggle' ? 'checkbox' : 'text';
-
-        if (field.type === 'toggle') {
-          control.className = 'switch';
-          control.checked = this.draft.settings?.[field.id] ?? field.default;
-        } else {
-          control.maxLength = field.maxLength;
-          control.placeholder = field.placeholder || '';
-          control.value = this.draft.settings?.[field.id] ?? field.default;
-        }
+        const fields = this.document.createElement('div');
+        fields.className = 'multi-step-fields';
+        renderActionFields({
+          action: step,
+          capability: definition?.coreType
+            ? this.capabilities[definition.coreType]
+            : undefined,
+          commit: () => this.emit(),
+          container: fields,
+          definition,
+          document: this.document,
+          pages: this.pages,
+          reportMessage: (text) => {
+            const message = this.document.createElement('p');
+            message.className = 'helper';
+            message.textContent = text.replace(
+              'This action is preserved',
+              'This step is preserved',
+            );
+            fields.append(message);
+          },
+          showLimitation: false,
+        });
+        item.append(fields);
       }
 
-      control.addEventListener('change', () => {
-        this.draft.settings[field.id] = field.type === 'toggle'
-          ? control.checked
-          : control.value;
-        this.emit();
-      });
-      this.config.append(this.makeField(field.label, control));
+      const error = multiStepError(step, this.actions, this.pages);
+
+      if (error) {
+        const message = this.document.createElement('p');
+        message.className = 'helper multi-step-error';
+        message.textContent = error;
+        message.setAttribute('role', 'alert');
+        item.append(message);
+      }
+
+      list.append(item);
     }
 
-    if (definition.fields.length === 0) {
-      const ready = this.document.createElement('p');
-      ready.className = 'helper';
-      ready.textContent = 'This action is ready to use.';
-      this.config.append(ready);
-    }
+    const toolbar = this.document.createElement('div');
+    toolbar.className = 'multi-step-toolbar';
+    const full = steps.length >= MAX_MULTI_STEPS;
+    toolbar.append(
+      this.makeStepButton(
+        'Add action',
+        'Add action step',
+        () => this.addMultiStep({ type: 'media', command: 'play-pause' }),
+        full,
+      ),
+      this.makeStepButton(
+        'Add delay',
+        'Add delay step',
+        () => this.addMultiStep({ type: 'delay', ms: 1000 }),
+        full,
+      ),
+    );
+    this.config.append(list, toolbar);
+    this.message.textContent = multiDraftError(
+      steps,
+      this.actions,
+      this.pages,
+    );
   }
 
   buildAction() {
@@ -527,43 +678,13 @@ class ActionEditor {
       return this.action;
     }
 
-    if (!definition.coreType) {
-      const settings = { ...this.draft.settings };
-
-      for (const field of definition.fields) {
-        const value = settings[field.id] ?? field.default;
-
-        if (field.required && field.type === 'text' && !value.trim()) {
-          return null;
-        }
-
-        settings[field.id] = value;
-      }
-
-      return {
-        type: 'plugin',
-        pluginId: definition.pluginId,
-        actionId: definition.actionId,
-        settings,
-      };
+    if (definition.coreType === 'multi') {
+      return multiDraftError(this.draft.steps, this.actions, this.pages)
+        ? null
+        : { type: 'multi', steps: structuredClone(this.draft.steps) };
     }
 
-    switch (definition.coreType) {
-      case 'media':
-        return { type: 'media', command: this.draft.command || 'play-pause' };
-      case 'url':
-        return this.draft.url ? { type: 'url', url: this.draft.url } : null;
-      case 'launch':
-        return this.draft.command
-          ? { type: 'launch', command: this.draft.command }
-          : null;
-      case 'hotkey':
-        return this.draft.key ? { type: 'hotkey', ...this.draft } : null;
-      case 'page':
-        return { type: 'page', page: this.draft.page ?? 0 };
-      default:
-        throw new TypeError(`Unknown core action: ${definition.coreType}`);
-    }
+    return buildLeafAction(this.draft, definition, this.pages?.length ?? 0);
   }
 
   emit(appearance = this.selectedDefinition()?.appearance) {
@@ -578,4 +699,5 @@ module.exports = {
   CORE_ACTIONS,
   actionKey,
   filterActions,
+  multiDraftError,
 };

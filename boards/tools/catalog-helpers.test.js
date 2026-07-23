@@ -1,4 +1,6 @@
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -25,6 +27,36 @@ const elecrow = {
   },
 };
 const profiles = [waveshare, elecrow];
+
+test('CrowPanel profile matches the observed COM6 CH340K bridge', () => {
+  const profile = JSON.parse(
+    readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        'elecrow-crowpanel-advanced-10-1-esp32-p4',
+        'board.json',
+      ),
+      'utf8',
+    ),
+  );
+  const com6 = {
+    displayName: 'USB-SERIAL CH340K',
+    portName: 'COM6',
+    usbProductId: 0x7522,
+    usbVendorId: 0x1a86,
+  };
+
+  assert.equal(
+    profile.usbFilters.some(
+      (filter) =>
+        filter.usbVendorId === com6.usbVendorId &&
+        filter.usbProductId === com6.usbProductId,
+    ),
+    true,
+  );
+  assert.equal(profile.preferredFlashBaud, 921600);
+});
 
 test('selects only the board whose profile or firmware changed', () => {
   assert.deepEqual(

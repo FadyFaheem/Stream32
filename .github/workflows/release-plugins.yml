@@ -1,0 +1,92 @@
+name: Publish Curated Plugins
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "plugins/**"
+      - "desktop/src/plugin-manifest.js"
+      - "desktop/src/action-model.js"
+      - "desktop/src/keymap.js"
+      - "desktop/src/plugins/**"
+      - ".github/workflows/release-plugins.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: publish-curated-plugins
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish curated plugin catalog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      - name: Validate and test plugin catalog
+        run: |
+          node --test plugins/tools/*.test.js
+          node plugins/tools/build-catalog.js --validate-only
+
+      - name: Build catalog and versioned assets
+        run: node plugins/tools/build-catalog.js
+
+      - name: Enforce immutable plugin assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/plugins-current" 2>/dev/null)"; then
+            exit 0
+          fi
+          release_id="$(printf '%s' "$release_json" | jq -r '.id')"
+          assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets")"
+
+          for manifest in plugins/dist/assets/*.json; do
+            asset_name="$(basename "$manifest")"
+            remote_digest="$(printf '%s' "$assets" | jq -r --arg name "$asset_name" '.[] | select(.name == $name) | .digest // empty')"
+            remote_name="$(printf '%s' "$assets" | jq -r --arg name "$asset_name" '.[] | select(.name == $name) | .name')"
+            if [ -z "$remote_name" ]; then
+              continue
+            fi
+            if [ -z "$remote_digest" ]; then
+              echo "::error::Cannot verify existing ${asset_name}; publish a new plugin version."
+              exit 1
+            fi
+            local_digest="sha256:$(sha256sum "$manifest" | cut -d' ' -f1)"
+            if [ "$remote_digest" != "$local_digest" ]; then
+              echo "::error::${asset_name} already exists with different contents. Bump the plugin version."
+              exit 1
+            fi
+          done
+
+      - name: Publish versioned plugin assets
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: plugins-current
+          name: Stream32 Curated Plugins
+          body: >-
+            Rolling catalog of declarative JSON-only Stream32 plugins.
+            Versioned manifests are published before catalog-v1.json.
+          make_latest: false
+          overwrite_files: false
+          fail_on_unmatched_files: true
+          files: plugins/dist/assets/*.json
+
+      - name: Publish catalog last
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: plugins-current
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: plugins/dist/catalog-v1.json

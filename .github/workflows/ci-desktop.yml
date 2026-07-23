@@ -4,16 +4,20 @@ on:
   pull_request:
     paths:
       - "desktop/**"
+      - "plugins/**"
       - "assets/logo.png"
       - ".github/workflows/ci-desktop.yml"
+      - ".github/workflows/release-plugins.yml"
       - ".github/workflows/release-desktop.yml"
   push:
     branches:
       - main
     paths:
       - "desktop/**"
+      - "plugins/**"
       - "assets/logo.png"
       - ".github/workflows/ci-desktop.yml"
+      - ".github/workflows/release-plugins.yml"
       - ".github/workflows/release-desktop.yml"
 
 permissions:
@@ -63,6 +67,11 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Validate curated plugin catalog
+        run: |
+          node --test ../plugins/tools/*.test.js
+          node ../plugins/tools/build-catalog.js --validate-only
 
       - name: Package application
         run: npm run dist -- --${{ matrix.target }} --x64 --publish never

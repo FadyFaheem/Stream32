@@ -3,6 +3,7 @@ const {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } = require('node:fs');
@@ -15,7 +16,7 @@ const {
   validatePluginManifest,
   validatePluginReference,
 } = require('../src/plugin-manifest');
-const { createPluginService } = require('../src/plugins');
+const { createPluginService, readManifest } = require('../src/plugins');
 
 function configurableManifest() {
   return {
@@ -132,6 +133,39 @@ test('rejects executable capabilities and malformed plugin references', () => {
   );
 });
 
+test('allows bounded declarative Type Text but keeps Mouse core-only', () => {
+  const manifest = configurableManifest();
+  manifest.actions[0].platforms.win32 = {
+    type: 'text',
+    text: { setting: 'query' },
+  };
+  const action = validatePluginManifest(manifest).actions[0];
+
+  assert.deepEqual(
+    resolveExecution(action, 'win32', { query: 'Hello 👋\n' }),
+    { type: 'text', text: 'Hello 👋\n' },
+  );
+  assert.throws(
+    () => resolveExecution(action, 'win32', { query: 'bad\u0000text' }),
+    /control character/,
+  );
+
+  manifest.actions[0].platforms.win32 = {
+    type: 'mouse',
+    operation: 'click',
+  };
+  assert.throws(() => validatePluginManifest(manifest), /unknown capability/);
+
+  manifest.actions[0].platforms.win32 = {
+    type: 'text',
+    text: { setting: 'private' },
+  };
+  assert.throws(
+    () => validatePluginManifest(manifest),
+    /incompatible setting/,
+  );
+});
+
 test('loads bundled and user manifests without allowing overrides', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'stream32-plugins-'));
   const bundled = path.join(root, 'bundled');
@@ -202,4 +236,76 @@ test('loads bundled and user manifests without allowing overrides', () => {
   } finally {
     rmSync(root, { force: true, recursive: true });
   }
+});
+
+test('validates and resolves every bundled plugin manifest', () => {
+  const bundledDirectory = path.join(__dirname, '..', 'src', 'plugins');
+  const manifests = readdirSync(bundledDirectory)
+    .filter((file) => file.endsWith('.json'))
+    .sort()
+    .map((file) => readManifest(path.join(bundledDirectory, file)));
+
+  assert.deepEqual(
+    manifests.map((manifest) => manifest.id),
+    ['discord', 'google-meet', 'microsoft-teams', 'obs-studio', 'zoom'],
+  );
+
+  for (const manifest of manifests) {
+    for (const action of manifest.actions) {
+      for (const platform of Object.keys(action.platforms)) {
+        assert.doesNotThrow(
+          () => resolveExecution(action, platform, {}),
+          `${manifest.id}/${action.id} should resolve on ${platform}`,
+        );
+      }
+    }
+  }
+
+  function resolve(pluginId, actionId, platform, settings = {}) {
+    const plugin = manifests.find((candidate) => candidate.id === pluginId);
+    const action = plugin.actions.find((candidate) => candidate.id === actionId);
+    return resolveExecution(action, platform, settings);
+  }
+
+  assert.deepEqual(resolve('discord', 'toggle-mute', 'win32'), {
+    type: 'hotkey',
+    key: 'M',
+    alt: false,
+    ctrl: true,
+    meta: false,
+    shift: true,
+  });
+  assert.deepEqual(resolve('zoom', 'share-screen', 'darwin'), {
+    type: 'hotkey',
+    key: 'S',
+    alt: false,
+    ctrl: false,
+    meta: true,
+    shift: true,
+  });
+  assert.deepEqual(resolve('google-meet', 'toggle-hand', 'linux'), {
+    type: 'hotkey',
+    key: 'H',
+    alt: true,
+    ctrl: true,
+    meta: false,
+    shift: false,
+  });
+  assert.deepEqual(
+    resolve('obs-studio', 'switch-scene', 'win32', {
+      key: 'F5',
+      alt: true,
+      ctrl: true,
+      meta: false,
+      shift: false,
+    }),
+    {
+      type: 'hotkey',
+      key: 'F5',
+      alt: true,
+      ctrl: true,
+      meta: false,
+      shift: false,
+    },
+  );
 });

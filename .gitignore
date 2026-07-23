@@ -15,6 +15,9 @@ sdkconfig.old
 # Generated board bundles (published by CI, never committed)
 boards/dist/
 
+# Generated curated plugin catalog (published by CI, never committed)
+plugins/dist/
+
 # Editor files
 .idea/
 .vscode/

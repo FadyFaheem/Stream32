@@ -1,0 +1,178 @@
+{
+  "stream32Plugin": 1,
+  "id": "google-meet",
+  "name": "Google Meet",
+  "version": "1.0.0",
+  "description": "Meeting controls using Google Meet browser keyboard shortcuts.",
+  "actions": [
+    {
+      "id": "toggle-mute",
+      "name": "Toggle mute / unmute",
+      "description": "Toggle your microphone. The browser window and Google Meet tab must be focused.",
+      "category": "Meetings",
+      "icon": "mic_off",
+      "keywords": ["microphone", "audio", "mute", "unmute"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "D",
+          "ctrl": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "D",
+          "meta": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "D",
+          "ctrl": true
+        }
+      },
+      "appearance": {
+        "label": "Meet Mic",
+        "icon": "mic_off",
+        "color": "#00897b",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-camera",
+      "name": "Toggle camera",
+      "description": "Turn your camera on or off. The browser window and Google Meet tab must be focused.",
+      "category": "Meetings",
+      "icon": "videocam",
+      "keywords": ["camera", "video"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "E",
+          "ctrl": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "E",
+          "meta": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "E",
+          "ctrl": true
+        }
+      },
+      "appearance": {
+        "label": "Camera",
+        "icon": "videocam",
+        "color": "#00897b",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-hand",
+      "name": "Raise / lower hand",
+      "description": "Toggle your raised hand. The browser window and Google Meet tab must be focused.",
+      "category": "Meetings",
+      "icon": "front_hand",
+      "keywords": ["hand", "raise", "lower"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "H",
+          "ctrl": true,
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "H",
+          "ctrl": true,
+          "meta": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "H",
+          "ctrl": true,
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "Raise Hand",
+        "icon": "front_hand",
+        "color": "#00897b",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-chat",
+      "name": "Show / hide meeting chat",
+      "description": "Show or hide the meeting chat. The browser window and Google Meet tab must be focused.",
+      "category": "Meetings",
+      "icon": "chat",
+      "keywords": ["chat", "message", "panel"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "C",
+          "ctrl": true,
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "C",
+          "ctrl": true,
+          "meta": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "C",
+          "ctrl": true,
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "Chat",
+        "icon": "chat",
+        "color": "#00897b",
+        "labelColor": "#ffffff"
+      }
+    },
+    {
+      "id": "toggle-participants",
+      "name": "Show / hide participants",
+      "description": "Show or hide the participants panel. The browser window and Google Meet tab must be focused.",
+      "category": "Meetings",
+      "icon": "groups",
+      "keywords": ["participants", "people", "panel"],
+      "fields": [],
+      "platforms": {
+        "win32": {
+          "type": "hotkey",
+          "key": "P",
+          "ctrl": true,
+          "alt": true
+        },
+        "darwin": {
+          "type": "hotkey",
+          "key": "P",
+          "ctrl": true,
+          "meta": true
+        },
+        "linux": {
+          "type": "hotkey",
+          "key": "P",
+          "ctrl": true,
+          "alt": true
+        }
+      },
+      "appearance": {
+        "label": "People",
+        "icon": "groups",
+        "color": "#00897b",
+        "labelColor": "#ffffff"
+      }
+    }
+  ]
+}

@@ -160,6 +160,13 @@ function validateProfile(source, profilePath) {
     fail(`${profilePath} uses a protocol unsupported by catalog schema 1.`);
   }
 
+  const preferredFlashBaud = requireInteger(
+    source.preferredFlashBaud ?? 460800,
+    `${profilePath} preferredFlashBaud`,
+    115200,
+    2000000,
+  );
+
   const projectPath = requireString(
     source.firmware.projectPath,
     `${profilePath} projectPath`,
@@ -251,6 +258,7 @@ function validateProfile(source, profilePath) {
     chip,
     protocolVersion,
     minimumDesktopVersion,
+    preferredFlashBaud,
     usbFilters,
     ...(deck ? { deck } : {}),
     firmware: {
@@ -382,6 +390,7 @@ const boards = profiles.map((profile) => {
     chip: profile.chip,
     protocolVersion: profile.protocolVersion,
     minimumDesktopVersion: profile.minimumDesktopVersion,
+    preferredFlashBaud: profile.preferredFlashBaud,
     usbFilters: profile.usbFilters,
     ...(profile.deck ? { deck: profile.deck } : {}),
     capabilities: profile.capabilities,

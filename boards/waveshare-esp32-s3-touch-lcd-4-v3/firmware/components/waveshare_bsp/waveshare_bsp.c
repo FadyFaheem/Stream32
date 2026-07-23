@@ -219,13 +219,14 @@ esp_err_t bsp_sdcard_unmount(void)
 esp_err_t bsp_display_brightness_init(void)
 {
     // TCA9554 doesn't have PWM - brightness control not available
-    return ESP_OK;
+    return ESP_ERR_NOT_SUPPORTED;
 }
 
 esp_err_t bsp_display_brightness_set(int brightness_percent)
 {
+    (void)brightness_percent;
     // TCA9554 doesn't have PWM - brightness control not available
-    return ESP_OK;
+    return ESP_ERR_NOT_SUPPORTED;
 }
 
 esp_err_t bsp_display_backlight_off(void)
@@ -472,4 +473,24 @@ bool bsp_display_lock(uint32_t timeout_ms)
 void bsp_display_unlock(void)
 {
     lvgl_port_unlock();
+}
+
+esp_err_t bsp_display_set_awake(bool awake)
+{
+    if (panel_handle == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /* Rev 3 exposes no controllable backlight pin. The ST7701 display
+       command still removes the static image that causes retention. */
+    return esp_lcd_panel_disp_on_off(panel_handle, awake);
+}
+
+esp_err_t bsp_display_set_brightness(uint32_t brightness_percent)
+{
+    if (brightness_percent > 100) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    return bsp_display_brightness_set((int)brightness_percent);
 }

@@ -1,14 +1,20 @@
 const { HOTKEY_KEY_NAMES, MEDIA_COMMANDS } = require('./keymap');
+const {
+  MAX_TEXT_CHARACTERS,
+  validateTextAction,
+} = require('./action-model');
 
 const PLUGIN_SCHEMA_VERSION = 1;
 const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const COLOR_PATTERN = /^#[0-9a-f]{6}$/;
+const SEMVER_PATTERN =
+  /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[A-Za-z-][0-9A-Za-z-]*))*)?$/;
 const MAX_ACTIONS = 128;
 const MAX_FIELDS = 16;
 const MAX_SETTING_LENGTH = 512;
 const PLATFORMS = new Set(['darwin', 'linux', 'win32']);
 const FIELD_TYPES = new Set(['select', 'text', 'toggle']);
-const EXECUTION_TYPES = new Set(['hotkey', 'media', 'url']);
+const EXECUTION_TYPES = new Set(['hotkey', 'media', 'text', 'url']);
 
 function requireObject(value, field) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -271,6 +277,36 @@ function validateExecution(raw, fields, field) {
     return { type: 'media', command };
   }
 
+  if (execution.type === 'text') {
+    const text = validateReference(execution.text, fields, null, `${field} text`);
+
+    if (typeof text === 'string') {
+      return validateTextAction({ type: 'text', text });
+    }
+
+    if (!text?.setting) {
+      throw new TypeError(`${field} text is invalid.`);
+    }
+
+    const definition = fields.get(text.setting);
+
+    if (
+      definition.type === 'toggle' ||
+      (definition.type === 'text' &&
+        definition.maxLength > MAX_TEXT_CHARACTERS)
+    ) {
+      throw new TypeError(`${field} text references an incompatible setting.`);
+    }
+
+    if (definition.type === 'select') {
+      for (const option of definition.options) {
+        validateTextAction({ type: 'text', text: option.value });
+      }
+    }
+
+    return { type: 'text', text };
+  }
+
   const url = validateReference(execution.url, fields, null, `${field} URL`);
 
   if (typeof url !== 'string' && !url?.setting) {
@@ -390,11 +426,13 @@ function validateActionDefinition(raw, pluginId) {
   return {
     id,
     name: requireString(action.name, `Plugin action ${id} name`, 80),
-    description: optionalString(
-      action.description,
-      `Plugin action ${id} description`,
-      240,
-    ) || '',
+    description: action.description === ''
+      ? ''
+      : optionalString(
+        action.description,
+        `Plugin action ${id} description`,
+        240,
+      ) || '',
     category: optionalString(
       action.category,
       `Plugin action ${id} category`,
@@ -442,13 +480,15 @@ function validatePluginManifest(raw) {
       manifest.version,
       `Plugin ${id} version`,
       32,
-      /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/,
+      SEMVER_PATTERN,
     ),
-    description: optionalString(
-      manifest.description,
-      `Plugin ${id} description`,
-      240,
-    ) || '',
+    description: manifest.description === ''
+      ? ''
+      : optionalString(
+        manifest.description,
+        `Plugin ${id} description`,
+        240,
+      ) || '',
     actions,
   };
 }
@@ -530,6 +570,13 @@ function resolveExecution(definition, platform, rawSettings) {
     }
 
     return { type: 'media', command };
+  }
+
+  if (execution.type === 'text') {
+    return validateTextAction({
+      type: 'text',
+      text: resolveValue(execution.text, settings),
+    });
   }
 
   const url = new URL(resolveValue(execution.url, settings));

@@ -2,21 +2,21 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "deck_storage.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
-#include "esp_rom_crc.h"
+#include "esp_timer.h"
 #include "lvgl.h"
-#include "mbedtls/base64.h"
 #include "sdkconfig.h"
 
 /* The LVGL lock comes from whichever board BSP the application links; the
    BSP component name differs per board, so the header is not included. */
 extern bool bsp_display_lock(uint32_t timeout_ms);
 extern void bsp_display_unlock(void);
+extern esp_err_t bsp_display_set_awake(bool awake);
+extern esp_err_t bsp_display_set_brightness(uint32_t brightness_percent);
 
 /* Panel and grid limits are per-board Kconfig values (see this component's
    Kconfig for the protocol line-budget ceiling behind the ranges). */
@@ -27,8 +27,9 @@ extern void bsp_display_unlock(void);
 #define DECK_KEY_GAP 8
 /* 180 px keys are the largest that fit a 64 KB flash slot in RGB565. */
 #define DECK_KEY_MAX_PX 180
-#define DECK_LABEL_CAPACITY 33
 #define DECK_LINE_CAPACITY 128
+#define DECK_DEFAULT_IDLE_SECONDS 600
+#define DECK_OVERLAY_LEASE_MS 30000
 
 typedef struct {
     bool used;
@@ -38,7 +39,7 @@ typedef struct {
     uint32_t color;
     uint32_t label_color;
     uint32_t image_crc; /* 0 = no artwork */
-    char label[DECK_LABEL_CAPACITY];
+    char label[DECK_PROTOCOL_LABEL_CAPACITY];
 } deck_key_t;
 
 typedef struct {
@@ -47,23 +48,55 @@ typedef struct {
     deck_key_t keys[DECK_MAX_KEYS];
 } deck_page_t;
 
+typedef struct {
+    bool active;
+    bool has_color;
+    bool has_label_color;
+    uint8_t state; /* 0 absent, 1 on, 2 off, 3 unknown */
+    uint32_t color;
+    uint32_t label_color;
+    uint32_t image_crc;
+    uint32_t image_size;
+    uint8_t *image;
+    char label[DECK_PROTOCOL_LABEL_CAPACITY];
+} deck_overlay_t;
+
 static const char *TAG = "deck_ui";
 static deck_notify_fn s_notify;
 static deck_page_t s_pages[DECK_MAX_PAGES];
+static deck_overlay_t s_overlays[DECK_MAX_PAGES][DECK_MAX_KEYS];
 static uint8_t s_page_count;
 static uint8_t s_visible_page;
 static bool s_active;
 static volatile int s_pending_page = -1;
+static uint32_t s_idle_timeout_ms =
+    DECK_DEFAULT_IDLE_SECONDS * 1000;
+static int64_t s_last_activity_ms;
+static bool s_panel_awake = true;
+static bool s_forced_asleep;
+static bool s_consume_touch;
+static bool s_overlay_active;
+static int64_t s_overlay_activity_ms;
 
 static lv_obj_t *s_deck_screen;
 static uint8_t *s_key_buffers[DECK_MAX_KEYS];
 static lv_image_dsc_t s_key_dsc[DECK_MAX_KEYS];
 
-static uint8_t *s_staging;
-static int s_staging_page = -1;
-static int s_staging_index = -1;
-static uint32_t s_staging_expected_seq;
-static uint32_t s_staging_received;
+static void build_page(uint8_t page_index);
+static void build_page_locked(uint8_t page_index);
+
+static bool overlays_active(void)
+{
+    for (int page = 0; page < DECK_MAX_PAGES; page++) {
+        for (int index = 0; index < DECK_MAX_KEYS; index++) {
+            if (s_overlays[page][index].active) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
 
 static int compute_key_px(int rows, int cols)
 {
@@ -81,11 +114,50 @@ static void notify_line(const char *line)
     }
 }
 
+static int64_t now_ms(void)
+{
+    return esp_timer_get_time() / 1000;
+}
+
+static void set_panel_awake(bool awake)
+{
+    if (awake == s_panel_awake) {
+        return;
+    }
+
+    const esp_err_t error = bsp_display_set_awake(awake);
+
+    if (error != ESP_OK) {
+        ESP_LOGW(
+            TAG,
+            "Could not turn display %s: %s",
+            awake ? "on" : "off",
+            esp_err_to_name(error)
+        );
+        return;
+    }
+
+    s_panel_awake = awake;
+}
+
+static void screen_event_handler(lv_event_t *event)
+{
+    const lv_event_code_t code = lv_event_get_code(event);
+
+    if (code == LV_EVENT_PRESSED || code == LV_EVENT_RELEASED) {
+        (void)deck_ui_handle_touch(code == LV_EVENT_PRESSED);
+    }
+}
+
 static void key_event_handler(lv_event_t *event)
 {
     const lv_event_code_t code = lv_event_get_code(event);
 
     if (code != LV_EVENT_PRESSED && code != LV_EVENT_RELEASED) {
+        return;
+    }
+
+    if (deck_ui_handle_touch(code == LV_EVENT_PRESSED)) {
         return;
     }
 
@@ -140,7 +212,7 @@ static void free_key_buffers(void)
     }
 }
 
-static void set_key_image_dsc(int index, int key_px)
+static void set_key_image_dsc(int index, int key_px, const uint8_t *pixels)
 {
     memset(&s_key_dsc[index], 0, sizeof(s_key_dsc[index]));
     s_key_dsc[index].header.magic = LV_IMAGE_HEADER_MAGIC;
@@ -149,7 +221,7 @@ static void set_key_image_dsc(int index, int key_px)
     s_key_dsc[index].header.h = key_px;
     s_key_dsc[index].header.stride = key_px * 2;
     s_key_dsc[index].data_size = (uint32_t)key_px * key_px * 2;
-    s_key_dsc[index].data = s_key_buffers[index];
+    s_key_dsc[index].data = pixels;
 }
 
 static void attach_key_image(lv_obj_t *parent, int index)
@@ -198,7 +270,40 @@ static void load_key_buffers(const deck_page_t *page, int key_px)
     }
 }
 
-static void build_page(uint8_t page_index)
+bool deck_ui_clear_overlays(void)
+{
+    const bool rebuild = s_active && s_visible_page < s_page_count;
+
+    if (rebuild && !bsp_display_lock(1000)) {
+        return false;
+    }
+
+    if (rebuild && s_deck_screen != NULL) {
+        /* Detach every LVGL image descriptor before freeing its pixels. */
+        lv_obj_clean(s_deck_screen);
+    }
+
+    for (int page = 0; page < DECK_MAX_PAGES; page++) {
+        for (int index = 0; index < DECK_MAX_KEYS; index++) {
+            if (s_overlays[page][index].image != NULL) {
+                heap_caps_free(s_overlays[page][index].image);
+            }
+
+            memset(&s_overlays[page][index], 0, sizeof(deck_overlay_t));
+        }
+    }
+
+    s_overlay_active = false;
+
+    if (rebuild) {
+        build_page_locked(s_visible_page);
+        bsp_display_unlock();
+    }
+
+    return true;
+}
+
+static void build_page_locked(uint8_t page_index)
 {
     if (page_index >= s_page_count) {
         return;
@@ -213,13 +318,15 @@ static void build_page(uint8_t page_index)
     const int origin_x = (DECK_SCREEN_W - grid_width) / 2;
     const int origin_y = (DECK_SCREEN_H - grid_height) / 2;
 
-    if (!bsp_display_lock(1000)) {
-        ESP_LOGW(TAG, "Could not lock LVGL to build the deck");
-        return;
-    }
-
     if (s_deck_screen == NULL) {
         s_deck_screen = lv_obj_create(NULL);
+        lv_obj_add_flag(s_deck_screen, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_event_cb(
+            s_deck_screen,
+            screen_event_handler,
+            LV_EVENT_ALL,
+            NULL
+        );
         lv_obj_set_style_bg_color(
             s_deck_screen,
             lv_color_hex(0x0b1116),
@@ -240,6 +347,14 @@ static void build_page(uint8_t page_index)
 
     for (int index = 0; index < page->rows * page->cols; index++) {
         const deck_key_t *key = &page->keys[index];
+        const deck_overlay_t *overlay = &s_overlays[page_index][index];
+        const bool live = overlay->active;
+        const char *label_text = live && overlay->label[0] != '\0'
+            ? overlay->label
+            : key->label;
+        const uint8_t *image = live && overlay->image_crc != 0
+            ? overlay->image
+            : s_key_buffers[index];
         const int row = index / page->cols;
         const int col = index % page->cols;
         lv_obj_t *cell = lv_obj_create(s_deck_screen);
@@ -265,8 +380,11 @@ static void build_page(uint8_t page_index)
         );
         lv_obj_set_style_bg_color(
             cell,
-            key->used && key->has_color ? lv_color_hex(key->color)
-                                        : lv_color_hex(0x172630),
+            live && overlay->has_color
+                ? lv_color_hex(overlay->color)
+                : key->used && key->has_color
+                    ? lv_color_hex(key->color)
+                    : lv_color_hex(0x172630),
             LV_PART_MAIN
         );
         lv_obj_set_style_pad_all(cell, 2, LV_PART_MAIN);
@@ -279,196 +397,60 @@ static void build_page(uint8_t page_index)
             (void *)(intptr_t)index
         );
 
-        if (key->used && key->label[0] != '\0') {
-            lv_obj_t *label = lv_label_create(cell);
+        if ((key->used || live) && label_text[0] != '\0') {
+            lv_obj_t *label_obj = lv_label_create(cell);
 
-            lv_label_set_text(label, key->label);
+            lv_label_set_text(label_obj, label_text);
             /* Explicit: the theme's card style would otherwise decide. */
             lv_obj_set_style_text_color(
-                label,
+                label_obj,
                 lv_color_hex(
-                    key->has_label_color ? key->label_color : 0xf3f7f9
+                    live && overlay->has_label_color
+                        ? overlay->label_color
+                        : key->has_label_color
+                            ? key->label_color
+                            : 0xf3f7f9
                 ),
                 LV_PART_MAIN
             );
-            lv_label_set_long_mode(label, LV_LABEL_LONG_DOT);
-            lv_obj_set_width(label, key_px - 12);
+            lv_label_set_long_mode(label_obj, LV_LABEL_LONG_DOT);
+            lv_obj_set_width(label_obj, key_px - 12);
             lv_obj_set_style_text_align(
-                label,
+                label_obj,
                 LV_TEXT_ALIGN_CENTER,
                 LV_PART_MAIN
             );
             lv_obj_align(
-                label,
-                s_key_buffers[index] != NULL ? LV_ALIGN_BOTTOM_MID
-                                             : LV_ALIGN_CENTER,
+                label_obj,
+                image != NULL ? LV_ALIGN_BOTTOM_MID : LV_ALIGN_CENTER,
                 0,
                 0
             );
         }
 
-        if (s_key_buffers[index] != NULL) {
-            set_key_image_dsc(index, key_px);
+        if (image != NULL) {
+            set_key_image_dsc(index, key_px, image);
             attach_key_image(cell, index);
         }
     }
 
     lv_screen_load(s_deck_screen);
-    bsp_display_unlock();
     s_active = true;
 }
 
-/* ---- Layout parsing ---------------------------------------------------- */
-
-static bool parse_color(const char *text, uint32_t *out)
+static void build_page(uint8_t page_index)
 {
-    if (text == NULL || text[0] != '#' || strlen(text) != 7) {
-        return false;
+    if (page_index >= s_page_count) {
+        return;
     }
 
-    char *end = NULL;
-    const unsigned long value = strtoul(text + 1, &end, 16);
-
-    if (end == NULL || *end != '\0') {
-        return false;
+    if (!bsp_display_lock(1000)) {
+        ESP_LOGW(TAG, "Could not lock LVGL to build the deck");
+        return;
     }
 
-    *out = (uint32_t)value;
-    return true;
-}
-
-static bool parse_crc(const char *text, uint32_t *out)
-{
-    if (text == NULL || strlen(text) != 8) {
-        return false;
-    }
-
-    char *end = NULL;
-    const unsigned long value = strtoul(text, &end, 16);
-
-    if (end == NULL || *end != '\0') {
-        return false;
-    }
-
-    *out = (uint32_t)value;
-    return true;
-}
-
-static const char *parse_page_message(
-    const cJSON *message,
-    deck_page_t *out,
-    int *page_out,
-    int *page_count_out
-)
-{
-    const cJSON *page = cJSON_GetObjectItemCaseSensitive(message, "page");
-    const cJSON *of = cJSON_GetObjectItemCaseSensitive(message, "of");
-    const cJSON *rows = cJSON_GetObjectItemCaseSensitive(message, "rows");
-    const cJSON *cols = cJSON_GetObjectItemCaseSensitive(message, "cols");
-    const cJSON *keys = cJSON_GetObjectItemCaseSensitive(message, "keys");
-
-    if (!cJSON_IsNumber(page) || !cJSON_IsNumber(of) ||
-        !cJSON_IsNumber(rows) || !cJSON_IsNumber(cols) ||
-        !cJSON_IsArray(keys)) {
-        return "layout-invalid";
-    }
-
-    const int page_index = page->valueint;
-    const int page_count = of->valueint;
-
-    if (page_index < 0 || page_count < 1 || page_count > DECK_MAX_PAGES ||
-        page_index >= page_count || rows->valueint < 1 ||
-        rows->valueint > DECK_MAX_ROWS || cols->valueint < 1 ||
-        cols->valueint > DECK_MAX_COLS ||
-        /* Axes are individually valid, but the per-page key budget (and
-           the keys[] array) is rows x cols bounded. */
-        rows->valueint * cols->valueint > DECK_MAX_KEYS) {
-        return "layout-invalid";
-    }
-
-    memset(out, 0, sizeof(*out));
-    out->rows = (uint8_t)rows->valueint;
-    out->cols = (uint8_t)cols->valueint;
-
-    for (int index = 0; index < DECK_MAX_KEYS; index++) {
-        out->keys[index].go_page = -1;
-    }
-
-    const int key_count = out->rows * out->cols;
-    const cJSON *entry = NULL;
-
-    cJSON_ArrayForEach(entry, keys) {
-        const cJSON *key_index = cJSON_GetObjectItemCaseSensitive(entry, "index");
-
-        if (!cJSON_IsNumber(key_index) || key_index->valueint < 0 ||
-            key_index->valueint >= key_count) {
-            return "layout-invalid";
-        }
-
-        deck_key_t *key = &out->keys[key_index->valueint];
-
-        if (key->used) {
-            return "layout-invalid";
-        }
-
-        key->used = true;
-
-        const cJSON *label = cJSON_GetObjectItemCaseSensitive(entry, "label");
-        const cJSON *color = cJSON_GetObjectItemCaseSensitive(entry, "color");
-        const cJSON *image_crc =
-            cJSON_GetObjectItemCaseSensitive(entry, "imageCrc");
-        const cJSON *go_page = cJSON_GetObjectItemCaseSensitive(entry, "goPage");
-
-        if (label != NULL) {
-            if (!cJSON_IsString(label) ||
-                strlen(label->valuestring) >= DECK_LABEL_CAPACITY) {
-                return "layout-invalid";
-            }
-
-            strcpy(key->label, label->valuestring);
-        }
-
-        if (color != NULL) {
-            if (!cJSON_IsString(color) ||
-                !parse_color(color->valuestring, &key->color)) {
-                return "layout-invalid";
-            }
-
-            key->has_color = true;
-        }
-
-        const cJSON *label_color =
-            cJSON_GetObjectItemCaseSensitive(entry, "labelColor");
-
-        if (label_color != NULL) {
-            if (!cJSON_IsString(label_color) ||
-                !parse_color(label_color->valuestring, &key->label_color)) {
-                return "layout-invalid";
-            }
-
-            key->has_label_color = true;
-        }
-
-        if (image_crc != NULL) {
-            if (!cJSON_IsString(image_crc) ||
-                !parse_crc(image_crc->valuestring, &key->image_crc)) {
-                return "layout-invalid";
-            }
-        }
-
-        if (go_page != NULL) {
-            if (!cJSON_IsNumber(go_page) || go_page->valueint < 0 ||
-                go_page->valueint >= page_count) {
-                return "layout-invalid";
-            }
-
-            key->go_page = (int8_t)go_page->valueint;
-        }
-    }
-
-    *page_out = page_index;
-    *page_count_out = page_count;
-    return NULL;
+    build_page_locked(page_index);
+    bsp_display_unlock();
 }
 
 /* ---- Public API --------------------------------------------------------- */
@@ -476,6 +458,7 @@ static const char *parse_page_message(
 esp_err_t deck_ui_init(deck_notify_fn notify)
 {
     s_notify = notify;
+    s_last_activity_ms = now_ms();
 
     const esp_err_t error = deck_storage_init();
 
@@ -499,24 +482,7 @@ esp_err_t deck_ui_init(deck_notify_fn notify)
             return ESP_OK;
         }
 
-        cJSON *message = cJSON_ParseWithLength(json, length);
-
-        if (message == NULL) {
-            return ESP_OK;
-        }
-
-        int page_index = 0;
-        int stored_count = 0;
-        const char *parse_error = parse_page_message(
-            message,
-            &s_pages[page],
-            &page_index,
-            &stored_count
-        );
-
-        cJSON_Delete(message);
-
-        if (parse_error != NULL || page_index != page) {
+        if (deck_protocol_restore_layout(json, length, page) != NULL) {
             ESP_LOGW(TAG, "Stored page %u is invalid", page);
             return ESP_OK;
         }
@@ -540,6 +506,16 @@ bool deck_ui_active(void)
 
 void deck_ui_poll(void)
 {
+    if (s_panel_awake && !s_forced_asleep && s_idle_timeout_ms > 0 &&
+        now_ms() - s_last_activity_ms >= s_idle_timeout_ms) {
+        set_panel_awake(false);
+    }
+
+    if (s_overlay_active &&
+        now_ms() - s_overlay_activity_ms >= DECK_OVERLAY_LEASE_MS) {
+        deck_ui_clear_overlays();
+    }
+
     const int pending = s_pending_page;
 
     if (pending < 0) {
@@ -560,47 +536,105 @@ void deck_ui_poll(void)
     notify_line(line);
 }
 
-const char *deck_ui_handle_layout(
-    const cJSON *message,
-    const char *raw_line,
-    size_t raw_length,
-    char *reply,
-    size_t reply_capacity
-)
+bool deck_ui_handle_touch(bool pressed)
 {
-    deck_page_t parsed;
-    int page_index = 0;
-    int page_count = 0;
-    const char *error =
-        parse_page_message(message, &parsed, &page_index, &page_count);
-
-    if (error != NULL) {
-        return error;
+    if (s_forced_asleep) {
+        return true;
     }
 
+    s_last_activity_ms = now_ms();
+
+    if (pressed && !s_panel_awake) {
+        set_panel_awake(true);
+        s_consume_touch = true;
+        return true;
+    }
+
+    if (!pressed && s_consume_touch) {
+        s_consume_touch = false;
+        return true;
+    }
+
+    return false;
+}
+
+static void copy_layout(
+    deck_page_t *page,
+    const deck_protocol_layout_t *layout
+)
+{
+    memset(page, 0, sizeof(*page));
+    page->rows = layout->rows;
+    page->cols = layout->cols;
+
+    for (int index = 0; index < DECK_MAX_KEYS; index++) {
+        const deck_protocol_key_t *source = &layout->keys[index];
+        deck_key_t *target = &page->keys[index];
+
+        target->used = source->used;
+        target->has_color = source->has_color;
+        target->has_label_color = source->has_label_color;
+        target->go_page = source->go_page;
+        target->color = source->color;
+        target->label_color = source->label_color;
+        target->image_crc = source->image_crc;
+        memcpy(target->label, source->label, sizeof(target->label));
+    }
+}
+
+void deck_ui_restore_layout(const deck_protocol_layout_t *layout)
+{
+    copy_layout(&s_pages[layout->page], layout);
+}
+
+int deck_ui_key_px(uint8_t rows, uint8_t cols)
+{
+    return compute_key_px(rows, cols);
+}
+
+bool deck_ui_image_needed(uint32_t crc, uint32_t expected_size)
+{
+    uint32_t stored_size = 0;
+
+    return !deck_storage_slot_find(crc, &stored_size) ||
+        stored_size != expected_size;
+}
+
+const char *deck_ui_apply_layout(
+    const deck_protocol_layout_t *layout,
+    const char *raw_line,
+    size_t raw_length
+)
+{
     if (raw_length > DECK_PAGE_JSON_CAPACITY) {
         return "layout-too-large";
     }
 
-    s_pages[page_index] = parsed;
-    s_page_count = (uint8_t)page_count;
+    if (layout->page == 0) {
+        if (!deck_ui_clear_overlays()) {
+            return "display-busy";
+        }
+    }
+
+    copy_layout(&s_pages[layout->page], layout);
+    s_page_count = layout->page_count;
 
     if (deck_storage_write_page_json(
-            (uint8_t)page_index,
+            layout->page,
             raw_line,
             raw_length,
-            (uint8_t)page_count
+            layout->page_count
         ) != ESP_OK) {
         return "storage-failed";
     }
 
     /* The desktop pushes pages in order, so the last page marks a complete
        sync; unreferenced artwork can be dropped now. */
-    if (page_index == page_count - 1) {
+    if (layout->page == layout->page_count - 1) {
         uint32_t live[DECK_MAX_PAGES * DECK_MAX_KEYS];
         size_t live_count = 0;
 
-        for (int page = 0; page < page_count; page++) {
+        for (int page = 0; page < layout->page_count; page++) {
             for (int key = 0; key < DECK_MAX_KEYS; key++) {
                 const uint32_t crc = s_pages[page].keys[key].image_crc;
 
@@ -613,166 +647,194 @@ const char *deck_ui_handle_layout(
         deck_storage_gc(live, live_count);
     }
 
-    const int key_px = compute_key_px(parsed.rows, parsed.cols);
-    int written = snprintf(
-        reply,
-        reply_capacity,
-        "{\"type\":\"layout-ack\",\"page\":%d,\"rows\":%d,\"cols\":%d,"
-        "\"keyPx\":%d,\"needImages\":[",
-        page_index,
-        parsed.rows,
-        parsed.cols,
-        key_px
-    );
-    bool first = true;
-
-    for (int index = 0; index < parsed.rows * parsed.cols; index++) {
-        const deck_key_t *key = &parsed.keys[index];
-        const uint32_t expected_size = (uint32_t)key_px * key_px * 2;
-        uint32_t stored_size = 0;
-
-        if (!key->used || key->image_crc == 0) {
-            continue;
-        }
-
-        if (deck_storage_slot_find(key->image_crc, &stored_size) &&
-            stored_size == expected_size) {
-            continue;
-        }
-
-        written += snprintf(
-            reply + written,
-            reply_capacity - written,
-            "%s%d",
-            first ? "" : ",",
-            index
-        );
-        first = false;
-    }
-
-    snprintf(reply + written, reply_capacity - written, "]}");
     return NULL;
 }
 
-const char *deck_ui_handle_image(
-    const cJSON *message,
-    char *reply,
-    size_t reply_capacity
+const char *deck_ui_apply_key_update(
+    const deck_protocol_key_update_t *update,
+    bool *need_image
 )
 {
-    const cJSON *page = cJSON_GetObjectItemCaseSensitive(message, "page");
-    const cJSON *index = cJSON_GetObjectItemCaseSensitive(message, "index");
-    const cJSON *seq = cJSON_GetObjectItemCaseSensitive(message, "seq");
-    const cJSON *of = cJSON_GetObjectItemCaseSensitive(message, "of");
-    const cJSON *width = cJSON_GetObjectItemCaseSensitive(message, "w");
-    const cJSON *height = cJSON_GetObjectItemCaseSensitive(message, "h");
-    const cJSON *data = cJSON_GetObjectItemCaseSensitive(message, "data");
-
-    if (!cJSON_IsNumber(page) || !cJSON_IsNumber(index) ||
-        !cJSON_IsNumber(seq) || !cJSON_IsNumber(of) ||
-        !cJSON_IsNumber(width) || !cJSON_IsNumber(height) ||
-        !cJSON_IsString(data)) {
-        return "image-invalid";
+    if (update->page >= s_page_count ||
+        update->index >=
+            s_pages[update->page].rows * s_pages[update->page].cols) {
+        return "key-update-invalid";
     }
 
-    const int page_index = page->valueint;
-    const int key_index = index->valueint;
+    const int page_index = update->page;
+    const int key_index = update->index;
+    deck_overlay_t parsed = { 0 };
 
-    if (page_index < 0 || page_index >= s_page_count || key_index < 0 ||
-        key_index >= s_pages[page_index].rows * s_pages[page_index].cols) {
-        return "image-invalid";
+    if (!update->clear) {
+        parsed.active = true;
+        parsed.has_color = update->has_color;
+        parsed.has_label_color = update->has_label_color;
+        parsed.state = update->state;
+        parsed.color = update->color;
+        parsed.label_color = update->label_color;
+        parsed.image_crc = update->image_crc;
+        memcpy(parsed.label, update->label, sizeof(parsed.label));
     }
 
-    const deck_key_t *key = &s_pages[page_index].keys[key_index];
-    const uint32_t total_size = (uint32_t)width->valueint * height->valueint * 2;
+    deck_overlay_t *overlay = &s_overlays[page_index][key_index];
+    const deck_overlay_t previous = *overlay;
+    *need_image = parsed.image_crc != 0;
 
-    if (!key->used || key->image_crc == 0 || width->valueint < 1 ||
-        height->valueint < 1 || total_size > DECK_SLOT_BYTES) {
-        return "image-invalid";
+    if (*need_image && overlay->image_crc == parsed.image_crc &&
+        overlay->image != NULL) {
+        parsed.image = overlay->image;
+        parsed.image_size = overlay->image_size;
+        *need_image = false;
     }
 
-    if (s_staging == NULL) {
-        s_staging = heap_caps_malloc(DECK_SLOT_BYTES, MALLOC_CAP_SPIRAM);
+    const bool changed = memcmp(&previous, &parsed, sizeof(parsed)) != 0;
+    const bool rebuild =
+        changed && s_active && page_index == s_visible_page;
 
-        if (s_staging == NULL) {
-            return "image-no-memory";
-        }
+    if (rebuild && !bsp_display_lock(1000)) {
+        return "display-busy";
     }
 
-    if (seq->valueint == 0) {
-        s_staging_page = page_index;
-        s_staging_index = key_index;
-        s_staging_expected_seq = 0;
-        s_staging_received = 0;
+    if (rebuild && s_deck_screen != NULL) {
+        /* The current descriptor may point at overlay->image. */
+        lv_obj_clean(s_deck_screen);
     }
 
-    if (page_index != s_staging_page || key_index != s_staging_index ||
-        (uint32_t)seq->valueint != s_staging_expected_seq) {
-        s_staging_page = -1;
-        return "image-sequence";
+    if (overlay->image != NULL && overlay->image != parsed.image) {
+        heap_caps_free(overlay->image);
     }
 
-    size_t decoded = 0;
-    const size_t data_length = strlen(data->valuestring);
+    *overlay = parsed;
+    s_overlay_active = overlays_active();
+    s_overlay_activity_ms = now_ms();
 
-    if (mbedtls_base64_decode(
-            s_staging + s_staging_received,
-            DECK_SLOT_BYTES - s_staging_received,
-            &decoded,
-            (const unsigned char *)data->valuestring,
-            data_length
-        ) != 0) {
-        s_staging_page = -1;
-        return "image-invalid";
+    if (rebuild) {
+        build_page_locked((uint8_t)page_index);
+        bsp_display_unlock();
     }
 
-    s_staging_received += decoded;
-    s_staging_expected_seq++;
-
-    if ((int)s_staging_expected_seq == of->valueint) {
-        s_staging_page = -1;
-
-        if (s_staging_received != total_size) {
-            return "image-size-mismatch";
-        }
-
-        if (esp_rom_crc32_le(0, s_staging, total_size) != key->image_crc) {
-            return "image-crc-mismatch";
-        }
-
-        if (deck_storage_slot_write(
-                key->image_crc,
-                s_staging,
-                total_size
-            ) != ESP_OK) {
-            return "storage-failed";
-        }
-
-    }
-
-    snprintf(
-        reply,
-        reply_capacity,
-        "{\"type\":\"image-ack\",\"page\":%d,\"index\":%d,\"seq\":%d}",
-        page_index,
-        key_index,
-        seq->valueint
-    );
     return NULL;
 }
 
-const char *deck_ui_handle_page(const cJSON *message)
+const char *deck_ui_get_image_target(
+    uint8_t page,
+    uint8_t index,
+    bool ephemeral,
+    uint16_t *key_px,
+    uint32_t *expected_crc
+)
 {
-    const cJSON *index = cJSON_GetObjectItemCaseSensitive(message, "index");
+    if (page >= s_page_count ||
+        index >= s_pages[page].rows * s_pages[page].cols) {
+        return "image-invalid";
+    }
 
-    if (!cJSON_IsNumber(index) || index->valueint < 0 ||
-        index->valueint >= s_page_count) {
+    const deck_key_t *key = &s_pages[page].keys[index];
+    const deck_overlay_t *overlay = &s_overlays[page][index];
+
+    if ((!ephemeral && (!key->used || key->image_crc == 0)) ||
+        (ephemeral && (!overlay->active || overlay->image_crc == 0))) {
+        return "image-invalid";
+    }
+
+    *key_px = (uint16_t)compute_key_px(
+        s_pages[page].rows,
+        s_pages[page].cols
+    );
+    *expected_crc = ephemeral ? overlay->image_crc : key->image_crc;
+    return NULL;
+}
+
+const char *deck_ui_commit_image(
+    uint8_t page,
+    uint8_t index,
+    bool ephemeral,
+    const uint8_t *pixels,
+    uint32_t size
+)
+{
+    if (!ephemeral) {
+        const deck_key_t *key = &s_pages[page].keys[index];
+
+        return deck_storage_slot_write(key->image_crc, pixels, size) == ESP_OK
+            ? NULL
+            : "storage-failed";
+    }
+
+    uint8_t *owned_pixels = heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
+
+    if (owned_pixels == NULL) {
+        return "image-no-memory";
+    }
+
+    memcpy(owned_pixels, pixels, size);
+
+    deck_overlay_t *overlay = &s_overlays[page][index];
+    const bool rebuild = s_active && page == s_visible_page;
+
+    if (rebuild && !bsp_display_lock(1000)) {
+        heap_caps_free(owned_pixels);
+        return "display-busy";
+    }
+
+    if (rebuild && s_deck_screen != NULL) {
+        /* Stop LVGL from reading the old image before replacing it. */
+        lv_obj_clean(s_deck_screen);
+    }
+
+    if (overlay->image != NULL) {
+        heap_caps_free(overlay->image);
+    }
+
+    overlay->image = owned_pixels;
+    overlay->image_size = size;
+
+    if (rebuild) {
+        build_page_locked(page);
+        bsp_display_unlock();
+    }
+
+    return NULL;
+}
+
+const char *deck_ui_select_page(uint8_t page)
+{
+    if (page >= s_page_count) {
         return "page-invalid";
     }
 
     /* Layouts and artwork are staged first; the final page message commits
        the whole sync in one render instead of exposing each incoming key. */
-    build_page((uint8_t)index->valueint);
-    deck_storage_set_active_page((uint8_t)index->valueint);
+    build_page(page);
+    deck_storage_set_active_page(page);
+    return NULL;
+}
+
+const char *deck_ui_apply_display(const deck_protocol_display_t *display)
+{
+    if (display->has_brightness) {
+        const esp_err_t error =
+            bsp_display_set_brightness(display->brightness_percent);
+
+        if (error == ESP_ERR_NOT_SUPPORTED) {
+            return "display-brightness-unsupported";
+        }
+
+        if (error != ESP_OK) {
+            return "display-brightness-failed";
+        }
+    }
+
+    s_idle_timeout_ms = display->idle_timeout_seconds * 1000;
+    s_forced_asleep = !display->awake;
+    s_consume_touch = false;
+
+    if (s_forced_asleep) {
+        set_panel_awake(false);
+    } else {
+        s_last_activity_ms = now_ms();
+        set_panel_awake(true);
+    }
+
     return NULL;
 }

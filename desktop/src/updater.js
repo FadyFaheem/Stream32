@@ -6,11 +6,12 @@ const DEVELOPMENT_STATUS = {
   state: 'development',
 };
 
-function createUpdater({ onDownloaded, sendStatus }) {
+function createUpdater({ onDownloaded, onEvent = () => {}, sendStatus }) {
   let downloaded = false;
 
   function report(state, message) {
     sendStatus({ message, state });
+    onEvent(state);
   }
 
   autoUpdater.autoDownload = true;
@@ -22,6 +23,7 @@ function createUpdater({ onDownloaded, sendStatus }) {
 
   autoUpdater.on('update-available', (info) => {
     report('available', `Downloading Stream32 ${info.version}…`);
+    onEvent('available-version', { version: info.version });
   });
 
   autoUpdater.on('update-not-available', () => {
@@ -35,11 +37,13 @@ function createUpdater({ onDownloaded, sendStatus }) {
   autoUpdater.on('update-downloaded', (info) => {
     downloaded = true;
     report('downloaded', `Stream32 ${info.version} is ready to install.`);
+    onEvent('downloaded-version', { version: info.version });
     onDownloaded();
   });
 
   autoUpdater.on('error', (error) => {
     report('error', `Update check failed: ${error.message}`);
+    onEvent('error-detail', { error });
   });
 
   async function checkForUpdates() {

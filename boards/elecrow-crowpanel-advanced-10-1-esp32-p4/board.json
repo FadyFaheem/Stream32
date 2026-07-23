@@ -7,7 +7,12 @@
   "chip": "ESP32-P4",
   "protocolVersion": 1,
   "minimumDesktopVersion": "0.6.0",
+  "preferredFlashBaud": 921600,
   "usbFilters": [
+    {
+      "usbVendorId": 6790,
+      "usbProductId": 29986
+    },
     {
       "usbVendorId": 6790,
       "usbProductId": 29987
@@ -20,13 +25,14 @@
     "maxPages": 8
   },
   "firmware": {
-    "version": "0.1.4",
+    "version": "0.1.7",
     "projectPath": "firmware",
-    "imageName": "elecrow-crowpanel-advanced-10-1-esp32-p4-0.1.4.bin",
+    "imageName": "elecrow-crowpanel-advanced-10-1-esp32-p4-0.1.7.bin",
     "offset": 0
   },
   "capabilities": [
     "display",
+    "brightness",
     "touch",
     "usb-uart-bridge"
   ],
@@ -34,6 +40,8 @@
     "Use the USB port labeled UART0, slide POWER to ON, and close other serial monitors.",
     "Also connect the USB 2.0 port for power; the 10.1 inch screen draws more than UART0 alone can supply.",
     "Hold BOOT, press and release RST, then release BOOT to enter download mode.",
+    "If 921600 baud is unstable, the desktop automatically restarts the complete write once at 460800 baud.",
+    "Leave Full erase off to preserve saved decks; enable it only for slow, destructive troubleshooting.",
     "Run Flash again. After a successful flash, press RST or reconnect power."
   ]
 }

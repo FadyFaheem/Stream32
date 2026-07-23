@@ -2,6 +2,7 @@ const MAX_PROTOCOL_LINE_LENGTH = 4096;
 const BOARD_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const DEVICE_ID_PATTERN = /^[a-f0-9]{12}$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const FEATURE_PATTERN = /^[a-z0-9][a-z0-9-]{0,31}$/;
 // Sanity bound only: panels differ per board (480x480, 1024x600, ...), and
 // the coordinates are just echoed in the touch test UI.
 const MAX_TOUCH_COORDINATE = 4095;
@@ -47,7 +48,11 @@ function isExpectedChip(actual, expected) {
 
 function encodeHostHello(protocolVersion = 1) {
   return new TextEncoder().encode(
-    `${JSON.stringify({ type: 'hello', protocol: protocolVersion })}\n`,
+    `${JSON.stringify({
+      type: 'hello',
+      protocol: protocolVersion,
+      features: ['key-update'],
+    })}\n`,
   );
 }
 
@@ -108,9 +113,28 @@ function validateDeviceHello(
     throw new TypeError('Device identity is invalid.');
   }
 
+  let features;
+
+  if (message.features !== undefined) {
+    if (
+      !Array.isArray(message.features) ||
+      message.features.length > 16 ||
+      message.features.some(
+        (feature) =>
+          typeof feature !== 'string' || !FEATURE_PATTERN.test(feature),
+      ) ||
+      new Set(message.features).size !== message.features.length
+    ) {
+      throw new TypeError('Device features are invalid.');
+    }
+
+    features = [...message.features];
+  }
+
   return {
     boardId: message.boardId,
     deviceId: message.deviceId,
+    ...(features ? { features } : {}),
     firmwareVersion: message.firmwareVersion,
     protocol: message.protocol,
     type: 'hello',
@@ -177,12 +201,20 @@ function requireProtocolInteger(value, field, minimum, maximum) {
 
 function encodeLine(message, maxLineLength = MAX_PROTOCOL_LINE_LENGTH) {
   const line = `${JSON.stringify(message)}\n`;
+  const encoded = new TextEncoder().encode(line);
 
-  if (line.length > maxLineLength) {
+  if (encoded.byteLength > maxLineLength) {
     throw new RangeError('Encoded protocol line exceeds the limit.');
   }
 
-  return new TextEncoder().encode(line);
+  return encoded;
+}
+
+function validLabel(value) {
+  return (
+    typeof value === 'string' &&
+    new TextEncoder().encode(value).byteLength <= MAX_KEY_LABEL_LENGTH
+  );
 }
 
 function encodeLayoutMessage(
@@ -218,10 +250,7 @@ function encodeLayoutMessage(
     const encoded = { index };
 
     if (key.label !== undefined) {
-      if (
-        typeof key.label !== 'string' ||
-        key.label.length > MAX_KEY_LABEL_LENGTH
-      ) {
+      if (!validLabel(key.label)) {
         throw new TypeError('Layout key label is invalid.');
       }
 
@@ -304,7 +333,49 @@ function toBase64(bytes) {
   return btoa(binary);
 }
 
-function encodeImageChunks({ page, index, width, height, pixels }) {
+// Each tuple is uint16-le run length followed by one little-endian RGB565
+// pixel. Runs are capped so tuple boundaries stay independently decodable.
+function encodeRle565(pixels) {
+  if (!(pixels instanceof Uint8Array) || pixels.length % 2 !== 0) {
+    throw new TypeError('RLE input must be RGB565 bytes.');
+  }
+
+  const encoded = new Uint8Array(pixels.length * 2);
+  let output = 0;
+
+  for (let offset = 0; offset < pixels.length; ) {
+    const low = pixels[offset];
+    const high = pixels[offset + 1];
+    let count = 1;
+
+    while (
+      count < 0xffff &&
+      offset + count * 2 < pixels.length &&
+      pixels[offset + count * 2] === low &&
+      pixels[offset + count * 2 + 1] === high
+    ) {
+      count++;
+    }
+
+    encoded[output++] = count & 0xff;
+    encoded[output++] = count >>> 8;
+    encoded[output++] = low;
+    encoded[output++] = high;
+    offset += count * 2;
+  }
+
+  return encoded.slice(0, output);
+}
+
+function encodeImageChunks({
+  page,
+  index,
+  width,
+  height,
+  pixels,
+  mode = 'persisted',
+  rleSupported = false,
+}) {
   requireProtocolInteger(page, 'image page', 0, MAX_DECK_PAGES - 1);
   requireProtocolInteger(index, 'image key index', 0, MAX_DECK_KEYS - 1);
   requireProtocolInteger(width, 'image width', 1, MAX_KEY_PIXELS);
@@ -314,11 +385,18 @@ function encodeImageChunks({ page, index, width, height, pixels }) {
     throw new TypeError('Image pixels must be RGB565 bytes.');
   }
 
-  const total = Math.ceil(pixels.length / IMAGE_CHUNK_RAW_BYTES);
+  if (!['persisted', 'ephemeral'].includes(mode)) {
+    throw new TypeError('Image mode is invalid.');
+  }
+
+  const rle = rleSupported ? encodeRle565(pixels) : null;
+  const useRle = rle !== null && rle.length < pixels.length;
+  const payload = useRle ? rle : pixels;
+  const total = Math.ceil(payload.length / IMAGE_CHUNK_RAW_BYTES);
   const chunks = [];
 
   for (let seq = 0; seq < total; seq++) {
-    const slice = pixels.subarray(
+    const slice = payload.subarray(
       seq * IMAGE_CHUNK_RAW_BYTES,
       (seq + 1) * IMAGE_CHUNK_RAW_BYTES,
     );
@@ -331,6 +409,8 @@ function encodeImageChunks({ page, index, width, height, pixels }) {
         of: total,
         w: width,
         h: height,
+        ...(mode === 'ephemeral' ? { mode } : {}),
+        ...(useRle ? { encoding: 'rle565' } : {}),
         data: toBase64(slice),
       }),
     );
@@ -339,9 +419,113 @@ function encodeImageChunks({ page, index, width, height, pixels }) {
   return chunks;
 }
 
+function encodeKeyUpdateMessage({ page, index, label, color, labelColor, state, imageCrc, clear }) {
+  requireProtocolInteger(page, 'key-update page', 0, MAX_DECK_PAGES - 1);
+  requireProtocolInteger(index, 'key-update key index', 0, MAX_DECK_KEYS - 1);
+  const message = { type: 'key-update', page, index };
+
+  if (clear !== undefined) {
+    if (clear !== true) {
+      throw new TypeError('key-update clear must be true.');
+    }
+    message.clear = true;
+  }
+
+  if (label !== undefined) {
+    if (!validLabel(label)) {
+      throw new TypeError('key-update label is invalid.');
+    }
+    message.label = label;
+  }
+
+  for (const [field, value] of [['color', color], ['labelColor', labelColor]]) {
+    if (value !== undefined) {
+      if (typeof value !== 'string' || !KEY_COLOR_PATTERN.test(value)) {
+        throw new TypeError(`key-update ${field} is invalid.`);
+      }
+      message[field] = value;
+    }
+  }
+
+  if (state !== undefined) {
+    if (!['on', 'off', 'unknown'].includes(state)) {
+      throw new TypeError('key-update state is invalid.');
+    }
+    message.state = state;
+  }
+
+  if (imageCrc !== undefined) {
+    if (typeof imageCrc !== 'string' || !IMAGE_CRC_PATTERN.test(imageCrc)) {
+      throw new TypeError('key-update image CRC is invalid.');
+    }
+    message.imageCrc = imageCrc;
+  }
+
+  if (
+    clear !== true &&
+    label === undefined &&
+    color === undefined &&
+    labelColor === undefined &&
+    state === undefined &&
+    imageCrc === undefined
+  ) {
+    throw new TypeError('key-update patch is empty.');
+  }
+
+  return encodeLine(message);
+}
+
+function validateKeyUpdateAck(message) {
+  if (typeof message.needImage !== 'boolean') {
+    throw new TypeError('key-update-ack needImage must be a boolean.');
+  }
+
+  return {
+    page: requireProtocolInteger(
+      message.page,
+      'key-update-ack page',
+      0,
+      MAX_DECK_PAGES - 1,
+    ),
+    index: requireProtocolInteger(
+      message.index,
+      'key-update-ack index',
+      0,
+      MAX_DECK_KEYS - 1,
+    ),
+    needImage: message.needImage,
+  };
+}
+
 function encodePageMessage(index) {
   requireProtocolInteger(index, 'page index', 0, MAX_DECK_PAGES - 1);
   return encodeLine({ type: 'page', index });
+}
+
+function encodeDisplayMessage({ awake, idleTimeoutSeconds, brightness }) {
+  if (typeof awake !== 'boolean') {
+    throw new TypeError('Display awake state must be a boolean.');
+  }
+
+  requireProtocolInteger(
+    idleTimeoutSeconds,
+    'display idle timeout',
+    0,
+    86400,
+  );
+
+  const message = { type: 'display', awake, idleTimeoutSeconds };
+
+  if (brightness !== undefined) {
+    message.brightness = requireProtocolInteger(
+      brightness,
+      'display brightness',
+      0,
+      100,
+    );
+  }
+
+  return encodeLine(message);
 }
 
 function validateLayoutAck(message) {
@@ -388,6 +572,13 @@ function validateLayoutAck(message) {
 }
 
 function validateImageAck(message) {
+  if (
+    message.mode !== undefined &&
+    !['persisted', 'ephemeral'].includes(message.mode)
+  ) {
+    throw new TypeError('image-ack mode is invalid.');
+  }
+
   return {
     page: requireProtocolInteger(
       message.page,
@@ -402,6 +593,7 @@ function validateImageAck(message) {
       MAX_DECK_KEYS - 1,
     ),
     seq: requireProtocolInteger(message.seq, 'image-ack seq', 0, 65535),
+    ...(message.mode !== undefined ? { mode: message.mode } : {}),
   };
 }
 
@@ -492,14 +684,18 @@ module.exports = {
   crc32,
   layoutLineLimitFor,
   createLineDecoder,
+  encodeDisplayMessage,
   encodeHostHello,
   encodeImageChunks,
+  encodeKeyUpdateMessage,
   encodeLayoutMessage,
   encodePageMessage,
+  encodeRle565,
   isExpectedChip,
   normalizeChipName,
   validateDeviceHello,
   validateImageAck,
+  validateKeyUpdateAck,
   validateLayoutAck,
   validatePageMessage,
   validatePressMessage,

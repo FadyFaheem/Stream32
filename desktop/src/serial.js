@@ -206,6 +206,7 @@ function configureSerialAccess(
   window,
   {
     getRememberedDevices = getRememberedSerialDevices,
+    onEvent = () => {},
     rememberDevice = rememberSerialDevice,
   } = {},
 ) {
@@ -225,11 +226,15 @@ function configureSerialAccess(
     if (selected) {
       try {
         pendingIdentity = rememberDevice(selected);
+        onEvent('selected');
       } catch (error) {
         console.error('Serial port selection failed:', error);
+        onEvent('selection-error', { error });
         callback('');
         return true;
       }
+    } else {
+      onEvent('selection-cancelled');
     }
 
     callback(selected?.portId || '');
@@ -293,6 +298,7 @@ function configureSerialAccess(
         );
         const id = nextRequestId++;
         pendingRequest = { callback, id, ports };
+        onEvent('ports-listed', { count: ports.length });
 
         window.webContents.send('serial:port-list', {
           requestId: id,
@@ -303,6 +309,7 @@ function configureSerialAccess(
         });
       } catch (error) {
         console.error('Serial port selection failed:', error);
+        onEvent('list-error', { error });
         if (!settlePendingRequest()) {
           callback('');
         }

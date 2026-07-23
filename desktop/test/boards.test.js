@@ -68,6 +68,30 @@ test('validates catalog compatibility and rejects hostile asset names', () => {
   assert.throws(() => validateCatalog(hostile, '0.1.0'), /unsafe/);
 });
 
+test('defaults flash baud and accepts a board preference', () => {
+  const image = Buffer.from([0xe9, 1, 2, 3]);
+
+  assert.equal(
+    validateCatalog(catalogFor(image), '0.1.0').boards[0].preferredFlashBaud,
+    460800,
+  );
+  assert.equal(
+    validateCatalog(
+      catalogFor(image, { preferredFlashBaud: 921600 }),
+      '0.1.0',
+    ).boards[0].preferredFlashBaud,
+    921600,
+  );
+  assert.throws(
+    () =>
+      validateCatalog(
+        catalogFor(image, { preferredFlashBaud: 9600 }),
+        '0.1.0',
+      ),
+    /preferredFlashBaud/,
+  );
+});
+
 test('marks boards with unknown chips incompatible without failing the catalog', () => {
   const image = Buffer.from([0xe9, 1, 2, 3]);
   const catalog = catalogFor(image);

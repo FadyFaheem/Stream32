@@ -1,5 +1,16 @@
 const ICON_NAMES = require('./icon-names.json');
 const { ActionEditor } = require('./action-editor');
+const { DeckRuntime } = require('./deck-runtime');
+const {
+  isEditableTarget,
+  keyPayload,
+  moveKey,
+  pasteKey,
+} = require('./key-clipboard');
+const { remapActionAfterPageDeletion } = require('../action-model');
+const {
+  mergeKeyOverlay,
+} = require('../dynamic-state');
 const {
   MAX_DECK_COLS,
   MAX_DECK_KEYS,
@@ -7,29 +18,38 @@ const {
   MAX_DECK_ROWS,
   MAX_KEY_LABEL_LENGTH,
   crc32,
-  encodeImageChunks,
-  encodeLayoutMessage,
-  encodePageMessage,
-  layoutLineLimitFor,
-  validateImageAck,
-  validateLayoutAck,
-  validatePageMessage,
-  validatePressMessage,
 } = require('./protocol');
+const {
+  parseManualAppMatch,
+  preferredRuleForSnapshot,
+  selectProfileForSnapshot,
+} = require('../profile-rules');
 
-const ACK_TIMEOUT_MS = 5000;
-const SYNC_DEBOUNCE_MS = 600;
 const STORED_IMAGE_PIXELS = 192;
 const DEFAULT_KEY_COLOR = '#172630';
 const ICON_FONT = 'Material Symbols Rounded';
 const MAX_ICON_RESULTS = 96;
+const MAX_NAMED_PROFILES = 16;
+const KEY_DRAG_TYPE = 'application/x-stream32-key';
 
-function deviceLabel(deviceId, profile) {
-  return `${profile.name} · ${deviceId.slice(-4)}`;
+function deviceLabel(deviceId, device) {
+  return `${device.name} · ${deviceId.slice(-4)}`;
 }
 
-function gridKey(page) {
-  return `${page.rows}x${page.cols}`;
+function appMatchText(platform, rule) {
+  if (!rule) {
+    return '';
+  }
+
+  if (platform === 'darwin' && rule.kind === 'processName') {
+    return `process:${rule.value}`;
+  }
+
+  if (platform === 'linux') {
+    return `${rule.kind === 'processName' ? 'process' : 'class'}:${rule.value}`;
+  }
+
+  return rule.value;
 }
 
 async function loadImage(dataUrl) {
@@ -61,18 +81,32 @@ class DeckController {
     this.document = document;
     this.devices = {};
     this.boardLimits = new Map();
-    this.sessions = new Map();
-    this.pending = new Map();
-    this.syncTimers = new Map();
-    this.syncRunning = new Map();
     this.selectedDeviceId = null;
     this.selectedPage = 0;
     this.selectedKey = null;
+    this.clipboard = null;
+    this.dragSource = null;
+    this.focusSnapshot = null;
+    this.focusStatus = null;
+    this.storageErrors = [];
 
     this.connectPanel = document.querySelector('#deck-connect');
     this.deviceSelect = document.querySelector('#deck-device');
     this.deviceStatus = document.querySelector('#deck-device-status');
     this.deviceName = document.querySelector('#deck-device-name');
+    this.profileTabs = document.querySelector('#deck-profile-tabs');
+    this.profileCreate = document.querySelector('#deck-profile-create');
+    this.profileDuplicate = document.querySelector('#deck-profile-duplicate');
+    this.profileRename = document.querySelector('#deck-profile-rename');
+    this.profileDelete = document.querySelector('#deck-profile-delete');
+    this.profileDefault = document.querySelector('#deck-profile-default');
+    this.profileMatchInput = document.querySelector('#deck-profile-match');
+    this.profileMatchSave = document.querySelector('#deck-profile-match-save');
+    this.profileMatchClear = document.querySelector('#deck-profile-match-clear');
+    this.profileMatchFocused =
+      document.querySelector('#deck-profile-match-focused');
+    this.profileMatchStatus =
+      document.querySelector('#deck-profile-match-status');
     this.exportButton = document.querySelector('#deck-export');
     this.importButton = document.querySelector('#deck-import');
     this.syncStatus = document.querySelector('#deck-sync-status');
@@ -92,12 +126,25 @@ class DeckController {
     this.keyLabelColor = document.querySelector('#deck-key-label-color');
     this.keyImage = document.querySelector('#deck-key-image');
     this.keyImageClear = document.querySelector('#deck-key-image-clear');
+    this.liveProvider = document.querySelector('#deck-live-provider');
+    this.liveToggleFields = document.querySelector('#deck-live-toggle-fields');
+    this.liveOnLabel = document.querySelector('#deck-live-on-label');
+    this.liveOnColor = document.querySelector('#deck-live-on-color');
+    this.liveOnLabelColor = document.querySelector('#deck-live-on-label-color');
+    this.liveOnImage = document.querySelector('#deck-live-on-image');
+    this.liveOnImageClear = document.querySelector('#deck-live-on-image-clear');
+    this.liveClockField = document.querySelector('#deck-live-clock-field');
+    this.liveClockFormat = document.querySelector('#deck-live-clock-format');
+    this.liveStatus = document.querySelector('#deck-live-status');
     this.iconOpen = document.querySelector('#deck-icon-open');
     this.iconDialog = document.querySelector('#deck-icon-dialog');
     this.iconSearch = document.querySelector('#deck-icon-search');
     this.iconGrid = document.querySelector('#deck-icon-grid');
     this.iconClose = document.querySelector('#deck-icon-close');
     this.keyTest = document.querySelector('#deck-key-test');
+    this.keyCopy = document.querySelector('#deck-key-copy');
+    this.keyCut = document.querySelector('#deck-key-cut');
+    this.keyPaste = document.querySelector('#deck-key-paste');
     this.keyClear = document.querySelector('#deck-key-clear');
     this.actionEditor = new ActionEditor({
       document,
@@ -106,27 +153,117 @@ class DeckController {
       },
       onReload: () => this.api.listPlugins(true),
     });
+    this.runtime = new DeckRuntime({
+      api,
+      getDevices: () => this.devices,
+      getProfile: (deviceId, profileId) =>
+        this.profileFor(deviceId, profileId),
+      getSelectedProfileId: (deviceId) => this.selectedProfileId(deviceId),
+      setDevice: (deviceId, device) => {
+        this.devices[deviceId] = device;
+      },
+      persistProfile: (deviceId, profileId) =>
+        this.persistProfile(deviceId, profileId),
+      renderPageImages: (page, keyPx) => this.renderPageImages(page, keyPx),
+      limitsFor: (profile) => this.limitsFor(profile),
+      resolveProfileForSnapshot: selectProfileForSnapshot,
+      getFocusStatus: () => this.focusStatus,
+      getFocusSnapshot: () => this.focusSnapshot,
+      onDeviceRegistered: (deviceId) => {
+        this.selectedDeviceId ||= deviceId;
+      },
+      onSelectedPage: (deviceId, page) => {
+        if (deviceId === this.selectedDeviceId) {
+          this.selectedPage = page;
+          this.selectedKey = null;
+          this.renderAll();
+        }
+      },
+      onRenderAll: () => this.renderAll(),
+      onRenderSelectedLive: (deviceId) => {
+        if (deviceId === this.selectedDeviceId) {
+          this.renderGrid();
+          this.renderKeyEditor();
+        }
+      },
+      onStatus: (message, state) => this.setSyncStatus(message, state),
+      onProfileStatus: (message, state) =>
+        this.setProfileMatchStatus(message, state),
+      onRenderSyncStatus: () => this.renderSyncStatus(),
+    });
   }
 
   async initialize() {
     this.populateStaticControls();
     this.bindEvents();
+    this.api.onFocusChange((snapshot) => {
+      this.focusSnapshot = snapshot;
+      this.renderFocusRules();
+      this.runtime.queueAutoSwitch(snapshot);
+      this.runtime.refreshLiveStates();
+    });
+    this.api.onFocusStatus((status) => {
+      this.focusStatus = status;
+      this.renderFocusRules();
+      this.runtime.refreshLiveStates();
+    });
 
     try {
-      this.actionEditor.setCatalog(await this.api.listPlugins());
+      await this.reloadPlugins(false);
     } catch (error) {
       this.actionEditor.setCatalogError(error.message);
     }
 
     try {
+      if (typeof this.api.getActionCapabilities === 'function') {
+        this.actionEditor.setCapabilities(
+          await this.api.getActionCapabilities(),
+        );
+      }
+    } catch (error) {
+      this.actionEditor.setCapabilities({
+        text: { available: false, reason: error.message },
+        mouse: { available: false, reason: error.message },
+      });
+    }
+
+    try {
       const registry = await this.api.listDecks();
       this.devices = registry.devices;
+      this.storageErrors = Array.isArray(registry.errors)
+        ? registry.errors
+        : [];
     } catch (error) {
       this.setSyncStatus(`Could not load deck profiles: ${error.message}`, 'error');
     }
 
+    try {
+      [this.focusStatus, this.focusSnapshot] = await Promise.all([
+        this.api.getFocusStatus(),
+        this.api.getFocusSnapshot(),
+      ]);
+    } catch (error) {
+      this.focusStatus = {
+        platform: null,
+        supported: false,
+        state: 'error',
+        reason: `Could not start focused-app switching: ${error.message}`,
+      };
+    }
+
     this.selectedDeviceId = Object.keys(this.devices)[0] || null;
     this.renderAll();
+    this.runtime.startLiveTimers();
+
+    if (this.focusSnapshot) {
+      await this.runtime.queueAutoSwitch(this.focusSnapshot);
+    }
+  }
+
+  async reloadPlugins(force = true) {
+    const catalog = await this.api.listPlugins(force);
+    this.actionEditor.setCatalog(catalog);
+    return catalog;
   }
 
   setBoards(boards) {
@@ -159,11 +296,139 @@ class DeckController {
       this.selectedKey = null;
       this.renderAll();
     });
-    this.deviceName.addEventListener('change', () => {
-      this.updateProfile((profile) => {
-        profile.name = this.deviceName.value.trim() || 'Stream32 deck';
-      }, false);
-      this.renderDevicePicker();
+    this.deviceName.addEventListener('change', async () => {
+      if (!this.selectedDeviceId) {
+        return;
+      }
+
+      try {
+        this.devices[this.selectedDeviceId] = await this.api.renameDeck(
+          this.selectedDeviceId,
+          this.deviceName.value.trim() || 'Stream32 deck',
+        );
+        this.renderDevicePicker();
+      } catch (error) {
+        this.setSyncStatus(`Could not rename the device: ${error.message}`, 'error');
+        this.renderDevicePicker();
+      }
+    });
+    this.profileCreate.addEventListener('click', () => {
+      const name = window.prompt('Name the new profile:', 'Profile');
+
+      if (name !== null) {
+        this.runProfileOperation({
+          type: 'create',
+          name: name.trim() || 'Profile',
+        });
+      }
+    });
+    this.profileDuplicate.addEventListener('click', () => {
+      const profileId = this.selectedProfileId();
+
+      if (profileId) {
+        this.runProfileOperation({ type: 'duplicate', profileId });
+      }
+    });
+    this.profileRename.addEventListener('click', () => {
+      const profileId = this.selectedProfileId();
+      const profile = this.selectedProfile();
+
+      if (!profileId || !profile) {
+        return;
+      }
+
+      const name = window.prompt('Rename this profile:', profile.name);
+
+      if (name !== null) {
+        this.runProfileOperation({
+          type: 'rename',
+          profileId,
+          name: name.trim(),
+        });
+      }
+    });
+    this.profileDelete.addEventListener('click', () => {
+      const profileId = this.selectedProfileId();
+      const profile = this.selectedProfile();
+
+      if (
+        profileId &&
+        profile &&
+        window.confirm(
+          `Delete profile “${profile.name}”? Keys and pages in it cannot be recovered.`,
+        )
+      ) {
+        this.runProfileOperation({ type: 'delete', profileId });
+      }
+    });
+    this.profileDefault.addEventListener('click', async () => {
+      const profileId = this.selectedProfileId();
+
+      if (profileId) {
+        await this.runProfileOperation({ type: 'set-default', profileId });
+        this.runtime.queueAutoSwitch(this.focusSnapshot);
+      }
+    });
+    this.profileMatchFocused.addEventListener('click', async () => {
+      const profileId = this.selectedProfileId();
+      const platform = this.focusStatus?.platform;
+
+      if (!profileId || !platform || !this.focusSnapshot) {
+        return;
+      }
+
+      try {
+        const rule = preferredRuleForSnapshot(this.focusSnapshot);
+        await this.runProfileOperation({
+          type: 'set-app-match',
+          profileId,
+          platform,
+          rule,
+        });
+        this.runtime.queueAutoSwitch(this.focusSnapshot);
+      } catch (error) {
+        this.setProfileMatchStatus(error.message, 'error');
+      }
+    });
+    this.profileMatchSave.addEventListener('click', async () => {
+      const profileId = this.selectedProfileId();
+      const platform = this.focusStatus?.platform;
+
+      if (!profileId || !platform) {
+        return;
+      }
+
+      try {
+        const rule = parseManualAppMatch(
+          platform,
+          this.profileMatchInput.value,
+        );
+        await this.runProfileOperation({
+          type: 'set-app-match',
+          profileId,
+          platform,
+          rule,
+        });
+        this.runtime.queueAutoSwitch(this.focusSnapshot);
+      } catch (error) {
+        this.setProfileMatchStatus(error.message, 'error');
+      }
+    });
+    this.profileMatchClear.addEventListener('click', async () => {
+      const profileId = this.selectedProfileId();
+      const platform = this.focusStatus?.platform;
+
+      if (!profileId || !platform) {
+        return;
+      }
+
+      await this.runProfileOperation({
+        type: 'set-app-match',
+        profileId,
+        platform,
+        rule: null,
+      });
+      this.runtime.queueAutoSwitch(this.focusSnapshot);
     });
     this.exportButton.addEventListener('click', async () => {
       try {
@@ -209,18 +474,16 @@ class DeckController {
           profile.pages.length - 1,
         );
 
-        // Page actions and goPage targets pointing at or past the removed
-        // page are remapped so the profile stays valid.
+        // Page targets pointing at or past the removed page are remapped so
+        // top-level and multi actions remain valid.
         for (const page of profile.pages) {
           for (const key of page.keys) {
-            if (key.action?.type !== 'page') {
-              continue;
-            }
+            const action = remapActionAfterPageDeletion(key.action, removed);
 
-            if (key.action.page === removed) {
+            if (!action) {
               delete key.action;
-            } else if (key.action?.page > removed) {
-              key.action.page -= 1;
+            } else {
+              key.action = action;
             }
           }
         }
@@ -280,6 +543,65 @@ class DeckController {
         delete key.image;
       });
     });
+    this.liveProvider.addEventListener('change', () => {
+      this.runtime.clearLiveRuntime(this.selectedDeviceId);
+      this.updateSelectedKey((key) => {
+        const provider = this.liveProvider.value;
+
+        if (!provider) {
+          delete key.liveState;
+        } else if (provider === 'toggle') {
+          key.liveState = {
+            provider,
+            on: {
+              color: '#2f8f5b',
+              labelColor: '#ffffff',
+            },
+          };
+        } else if (provider === 'clock') {
+          key.liveState = { provider, hour12: false };
+        } else {
+          key.liveState = { provider: 'focused-app' };
+        }
+      });
+      this.runtime.refreshLiveStates(this.selectedDeviceId);
+    });
+    for (const control of [
+      this.liveOnLabel,
+      this.liveOnColor,
+      this.liveOnLabelColor,
+      this.liveClockFormat,
+    ]) {
+      control.addEventListener('change', () => this.saveLiveConfigFromEditor());
+    }
+    this.liveOnImage.addEventListener('change', async () => {
+      const file = this.liveOnImage.files?.[0];
+      this.liveOnImage.value = '';
+
+      if (!file) {
+        return;
+      }
+
+      try {
+        const image = await this.readImageFile(file);
+        this.updateSelectedKey((key) => {
+          if (key.liveState?.provider === 'toggle') {
+            key.liveState.on.image = image;
+          }
+        });
+        this.runtime.refreshLiveStates(this.selectedDeviceId);
+      } catch (error) {
+        this.setSyncStatus(`Could not read live image: ${error.message}`, 'error');
+      }
+    });
+    this.liveOnImageClear.addEventListener('click', () => {
+      this.updateSelectedKey((key) => {
+        if (key.liveState?.provider === 'toggle') {
+          delete key.liveState.on.image;
+        }
+      });
+      this.runtime.refreshLiveStates(this.selectedDeviceId);
+    });
     this.iconOpen.addEventListener('click', () => {
       this.iconSearch.value = '';
       this.renderIconGrid('');
@@ -302,9 +624,16 @@ class DeckController {
       const key = this.selectedKeyData();
 
       if (key?.action) {
-        this.runKeyAction(this.selectedDeviceId, key.action);
+        this.runtime.runKeyAction(this.selectedDeviceId, key.action, {
+          profileId: this.selectedProfileId(),
+          page: this.selectedPage,
+          index: this.selectedKey,
+        });
       }
     });
+    this.keyCopy.addEventListener('click', () => this.copySelectedKey());
+    this.keyCut.addEventListener('click', () => this.copySelectedKey(true));
+    this.keyPaste.addEventListener('click', () => this.pasteSelectedKey());
     this.keyClear.addEventListener('click', () => {
       this.updateProfile((profile) => {
         const page = profile.pages[this.selectedPage];
@@ -312,6 +641,32 @@ class DeckController {
           (key) => key.index !== this.selectedKey,
         );
       });
+    });
+    this.document.addEventListener('keydown', (event) => {
+      if (
+        event.altKey ||
+        (!event.ctrlKey && !event.metaKey) ||
+        isEditableTarget(event.target) ||
+        !this.document.activeElement?.classList?.contains('deck-key')
+      ) {
+        return;
+      }
+
+      const operation = event.key.toLowerCase();
+
+      if (!['c', 'v', 'x'].includes(operation)) {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (operation === 'c') {
+        this.copySelectedKey();
+      } else if (operation === 'x') {
+        this.copySelectedKey(true);
+      } else {
+        this.pasteSelectedKey();
+      }
     });
   }
 
@@ -408,10 +763,29 @@ class DeckController {
     return canvas.toDataURL('image/webp', 0.92);
   }
 
-  selectedProfile() {
+  selectedDevice() {
     return this.selectedDeviceId
       ? this.devices[this.selectedDeviceId] || null
       : null;
+  }
+
+  selectedProfileId(deviceId = this.selectedDeviceId) {
+    return deviceId
+      ? this.devices[deviceId]?.activeProfileId || null
+      : null;
+  }
+
+  profileFor(deviceId, profileId = this.selectedProfileId(deviceId)) {
+    return profileId
+      ? this.devices[deviceId]?.profiles[profileId] || null
+      : null;
+  }
+
+  selectedProfile() {
+    return this.profileFor(
+      this.selectedDeviceId,
+      this.selectedProfileId(),
+    );
   }
 
   selectedKeyData() {
@@ -442,6 +816,203 @@ class DeckController {
     );
   }
 
+  isKeyDrag(event) {
+    return Boolean(
+      this.dragSource ||
+      Array.from(event.dataTransfer?.types || []).includes(KEY_DRAG_TYPE),
+    );
+  }
+
+  focusKey(index) {
+    this.grid
+      .querySelector(`[data-key-index="${index}"]`)
+      ?.focus();
+  }
+
+  async runProfileOperation(operation) {
+    if (!this.selectedDeviceId) {
+      return false;
+    }
+
+    const deviceId = this.selectedDeviceId;
+    const previousProfileId = this.selectedProfileId();
+
+    try {
+      this.devices[deviceId] = await this.api.runProfileOperation(
+        deviceId,
+        operation,
+      );
+      const activeProfileChanged =
+        this.selectedProfileId() !== previousProfileId;
+
+      if (activeProfileChanged || operation.type === 'delete') {
+        this.runtime.clearLiveRuntime(deviceId);
+      }
+
+      if (activeProfileChanged) {
+        this.selectedPage = this.selectedProfile()?.activePage ?? 0;
+        this.selectedKey = null;
+      }
+
+      this.renderAll();
+
+      if (activeProfileChanged) {
+        this.runtime.scheduleSync(deviceId, 0);
+      }
+      return true;
+    } catch (error) {
+      this.setSyncStatus(`Profile change failed: ${error.message}`, 'error');
+      return false;
+    }
+  }
+
+  copySelectedKey(cut = false) {
+    const key = this.selectedKeyData();
+
+    if (!key) {
+      this.setSyncStatus('This key is empty.', 'idle');
+      return;
+    }
+
+    this.clipboard = keyPayload(key);
+
+    if (cut) {
+      this.updateProfile((profile) => {
+        const page = profile.pages[this.selectedPage];
+        page.keys = page.keys.filter(
+          (entry) => entry.index !== this.selectedKey,
+        );
+      });
+      this.focusKey(this.selectedKey);
+    }
+
+    this.setSyncStatus(
+      cut ? 'Key cut. Choose a destination and paste.' : 'Key copied.',
+      'ready',
+    );
+  }
+
+  pasteSelectedKey() {
+    const profile = this.selectedProfile();
+
+    if (!profile || this.selectedKey === null || !this.clipboard) {
+      this.setSyncStatus('Copy or cut a key before pasting.', 'idle');
+      return;
+    }
+
+    const page = profile.pages[this.selectedPage];
+    const occupied = page.keys.some((key) => key.index === this.selectedKey);
+
+    if (
+      occupied &&
+      !window.confirm('Replace the key already in this position?')
+    ) {
+      return;
+    }
+
+    try {
+      page.keys = pasteKey(
+        page.keys,
+        this.selectedKey,
+        this.clipboard,
+        profile.pages.length,
+      );
+      this.persistProfile(
+        this.selectedDeviceId,
+        this.selectedProfileId(),
+      );
+      this.renderAll();
+      this.focusKey(this.selectedKey);
+      this.runtime.scheduleSync(this.selectedDeviceId);
+      this.setSyncStatus('Key pasted.', 'ready');
+    } catch (error) {
+      this.setSyncStatus(`Could not paste key: ${error.message}`, 'error');
+    }
+  }
+
+  async dropKey(destinationIndex) {
+    const source = this.dragSource;
+
+    if (!source || source.deviceId !== this.selectedDeviceId) {
+      this.setSyncStatus(
+        'Keys can only be dragged between profiles on the same device.',
+        'error',
+      );
+      return;
+    }
+
+    const destinationProfileId = this.selectedProfileId();
+    const destinationPage = this.selectedPage;
+    const sourceProfile = this.profileFor(source.deviceId, source.profileId);
+    const destinationProfile = this.selectedProfile();
+
+    if (!sourceProfile || !destinationProfile) {
+      return;
+    }
+
+    const samePage =
+      source.profileId === destinationProfileId &&
+      source.page === destinationPage;
+
+    if (samePage && source.index === destinationIndex) {
+      return;
+    }
+
+    try {
+      const sourceCandidate = structuredClone(sourceProfile);
+      const destinationCandidate =
+        source.profileId === destinationProfileId
+          ? sourceCandidate
+          : structuredClone(destinationProfile);
+      const sourcePage = sourceCandidate.pages[source.page];
+      const targetPage = destinationCandidate.pages[destinationPage];
+
+      if (!sourcePage || !targetPage) {
+        throw new Error('The drag destination is no longer available.');
+      }
+
+      const moved = moveKey({
+        sourceKeys: sourcePage.keys,
+        sourceIndex: source.index,
+        sourcePageCount: sourceProfile.pages.length,
+        destinationKeys: targetPage.keys,
+        destinationIndex,
+        destinationPageCount: destinationProfile.pages.length,
+        samePage,
+      });
+      sourcePage.keys = moved.sourceKeys;
+      targetPage.keys = moved.destinationKeys;
+
+      const profileIds = [...new Set([
+        source.profileId,
+        destinationProfileId,
+      ])];
+      const candidates = {
+        [source.profileId]: sourceCandidate,
+        [destinationProfileId]: destinationCandidate,
+      };
+      const saved = await this.api.saveDeckProfiles(
+        source.deviceId,
+        profileIds.map((profileId) => ({
+          profileId,
+          profile: candidates[profileId],
+        })),
+      );
+
+      for (const [profileId, profile] of Object.entries(saved)) {
+        this.devices[source.deviceId].profiles[profileId] = profile;
+      }
+
+      this.selectedKey = destinationIndex;
+      this.renderAll();
+      this.focusKey(destinationIndex);
+      this.runtime.scheduleSync(source.deviceId);
+      this.setSyncStatus('Key moved.', 'ready');
+    } catch (error) {
+      this.setSyncStatus(`Could not move key: ${error.message}`, 'error');
+    }
+  }
+
   updateProfile(mutate, render = true, pageScope = false) {
     const profile = this.selectedProfile();
 
@@ -450,13 +1021,16 @@ class DeckController {
     }
 
     mutate(pageScope ? profile.pages[this.selectedPage] : profile);
-    this.persistProfile(this.selectedDeviceId);
+    this.persistProfile(
+      this.selectedDeviceId,
+      this.selectedProfileId(),
+    );
 
     if (render) {
       this.renderAll();
     }
 
-    this.scheduleSync(this.selectedDeviceId);
+    this.runtime.scheduleSync(this.selectedDeviceId);
   }
 
   updateSelectedKey(mutate) {
@@ -481,14 +1055,18 @@ class DeckController {
       !key.color &&
       !key.labelColor &&
       !key.image &&
-      !key.action
+      !key.action &&
+      !key.liveState
     ) {
       page.keys = page.keys.filter((entry) => entry !== key);
     }
 
-    this.persistProfile(this.selectedDeviceId);
+    this.persistProfile(
+      this.selectedDeviceId,
+      this.selectedProfileId(),
+    );
     this.renderAll();
-    this.scheduleSync(this.selectedDeviceId);
+    this.runtime.scheduleSync(this.selectedDeviceId);
   }
 
   resizeSelectedPage() {
@@ -503,6 +1081,23 @@ class DeckController {
         this.selectedKey = null;
       }
     }, true, true);
+  }
+
+  saveLiveConfigFromEditor() {
+    this.updateSelectedKey((key) => {
+      if (key.liveState?.provider === 'toggle') {
+        const label = this.liveOnLabel.value.trim().slice(0, MAX_KEY_LABEL_LENGTH);
+        key.liveState.on = {
+          ...(label ? { label } : {}),
+          color: this.liveOnColor.value,
+          labelColor: this.liveOnLabelColor.value,
+          ...(key.liveState.on.image ? { image: key.liveState.on.image } : {}),
+        };
+      } else if (key.liveState?.provider === 'clock') {
+        key.liveState.hour12 = this.liveClockFormat.value === '12';
+      }
+    });
+    this.runtime.refreshLiveStates(this.selectedDeviceId);
   }
 
   applyActionSelection(action, appearance) {
@@ -572,15 +1167,16 @@ class DeckController {
     });
   }
 
-  async persistProfile(deviceId) {
-    const profile = this.devices[deviceId];
+  async persistProfile(deviceId, profileId = this.selectedProfileId(deviceId)) {
+    const profile = this.profileFor(deviceId, profileId);
 
-    if (!profile) {
+    if (!profile || !profileId) {
       return;
     }
 
     try {
-      this.devices[deviceId] = await this.api.saveDeck(deviceId, profile);
+      this.devices[deviceId].profiles[profileId] =
+        await this.api.saveDeck(deviceId, profileId, profile);
     } catch (error) {
       this.setSyncStatus(`Could not save the deck: ${error.message}`, 'error');
     }
@@ -592,358 +1188,21 @@ class DeckController {
     }
 
     try {
-      const { profile } = await this.api.importDeck();
+      const { device } = await this.api.importDeck(this.selectedDeviceId);
 
-      if (!profile) {
+      if (!device) {
         return;
       }
 
-      const confirmed = window.confirm(
-        'Importing replaces the entire deck for the selected device. Continue?',
-      );
-
-      if (!confirmed) {
-        return;
-      }
-
-      this.devices[this.selectedDeviceId] = profile;
-      this.selectedPage = profile.activePage;
+      this.devices[this.selectedDeviceId] = device;
+      this.runtime.clearLiveRuntime(this.selectedDeviceId);
+      this.selectedPage = this.selectedProfile().activePage;
       this.selectedKey = null;
-      await this.persistProfile(this.selectedDeviceId);
       this.renderAll();
-      this.scheduleSync(this.selectedDeviceId);
-      this.setSyncStatus('Deck profile imported.', 'ready');
+      this.runtime.scheduleSync(this.selectedDeviceId, 0);
+      this.setSyncStatus('Profile imported and selected.', 'ready');
     } catch (error) {
       this.setSyncStatus(`Import failed: ${error.message}`, 'error');
-    }
-  }
-
-  // ---- Device sessions -------------------------------------------------
-
-  async attachSession(session, board) {
-    const { deviceId, boardId } = session.hello;
-    this.sessions.set(deviceId, session);
-
-    if (!this.devices[deviceId]) {
-      try {
-        this.devices[deviceId] = await this.api.saveDeck(deviceId, {
-          name: `${board?.name || 'Stream32'} deck`,
-          boardId,
-          activePage: 0,
-          pages: [{ name: 'Main', rows: 3, cols: 3, keys: [] }],
-        });
-      } catch (error) {
-        this.setSyncStatus(
-          `Could not register the device: ${error.message}`,
-          'error',
-        );
-        return;
-      }
-
-      if (!this.selectedDeviceId) {
-        this.selectedDeviceId = deviceId;
-      }
-    }
-
-    this.renderAll();
-    this.scheduleSync(deviceId, 0);
-  }
-
-  detachSession(session) {
-    const deviceId = session.hello?.deviceId;
-
-    if (deviceId && this.sessions.get(deviceId) === session) {
-      this.sessions.delete(deviceId);
-      this.rejectPending(deviceId, new Error('The device disconnected.'));
-      this.renderAll();
-    }
-  }
-
-  handleDeviceMessage(session, message) {
-    const deviceId = session.hello?.deviceId;
-
-    if (!deviceId) {
-      return;
-    }
-
-    const pending = this.pending.get(deviceId);
-
-    if (pending && ['layout-ack', 'image-ack', 'error'].includes(message.type)) {
-      this.pending.delete(deviceId);
-
-      if (message.type === 'error') {
-        pending.reject(
-          new Error(
-            message.code === 'unknown-type'
-              ? 'The board firmware is too old for deck layouts. ' +
-                'Reflash it from the Flash board section.'
-              : `Device error: ${message.code || 'unknown'}`,
-          ),
-        );
-      } else {
-        pending.resolve(message);
-      }
-
-      return;
-    }
-
-    if (message.type === 'press') {
-      this.handlePress(deviceId, message);
-    } else if (message.type === 'page') {
-      this.handleDevicePage(deviceId, message);
-    }
-  }
-
-  awaitReply(deviceId, timeoutMs = ACK_TIMEOUT_MS) {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        this.pending.delete(deviceId);
-        reject(new Error('The device did not acknowledge in time.'));
-      }, timeoutMs);
-
-      this.pending.set(deviceId, {
-        resolve: (message) => {
-          clearTimeout(timer);
-          resolve(message);
-        },
-        reject: (error) => {
-          clearTimeout(timer);
-          reject(error);
-        },
-      });
-    });
-  }
-
-  rejectPending(deviceId, error) {
-    const pending = this.pending.get(deviceId);
-
-    if (pending) {
-      this.pending.delete(deviceId);
-      pending.reject(error);
-    }
-  }
-
-  handlePress(deviceId, message) {
-    const press = validatePressMessage(message);
-
-    if (press.phase !== 'down') {
-      return;
-    }
-
-    const profile = this.devices[deviceId];
-    const key = profile?.pages[press.page]?.keys.find(
-      (entry) => entry.index === press.index,
-    );
-
-    if (key?.action) {
-      this.runKeyAction(deviceId, key.action);
-    }
-  }
-
-  handleDevicePage(deviceId, message) {
-    const { index } = validatePageMessage(message);
-    const profile = this.devices[deviceId];
-
-    if (!profile || index >= profile.pages.length) {
-      return;
-    }
-
-    profile.activePage = index;
-    this.persistProfile(deviceId);
-
-    if (deviceId === this.selectedDeviceId) {
-      this.selectedPage = index;
-      this.selectedKey = null;
-      this.renderAll();
-    }
-  }
-
-  async runKeyAction(deviceId, action) {
-    try {
-      if (action.type === 'page') {
-        const session = this.sessions.get(deviceId);
-        await session?.send(encodePageMessage(action.page));
-
-        const profile = this.devices[deviceId];
-
-        if (profile && action.page < profile.pages.length) {
-          profile.activePage = action.page;
-          this.persistProfile(deviceId);
-
-          if (deviceId === this.selectedDeviceId) {
-            this.selectedPage = action.page;
-            this.selectedKey = null;
-            this.renderAll();
-          }
-        }
-
-        return;
-      }
-
-      await this.api.runAction(action);
-    } catch (error) {
-      this.setSyncStatus(`Action failed: ${error.message}`, 'error');
-    }
-  }
-
-  // ---- Sync engine -----------------------------------------------------
-
-  scheduleSync(deviceId, delay = SYNC_DEBOUNCE_MS) {
-    if (!deviceId || !this.sessions.has(deviceId)) {
-      this.renderSyncStatus();
-      return;
-    }
-
-    clearTimeout(this.syncTimers.get(deviceId));
-    this.syncTimers.set(
-      deviceId,
-      setTimeout(() => {
-        this.syncTimers.delete(deviceId);
-        this.syncDevice(deviceId);
-      }, delay),
-    );
-  }
-
-  async syncDevice(deviceId) {
-    if (this.syncRunning.get(deviceId)) {
-      this.syncRunning.set(deviceId, 'again');
-      return;
-    }
-
-    const session = this.sessions.get(deviceId);
-    const profile = this.devices[deviceId];
-
-    if (!session || !profile) {
-      return;
-    }
-
-    this.syncRunning.set(deviceId, 'running');
-    this.setSyncStatus('Syncing the deck to the device…', 'working');
-
-    try {
-      for (const [pageIndex, page] of profile.pages.entries()) {
-        await this.syncPage(deviceId, session, profile, pageIndex, page);
-      }
-
-      await session.send(encodePageMessage(profile.activePage));
-      this.setSyncStatus('Deck synced to the device.', 'ready');
-    } catch (error) {
-      this.setSyncStatus(error.message, 'error');
-    } finally {
-      const runAgain = this.syncRunning.get(deviceId) === 'again';
-      this.syncRunning.delete(deviceId);
-
-      if (runAgain) {
-        this.scheduleSync(deviceId, 0);
-      }
-    }
-  }
-
-  async syncPage(deviceId, session, profile, pageIndex, page) {
-    let keyPx = profile.keyPx[gridKey(page)];
-
-    if (!keyPx) {
-      // First contact with this grid size: one extra round trip teaches us
-      // the key size so artwork CRCs can be computed.
-      const ack = await this.sendLayout(deviceId, session, profile, pageIndex, page, new Map());
-      keyPx = ack.keyPx;
-      profile.keyPx[gridKey(page)] = keyPx;
-      this.persistProfile(deviceId);
-    }
-
-    const renders = await this.renderPageImages(page, keyPx);
-    const ack = await this.sendLayout(
-      deviceId,
-      session,
-      profile,
-      pageIndex,
-      page,
-      renders,
-    );
-
-    if (ack.keyPx !== keyPx) {
-      profile.keyPx[gridKey(page)] = ack.keyPx;
-      this.persistProfile(deviceId);
-      return this.syncPage(deviceId, session, profile, pageIndex, page);
-    }
-
-    for (const index of ack.needImages) {
-      const render = renders.get(index);
-
-      if (render) {
-        await this.streamImage(deviceId, session, pageIndex, index, keyPx, render);
-      }
-    }
-  }
-
-  async sendLayout(deviceId, session, profile, pageIndex, page, renders) {
-    const keys = page.keys.map((key) => {
-      const entry = { index: key.index };
-
-      if (key.label) {
-        entry.label = key.label;
-      }
-
-      if (key.color) {
-        entry.color = key.color;
-      }
-
-      if (key.labelColor) {
-        entry.labelColor = key.labelColor;
-      }
-
-      const render = renders.get(key.index);
-
-      if (render) {
-        entry.imageCrc = render.crc;
-      }
-
-      if (key.action?.type === 'page') {
-        entry.goPage = key.action.page;
-      }
-
-      return entry;
-    });
-
-    const reply = this.awaitReply(deviceId);
-    await session.send(
-      encodeLayoutMessage(
-        {
-          page: pageIndex,
-          of: profile.pages.length,
-          rows: page.rows,
-          cols: page.cols,
-          keys,
-        },
-        layoutLineLimitFor(this.limitsFor(profile)),
-      ),
-    );
-    return validateLayoutAck(await reply);
-  }
-
-  async streamImage(deviceId, session, pageIndex, index, keyPx, render) {
-    const chunks = encodeImageChunks({
-      page: pageIndex,
-      index,
-      width: keyPx,
-      height: keyPx,
-      pixels: render.pixels,
-    });
-
-    for (const [seq, chunk] of chunks.entries()) {
-      this.setSyncStatus(
-        `Sending key artwork… page ${pageIndex + 1}, key ${index + 1}, ` +
-          `${Math.round(((seq + 1) / chunks.length) * 100)}%`,
-        'working',
-      );
-
-      const reply = this.awaitReply(deviceId);
-      await session.send(chunk);
-      const ack = validateImageAck(await reply);
-
-      if (ack.page !== pageIndex || ack.index !== index || ack.seq !== seq) {
-        throw new Error('The device acknowledged the wrong image chunk.');
-      }
     }
   }
 
@@ -993,15 +1252,43 @@ class DeckController {
     this.syncStatus.dataset.state = state;
   }
 
+  setProfileMatchStatus(message, state) {
+    this.profileMatchStatus.textContent = message;
+    this.profileMatchStatus.dataset.state = state;
+  }
+
   renderSyncStatus() {
+    if (this.storageErrors.length > 0) {
+      this.setSyncStatus(
+        `Deck storage contains ${this.storageErrors.length} preserved corrupt ` +
+          `entr${this.storageErrors.length === 1 ? 'y' : 'ies'}. ` +
+          'Restore a backup or repair decks.json before removing data.',
+        'error',
+      );
+      return;
+    }
+
     if (!this.selectedDeviceId) {
       this.setSyncStatus('', 'idle');
       return;
     }
 
-    if (!this.sessions.has(this.selectedDeviceId)) {
+    if (!this.runtime.hasSession(this.selectedDeviceId)) {
       this.setSyncStatus(
         'Device offline — changes sync automatically on its next connection.',
+        'idle',
+      );
+      return;
+    }
+
+    const session = this.runtime.sessionFor(this.selectedDeviceId);
+    const hasLiveState = this.selectedProfile()?.pages.some((page) =>
+      page.keys.some((key) => Boolean(key.liveState)),
+    );
+
+    if (hasLiveState && !session.hello?.features?.includes('key-update')) {
+      this.setSyncStatus(
+        'Base deck synced; connected firmware does not support live key state. Reflash to enable it.',
         'idle',
       );
     }
@@ -1009,6 +1296,8 @@ class DeckController {
 
   renderAll() {
     this.renderDevicePicker();
+    this.renderProfiles();
+    this.renderFocusRules();
     this.renderPages();
     this.renderGrid();
     this.renderKeyEditor();
@@ -1048,14 +1337,129 @@ class DeckController {
 
     this.deviceSelect.value = this.selectedDeviceId;
 
-    const profile = this.selectedProfile();
-    this.deviceName.value = profile.name;
-    const connected = this.sessions.has(this.selectedDeviceId);
+    const device = this.selectedDevice();
+    this.deviceName.value = device.name;
+    const connected = this.runtime.hasSession(this.selectedDeviceId);
     this.deviceStatus.textContent = connected
       ? 'Connected'
       : 'Offline';
     this.deviceStatus.dataset.state = connected ? 'ready' : 'idle';
     this.setManualConnectionHidden(connected);
+  }
+
+  renderProfiles() {
+    const device = this.selectedDevice();
+    this.profileTabs.replaceChildren();
+
+    if (!device) {
+      return;
+    }
+
+    for (const [profileId, profile] of Object.entries(device.profiles)) {
+      const tab = this.document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'deck-profile-tab';
+      tab.textContent =
+        `${profile.name}${profileId === device.defaultProfileId ? ' · Default' : ''}`;
+      tab.dataset.active = String(profileId === device.activeProfileId);
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute(
+        'aria-selected',
+        String(profileId === device.activeProfileId),
+      );
+      tab.addEventListener('click', () => {
+        if (profileId !== device.activeProfileId) {
+          this.runProfileOperation({ type: 'select', profileId });
+        }
+      });
+      tab.addEventListener('dragover', (event) => {
+        if (this.isKeyDrag(event) && profileId !== device.activeProfileId) {
+          event.preventDefault();
+        }
+      });
+      tab.addEventListener('dragenter', (event) => {
+        if (this.isKeyDrag(event) && profileId !== device.activeProfileId) {
+          this.runProfileOperation({ type: 'select', profileId });
+        }
+      });
+      this.profileTabs.append(tab);
+    }
+
+    const profileCount = Object.keys(device.profiles).length;
+    this.profileCreate.disabled = profileCount >= MAX_NAMED_PROFILES;
+    this.profileDuplicate.disabled = profileCount >= MAX_NAMED_PROFILES;
+    this.profileRename.disabled = false;
+    this.profileDelete.disabled = profileCount <= 1;
+  }
+
+  renderFocusRules() {
+    const device = this.selectedDevice();
+    const profileId = this.selectedProfileId();
+    const profile = this.selectedProfile();
+    const platform = this.focusStatus?.platform;
+    const rule = platform ? profile?.appMatches?.[platform] : null;
+    const hasProfile = Boolean(device && profileId && profile);
+
+    this.profileDefault.disabled =
+      !hasProfile || profileId === device.defaultProfileId;
+    this.profileDefault.textContent =
+      hasProfile && profileId === device.defaultProfileId
+        ? 'Default profile'
+        : 'Make default';
+    this.profileMatchFocused.disabled =
+      !hasProfile ||
+      !this.focusStatus?.supported ||
+      this.focusStatus.state !== 'watching' ||
+      !this.focusSnapshot;
+    this.profileMatchSave.disabled = !hasProfile || !platform;
+    this.profileMatchClear.disabled = !rule;
+
+    if (this.document.activeElement !== this.profileMatchInput) {
+      this.profileMatchInput.value = appMatchText(platform, rule);
+    }
+
+    this.profileMatchInput.disabled = !hasProfile || !platform;
+
+    if (platform === 'win32') {
+      this.profileMatchInput.placeholder = 'obs64.exe or folder/obs64.exe';
+    } else if (platform === 'darwin') {
+      this.profileMatchInput.placeholder =
+        'com.vendor.app or process:App Name';
+    } else if (platform === 'linux') {
+      this.profileMatchInput.placeholder =
+        'class:obs or process:obs';
+    } else {
+      this.profileMatchInput.placeholder = 'Focused app unavailable';
+    }
+
+    if (this.focusStatus?.reason) {
+      this.setProfileMatchStatus(
+        this.focusStatus.reason,
+        this.focusStatus.state === 'error' ? 'error' : 'idle',
+      );
+      return;
+    }
+
+    if (this.focusSnapshot) {
+      try {
+        const focused = preferredRuleForSnapshot(this.focusSnapshot);
+        this.setProfileMatchStatus(
+          `Focused app: ${focused.value}`,
+          'ready',
+        );
+      } catch {
+        this.setProfileMatchStatus(
+          'The focused app has no supported stable identity.',
+          'idle',
+        );
+      }
+      return;
+    }
+
+    this.setProfileMatchStatus(
+      'Focus another app, then return and choose “Use focused app”.',
+      'idle',
+    );
   }
 
   renderPages() {
@@ -1078,6 +1482,18 @@ class DeckController {
         this.selectedPage = index;
         this.selectedKey = null;
         this.renderAll();
+      });
+      tab.addEventListener('dragover', (event) => {
+        if (this.isKeyDrag(event) && index !== this.selectedPage) {
+          event.preventDefault();
+        }
+      });
+      tab.addEventListener('dragenter', (event) => {
+        if (this.isKeyDrag(event) && index !== this.selectedPage) {
+          this.selectedPage = index;
+          this.selectedKey = null;
+          this.renderAll();
+        }
       });
       this.pageTabs.append(tab);
     }
@@ -1110,6 +1526,7 @@ class DeckController {
 
   renderGrid() {
     const profile = this.selectedProfile();
+    const profileId = this.selectedProfileId();
     this.grid.replaceChildren();
 
     if (!profile) {
@@ -1121,11 +1538,31 @@ class DeckController {
     this.grid.style.setProperty('--deck-rows', String(page.rows));
 
     for (let index = 0; index < page.rows * page.cols; index++) {
-      const key = page.keys.find((entry) => entry.index === index);
+      const baseKey = page.keys.find((entry) => entry.index === index);
+      const key = mergeKeyOverlay(
+        baseKey,
+        baseKey
+          ? this.runtime.liveOverlayFor(
+              this.selectedDeviceId,
+              profileId,
+              this.selectedPage,
+              baseKey,
+            )
+          : null,
+      );
       const cell = this.document.createElement('button');
       cell.type = 'button';
       cell.className = 'deck-key';
       cell.dataset.selected = String(index === this.selectedKey);
+      cell.dataset.keyIndex = String(index);
+      cell.setAttribute(
+        'aria-label',
+        `${key.label || `Key ${index + 1}`}${baseKey ? ', configured' : ', empty'}`,
+      );
+      cell.title = baseKey
+        ? 'Click to edit. Drag to move or swap. Ctrl/Cmd+C or X to copy or cut.'
+        : 'Click to edit. Drop or press Ctrl/Cmd+V to paste.';
+      cell.draggable = Boolean(baseKey);
 
       if (key?.color) {
         cell.style.background = key.color;
@@ -1151,7 +1588,8 @@ class DeckController {
       }
 
       cell.dataset.empty = String(
-        !key || (!key.label && !key.color && !key.image && !key.action),
+        !baseKey ||
+          (!key.label && !key.color && !key.image && !key.action && !baseKey.liveState),
       );
 
       if (key?.action?.type === 'page') {
@@ -1161,6 +1599,59 @@ class DeckController {
       cell.addEventListener('click', () => {
         this.selectedKey = index;
         this.renderAll();
+        this.focusKey(index);
+      });
+      cell.addEventListener('focus', () => {
+        this.selectedKey = index;
+      });
+      cell.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+        this.selectedKey = index;
+        this.renderAll();
+        this.focusKey(index);
+      });
+      cell.addEventListener('dragstart', (event) => {
+        if (!baseKey) {
+          event.preventDefault();
+          return;
+        }
+
+        this.dragSource = {
+          deviceId: this.selectedDeviceId,
+          profileId: this.selectedProfileId(),
+          page: this.selectedPage,
+          index,
+        };
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData(
+          KEY_DRAG_TYPE,
+          JSON.stringify(this.dragSource),
+        );
+      });
+      cell.addEventListener('dragend', () => {
+        this.dragSource = null;
+      });
+      cell.addEventListener('dragover', (event) => {
+        if (this.isKeyDrag(event)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'move';
+        }
+      });
+      cell.addEventListener('drop', (event) => {
+        event.preventDefault();
+
+        if (!this.dragSource) {
+          try {
+            this.dragSource = JSON.parse(
+              event.dataTransfer.getData(KEY_DRAG_TYPE),
+            );
+          } catch {
+            return;
+          }
+        }
+
+        this.dropKey(index);
+        this.dragSource = null;
       });
       this.grid.append(cell);
     }
@@ -1186,15 +1677,46 @@ class DeckController {
     this.keyColor.value = key.color || DEFAULT_KEY_COLOR;
     this.keyLabelColor.value = key.labelColor || '#f3f7f9';
     this.keyImageClear.disabled = !key.image;
+    const live = key.liveState || null;
+    this.liveProvider.value = live?.provider || '';
+    this.liveToggleFields.hidden = live?.provider !== 'toggle';
+    this.liveClockField.hidden = live?.provider !== 'clock';
+    this.liveOnLabel.value = live?.provider === 'toggle'
+      ? live.on.label || ''
+      : '';
+    this.liveOnColor.value = live?.provider === 'toggle'
+      ? live.on.color || '#2f8f5b'
+      : '#2f8f5b';
+    this.liveOnLabelColor.value = live?.provider === 'toggle'
+      ? live.on.labelColor || '#ffffff'
+      : '#ffffff';
+    this.liveOnImageClear.disabled =
+      live?.provider !== 'toggle' || !live.on.image;
+    this.liveClockFormat.value =
+      live?.provider === 'clock' && live.hour12 ? '12' : '24';
+    const session = this.runtime.sessionFor(this.selectedDeviceId);
+    this.liveStatus.textContent = live
+      ? session && !session.hello?.features?.includes('key-update')
+        ? 'Connected firmware does not support live state. Reflash this board to enable it.'
+        : live.provider === 'toggle'
+          ? 'Local toggle changes only after its complete action succeeds.'
+          : 'Live appearance is ephemeral and never changes the saved base key.'
+      : '';
 
     const action = key.action || null;
     this.actionEditor.render({
       action,
-      context: `${this.selectedDeviceId}:${this.selectedPage}:${this.selectedKey}`,
+      context:
+        `${this.selectedDeviceId}:${this.selectedProfileId()}:` +
+        `${this.selectedPage}:${this.selectedKey}`,
       pages: profile.pages,
     });
 
     this.keyTest.disabled = !action;
+    const configured = Boolean(this.selectedKeyData());
+    this.keyCopy.disabled = !configured;
+    this.keyCut.disabled = !configured;
+    this.keyPaste.disabled = !this.clipboard;
   }
 }
 

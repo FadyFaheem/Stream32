@@ -5,6 +5,7 @@
 
 #include "bsp/esp-bsp.h"
 #include "cJSON.h"
+#include "deck_protocol.h"
 #include "deck_ui.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
@@ -77,7 +78,9 @@ static void send_hello(void)
         message,
         sizeof(message),
         "{\"type\":\"hello\",\"protocol\":%d,\"boardId\":\"%s\","
-        "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\"}",
+        "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
+        "\"features\":[\"display-control\",\"display-brightness\",\"key-update\","
+        "\"image-rle\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -130,6 +133,7 @@ static void handle_host_message(const char *line, size_t length)
         } else if (!system_ready) {
             send_error(bsp_display_status());
         } else {
+            deck_protocol_clear_overlays();
             update_connection_label("USB connected to Stream32");
             send_hello();
         }
@@ -149,36 +153,23 @@ static void handle_host_message(const char *line, size_t length)
             );
             serial_write_line(response);
         }
-    } else if (strcmp(type->valuestring, "layout") == 0) {
-        const char *error = deck_ui_handle_layout(
+    } else {
+        const char *error = NULL;
+        const bool handled = deck_protocol_dispatch(
             message,
             line,
             length,
             reply,
-            sizeof(reply)
+            sizeof(reply),
+            serial_write_line,
+            &error
         );
 
-        if (error != NULL) {
-            send_error(error);
-        } else {
-            serial_write_line(reply);
-        }
-    } else if (strcmp(type->valuestring, "image") == 0) {
-        const char *error = deck_ui_handle_image(message, reply, sizeof(reply));
-
-        if (error != NULL) {
-            send_error(error);
-        } else {
-            serial_write_line(reply);
-        }
-    } else if (strcmp(type->valuestring, "page") == 0) {
-        const char *error = deck_ui_handle_page(message);
-
-        if (error != NULL) {
+        if (!handled) {
+            send_error("unknown-type");
+        } else if (error != NULL) {
             send_error(error);
         }
-    } else {
-        send_error("unknown-type");
     }
 
     cJSON_Delete(message);
@@ -267,6 +258,10 @@ static void touch_event_handler(lv_event_t *event)
         return;
     }
 
+    if (deck_ui_handle_touch(code == LV_EVENT_PRESSED)) {
+        return;
+    }
+
     lv_indev_t *input = lv_indev_active();
 
     if (input == NULL) {
@@ -308,6 +303,8 @@ static void touch_event_handler(lv_event_t *event)
 static void create_self_test_ui(void)
 {
     lv_obj_t *screen = lv_screen_active();
+    lv_obj_add_flag(screen, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(screen, touch_event_handler, LV_EVENT_ALL, NULL);
     lv_obj_set_style_bg_color(screen, lv_color_hex(0x0b1116), LV_PART_MAIN);
     lv_obj_set_style_text_color(screen, lv_color_hex(0xf3f7f9), LV_PART_MAIN);
 

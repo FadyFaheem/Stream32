@@ -5,24 +5,52 @@ const {
   MAX_PROTOCOL_LINE_LENGTH,
   crc32,
   createLineDecoder,
+  encodeDisplayMessage,
   encodeHostHello,
   encodeImageChunks,
+  encodeKeyUpdateMessage,
   encodeLayoutMessage,
   encodePageMessage,
+  encodeRle565,
   isExpectedChip,
   layoutLineLimitFor,
   validateDeviceHello,
   validateImageAck,
+  validateKeyUpdateAck,
   validateLayoutAck,
   validatePageMessage,
   validatePressMessage,
   validateTouchMessage,
 } = require('../src/renderer/protocol');
 
+function decodeRle565Reference(encoded) {
+  assert.equal(encoded.length % 4, 0);
+  const output = [];
+
+  for (let offset = 0; offset < encoded.length; offset += 4) {
+    const count = encoded[offset] | (encoded[offset + 1] << 8);
+    assert.ok(count > 0);
+
+    for (let run = 0; run < count; run++) {
+      output.push(encoded[offset + 2], encoded[offset + 3]);
+    }
+  }
+
+  return Uint8Array.from(output);
+}
+
+function chunkMessages(chunks) {
+  return chunks.map((chunk) => JSON.parse(new TextDecoder().decode(chunk)));
+}
+
+function decodeBase64(text) {
+  return Uint8Array.from(atob(text), (character) => character.charCodeAt(0));
+}
+
 test('encodes the versioned desktop hello', () => {
   assert.equal(
     new TextDecoder().decode(encodeHostHello()),
-    '{"type":"hello","protocol":1}\n',
+    '{"type":"hello","protocol":1,"features":["key-update"]}\n',
   );
 });
 
@@ -87,6 +115,41 @@ test('validates device identity and rejects the wrong board', () => {
         '0.2.0',
       ),
     /expected 0.2.0/,
+  );
+
+  assert.deepEqual(
+    validateDeviceHello(
+      { ...hello, features: ['display-control'] },
+      hello.boardId,
+    ).features,
+    ['display-control'],
+  );
+  assert.throws(
+    () =>
+      validateDeviceHello(
+        { ...hello, features: ['display-control', 'display-control'] },
+        hello.boardId,
+      ),
+    /features/,
+  );
+  assert.throws(
+    () =>
+      validateDeviceHello(
+        {
+          ...hello,
+          features: Array.from({ length: 17 }, (_, index) => `feature-${index}`),
+        },
+        hello.boardId,
+      ),
+    /features/,
+  );
+  assert.throws(
+    () =>
+      validateDeviceHello(
+        { ...hello, features: ['A'.repeat(33)] },
+        hello.boardId,
+      ),
+    /features/,
   );
 });
 
@@ -291,6 +354,186 @@ test('chunks images under the protocol line limit', () => {
   );
 });
 
+test('round-trips bounded RGB565 run-length tuples', () => {
+  const pixels = Uint8Array.from([
+    0x00, 0x00,
+    0x00, 0x00,
+    0x34, 0x12,
+    0x34, 0x12,
+    0x34, 0x12,
+    0xff, 0xff,
+  ]);
+  const encoded = encodeRle565(pixels);
+
+  assert.deepEqual(
+    [...encoded],
+    [2, 0, 0, 0, 3, 0, 0x34, 0x12, 1, 0, 0xff, 0xff],
+  );
+  assert.deepEqual(decodeRle565Reference(encoded), pixels);
+});
+
+test('gates RLE by feature and falls back for incompressible pixels', () => {
+  const flat = new Uint8Array(180 * 180 * 2).fill(0x44);
+  const legacy = chunkMessages(
+    encodeImageChunks({
+      page: 0,
+      index: 0,
+      width: 180,
+      height: 180,
+      pixels: flat,
+    }),
+  );
+  const capable = chunkMessages(
+    encodeImageChunks({
+      page: 0,
+      index: 0,
+      width: 180,
+      height: 180,
+      pixels: flat,
+      rleSupported: true,
+    }),
+  );
+
+  assert.equal(legacy[0].encoding, undefined);
+  assert.equal(capable[0].encoding, 'rle565');
+
+  const noisy = new Uint8Array(180 * 180 * 2);
+  for (let pixel = 0; pixel < noisy.length / 2; pixel++) {
+    noisy[pixel * 2] = pixel & 1;
+    noisy[pixel * 2 + 1] = 0;
+  }
+  assert.equal(encodeRle565(noisy).length, noisy.length * 2);
+  assert.equal(
+    chunkMessages(
+      encodeImageChunks({
+        page: 0,
+        index: 0,
+        width: 180,
+        height: 180,
+        pixels: noisy,
+        rleSupported: true,
+      }),
+    )[0].encoding,
+    undefined,
+  );
+});
+
+test('keeps RLE tuples within worst-case and chunk bounds', () => {
+  const maximum = new Uint8Array(512 * 512 * 2).fill(0xab);
+  const maximumRle = encodeRle565(maximum);
+  assert.equal(maximumRle.length, Math.ceil(512 * 512 / 0xffff) * 4);
+  assert.deepEqual(decodeRle565Reference(maximumRle), maximum);
+
+  const grouped = new Uint8Array(180 * 180 * 2);
+  for (let pixel = 0; pixel < grouped.length / 2; pixel++) {
+    const color = Math.floor(pixel / 3) & 0xffff;
+    grouped[pixel * 2] = color & 0xff;
+    grouped[pixel * 2 + 1] = color >>> 8;
+  }
+  const chunks = encodeImageChunks({
+    page: 0,
+    index: 0,
+    width: 180,
+    height: 180,
+    pixels: grouped,
+    rleSupported: true,
+  });
+  const messages = chunkMessages(chunks);
+  const encodedParts = messages.map((message, index) => {
+    assert.equal(message.encoding, 'rle565');
+    assert.equal(message.seq, index);
+    assert.equal(message.of, chunks.length);
+    assert.ok(chunks[index].length <= MAX_PROTOCOL_LINE_LENGTH);
+    const part = decodeBase64(message.data);
+    assert.equal(part.length % 4, 0);
+    return part;
+  });
+  const encoded = Uint8Array.from(encodedParts.flatMap((part) => [...part]));
+
+  assert.deepEqual(decodeRle565Reference(encoded), grouped);
+});
+
+test('encodes bounded live key patches and ephemeral image mode', () => {
+  const patch = JSON.parse(new TextDecoder().decode(encodeKeyUpdateMessage({
+    page: 2,
+    index: 7,
+    label: 'Live',
+    color: '#112233',
+    labelColor: '#ffffff',
+    state: 'on',
+    imageCrc: 'deadbeef',
+  })));
+  assert.deepEqual(patch, {
+    type: 'key-update',
+    page: 2,
+    index: 7,
+    label: 'Live',
+    color: '#112233',
+    labelColor: '#ffffff',
+    state: 'on',
+    imageCrc: 'deadbeef',
+  });
+  assert.throws(
+    () => encodeKeyUpdateMessage({ page: 0, index: 40, state: 'on' }),
+    /range/,
+  );
+  assert.throws(
+    () => encodeKeyUpdateMessage({ page: 0, index: 0, state: 'maybe' }),
+    /state/,
+  );
+
+  const chunks = encodeImageChunks({
+    page: 0,
+    index: 0,
+    width: 2,
+    height: 2,
+    pixels: new Uint8Array(8),
+    mode: 'ephemeral',
+  });
+  assert.equal(
+    JSON.parse(new TextDecoder().decode(chunks[0])).mode,
+    'ephemeral',
+  );
+  assert.deepEqual(validateKeyUpdateAck({
+    page: 0,
+    index: 0,
+    needImage: true,
+  }), { page: 0, index: 0, needImage: true });
+});
+
+test('enforces label and line limits in UTF-8 bytes', () => {
+  const layout = {
+    page: 0,
+    of: 1,
+    rows: 1,
+    cols: 1,
+    keys: [{ index: 0, label: 'é'.repeat(16) }],
+  };
+  const encoded = encodeLayoutMessage(layout);
+  const characterLength = new TextDecoder().decode(encoded).length;
+
+  assert.ok(characterLength < encoded.byteLength);
+  assert.throws(
+    () => encodeLayoutMessage(layout, encoded.byteLength - 1),
+    /exceeds the limit/,
+  );
+  assert.throws(
+    () => encodeLayoutMessage({
+      ...layout,
+      keys: [{ index: 0, label: 'é'.repeat(17) }],
+    }),
+    /label/,
+  );
+  assert.throws(
+    () => encodeKeyUpdateMessage({
+      page: 0,
+      index: 0,
+      label: 'é'.repeat(17),
+    }),
+    /label/,
+  );
+});
+
 test('validates deck acknowledgements and events', () => {
   assert.deepEqual(
     validateLayoutAck({
@@ -331,6 +574,42 @@ test('validates deck acknowledgements and events', () => {
   assert.throws(
     () => validatePressMessage({ page: 0, index: 0, phase: 'held' }),
     /invalid/,
+  );
+});
+
+test('encodes validated display policy messages', () => {
+  assert.equal(
+    new TextDecoder().decode(
+      encodeDisplayMessage({ awake: false, idleTimeoutSeconds: 600 }),
+    ),
+    '{"type":"display","awake":false,"idleTimeoutSeconds":600}\n',
+  );
+  assert.equal(
+    new TextDecoder().decode(
+      encodeDisplayMessage({
+        awake: true,
+        idleTimeoutSeconds: 300,
+        brightness: 42,
+      }),
+    ),
+    '{"type":"display","awake":true,"idleTimeoutSeconds":300,"brightness":42}\n',
+  );
+  assert.throws(
+    () => encodeDisplayMessage({ awake: 'yes', idleTimeoutSeconds: 600 }),
+    /boolean/,
+  );
+  assert.throws(
+    () => encodeDisplayMessage({ awake: true, idleTimeoutSeconds: 86401 }),
+    /range/,
+  );
+  assert.throws(
+    () =>
+      encodeDisplayMessage({
+        awake: true,
+        idleTimeoutSeconds: 600,
+        brightness: 101,
+      }),
+    /range/,
   );
 });
 

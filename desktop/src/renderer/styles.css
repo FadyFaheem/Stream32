@@ -167,7 +167,8 @@ select {
 
 .view-deck:not([hidden]) {
   min-height: 100%;
-  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+  /* Generous tail room so the page scrolls a little past the key editor. */
+  padding-bottom: calc(30vh + env(safe-area-inset-bottom, 0px));
 }
 
 #view-flash:not([hidden]),

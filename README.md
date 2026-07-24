@@ -12,38 +12,65 @@
 
 ## Why Stream32?
 
-Stream32 is a DIY stream deck built around the accessible and versatile ESP32 platform. The goal is a device you can build, understand, repair, and adapt to your own workflow—without proprietary hardware or software lock-in.
+Stream32 is a DIY stream deck built around the accessible and versatile ESP32
+platform. The goal is a device you can build, understand, repair, and adapt to
+your own workflow, without proprietary hardware or software lock-in.
 
-Everything needed to reproduce and modify the project will live here in the open.
+You buy an off-the-shelf touch display, flash it from the desktop app, and lay
+out pages of keys that launch apps, press hotkeys, run multi-step actions, and
+more. Everything needed to reproduce and modify the project lives here in the
+open.
 
 ## Project status
 
 > [!NOTE]
-> Stream32 is in its earliest stage. Firmware supports the Waveshare
-> ESP32-S3-Touch-LCD-4 hardware Rev 3.0 and the Elecrow CrowPanel Advanced
-> 10.1" ESP32-P4 HMI; custom hardware designs have not been published yet.
+> Stream32 is usable today. The desktop app ships installers for Windows,
+> macOS, and Linux, and supports two off-the-shelf touch displays. Custom
+> open-hardware designs (schematics, BOM, and enclosures) are still on the
+> roadmap.
 
-The project is currently taking shape. Planned areas include:
+## Getting started
 
-- **Firmware** — the first display/touch self-test and USB protocol live under
-  [`boards/`](./boards).
-- **Hardware** — reproducible electronics, a bill of materials, and enclosure designs.
-- **Host tools** — configuration and integrations for desktop workflows.
-- **Documentation** — clear instructions to build, flash, configure, and customize your own Stream32.
+1. **Pick a supported display.** See [Buying a display](./boards/BUYING.md).
+2. **Install the desktop app.** Download the latest build for your operating
+   system from the
+   [releases page](https://github.com/FadyFaheem/Stream32/releases/latest).
+3. **Flash the firmware.** Connect the board over USB and let the app download
+   and flash the matching firmware.
+4. **Build your deck.** Add pages and keys, then assign actions.
 
-Plans may change as the first prototype is developed and tested.
+The [Getting started guide](./docs/GETTING_STARTED.md) walks through each step,
+including the USB and power requirements for each board.
 
-## Desktop app
+## Supported hardware
 
-The Electron companion lives in [`desktop/`](./desktop). It runs in the system
-tray, can launch quietly at login, checks GitHub Releases for updates, and can
-download and flash supported board firmware over USB.
+| Display | Screen | Deck size | Notes |
+| --- | --- | --- | --- |
+| Waveshare `ESP32-S3-Touch-LCD-4` | 480x480, 4" | up to 5x5, 8 pages | **Rev 3.0 only** (not Rev 4 or the 4.3" board) |
+| Elecrow `CrowPanel Advanced 10.1"` ESP32-P4 | 1024x600, 10.1" | up to 40 keys/page, 8 pages | Needs UART0 data **and** USB 2.0 power |
 
-Node.js 22 or newer is required for local development:
+Purchase links and buying tips are in [Buying a display](./boards/BUYING.md).
+Firmware, flashing, and the USB protocol are documented in
+[`boards/README.md`](./boards/README.md).
+
+## Documentation
+
+| Guide | For | What it covers |
+| --- | --- | --- |
+| [Getting started](./docs/GETTING_STARTED.md) | Users | Install, flash, and set up your first deck |
+| [Buying a display](./boards/BUYING.md) | Users | Which board to buy and what to avoid |
+| [Decks and profiles](./desktop/DECKS.md) | Users | Profiles, focused-app switching, editing, Multi Actions |
+| [Action plugins](./desktop/PLUGINS.md) | Users and authors | Installing, publishing, and writing action plugins |
+| [Board support](./boards/README.md) | Contributors | Firmware builds, flashing behavior, and the USB protocol |
+
+## Development
+
+The Electron companion lives in [`desktop/`](./desktop). Node.js 22 or newer is
+required:
 
 ```sh
 cd desktop
-npm install
+npm ci
 npm start
 ```
 
@@ -51,40 +78,9 @@ Run `npm test` and `npm run check` before opening a pull request. Pull requests
 that touch the desktop app are packaged on Windows, macOS, and Linux. To build
 an installer for your current platform locally, run `npm run dist`.
 
-Deck actions can come from built-in controls or declarative JSON plugins.
-Plugins add searchable actions and generated fields without running
-third-party code in Electron or changing ESP32 firmware. Settings includes a
-curated install/update/remove catalog backed by the rolling, non-latest
-`plugins-current` GitHub Release; downloaded manifests are size/hash checked
-and validated before an atomic install. See
-[`desktop/PLUGINS.md`](./desktop/PLUGINS.md) for the manifest format,
-manual and curated installation, publishing, supported capabilities, and
-bundled controls.
-
-### Board firmware and flashing
-
-The desktop app loads board support independently from the rolling
-`boards-current` GitHub Release. It downloads only the selected firmware,
-checks its declared size and SHA-256 hash, and caches it for offline
-reflashing. Adding a compatible profile therefore does not require a desktop
-release.
-
-Two profiles exist today: the 4-inch, 480×480 Waveshare
-`ESP32-S3-Touch-LCD-4` with a **Rev 3.0** silkscreen (Rev 4 and the 4.3-inch
-product are not interchangeable), and the 10.1-inch, 1024×600 Elecrow
-`CrowPanel Advanced` ESP32-P4 HMI (hardware revisions 1.0–1.2). See
-[`boards/README.md`](./boards/README.md) for firmware builds, profile
-publishing, the USB protocol, and BOOT-mode recovery.
-
-CrowPanel flashing recognizes the observed `USB-SERIAL CH340K`
-`1a86:7522` bridge, prefers 921600 baud, and automatically restarts once at
-460800 if that link is unstable. Normal writes preserve saved decks; the
-advanced full-erase checkbox is intentionally destructive. The display needs
-both UART0 data and USB 2.0 power (roughly 8–10 W), plus a reliable data cable
-and current WCH driver. Deck sync remains at the compatible 115200 runtime
-baud, but feature-gated RGB565 RLE greatly reduces flat/icon artwork transfers;
-photographic or noisy images fall back to raw bytes when compression is not
-smaller.
+Board profiles and firmware are versioned independently of the desktop app, so
+adding a compatible board does not require a desktop release. See
+[`boards/README.md`](./boards/README.md) for the board workflow.
 
 ### Publishing a desktop release
 
@@ -92,26 +88,27 @@ The package version and Git tag must match. For example:
 
 ```sh
 cd desktop
-npm version 0.2.0 --no-git-tag-version
+npm ci
+npm test
+npm run check
+npm version 1.1.0 --no-git-tag-version
 cd ..
 git add desktop/package.json desktop/package-lock.json
-git commit -m "chore(desktop): prepare v0.2.0"
-git tag v0.2.0
-git push origin main v0.2.0
+git commit -m "chore(desktop): prepare v1.1.0"
+git tag v1.1.0
+git push origin main v1.1.0
 ```
 
-The `v*` tag starts the release workflow. It creates a GitHub Release containing
-an NSIS installer and portable executable for Windows, DMG and ZIP packages for
-macOS, and AppImage and Debian packages for Linux.
-
-Packaged apps check for updates shortly after launch; updates can also be
-checked from the tray menu. macOS automatic installation requires a signed
-build, so the unsigned CI artifacts must be signed and notarized before macOS
-auto-update can complete.
+The `v*` tag starts the release workflow, which packages Windows, macOS, and
+Linux builds and publishes a GitHub Release. macOS automatic installation
+requires a signed build, so the unsigned CI artifacts must be signed and
+notarized before macOS auto-update can complete.
 
 ## Contributing
 
-Ideas, hardware suggestions, and early contributions are welcome. Start a conversation by [opening an issue](https://github.com/FadyFaheem/Stream32/issues).
+Ideas, hardware suggestions, and early contributions are welcome. Start a
+conversation by
+[opening an issue](https://github.com/FadyFaheem/Stream32/issues).
 
 ## License
 

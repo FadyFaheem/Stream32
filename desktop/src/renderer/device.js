@@ -10,6 +10,9 @@ const {
 } = require('./protocol');
 
 const HANDSHAKE_TIMEOUT_MS = 7000;
+const MANUAL_HANDSHAKE_TIMEOUT_MS = 90000;
+const MAX_HANDSHAKE_TIMEOUT_MS = 120000;
+const MIN_HANDSHAKE_TIMEOUT_MS = 100;
 const HELLO_RETRY_MS = 1000;
 const RECONNECT_ATTEMPTS = 8;
 const RECONNECT_DELAY_MS = 750;
@@ -17,6 +20,10 @@ const MAX_LOG_LINES = 80;
 const FALLBACK_FLASH_BAUD = 460800;
 const MANUAL_CONNECTION_HELP =
   'If auto-connect misses your deck, choose its USB / COM port.';
+const MANUAL_RESET_INSTRUCTION =
+  'Press and release RST now (do not hold BOOT)';
+const MANUAL_RESET_TIMEOUT_MESSAGE =
+  'Firmware was written and verified; press RST or power-cycle, then Reconnect';
 
 function sleep(milliseconds) {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -749,6 +756,7 @@ class DeviceController {
     this.setDeviceStatus('Firmware flash in progress.', 'working');
 
     let transport = null;
+    let firmwareWritten = false;
 
     try {
       await this.closeSessionForPort(port);
@@ -772,28 +780,32 @@ class DeviceController {
       });
       const { loader } = result;
       transport = result.transport;
+      firmwareWritten = true;
+      this.setProgress(100);
 
-      this.flashStatus.textContent = 'Restarting the board…';
-      await loader.after('hard_reset');
-      await transport.disconnect();
+      await this.disconnectFlashTransport(
+        loader,
+        transport,
+        firmware.board.postFlashReset,
+      );
       transport = null;
 
-      this.setProgress(100);
-      this.flashStatus.textContent =
-        'Flash complete. Waiting for the Stream32 handshake…';
-      await this.connectWithRetries(
-        port,
-        board.id,
-        board.firmwareVersion,
-      );
+      await this.connectAfterFlash(port, board);
       this.flashStatus.textContent =
         'Firmware flashed and connected successfully.';
       this.showTouchTest();
     } catch (error) {
       const message = errorMessage(error);
       this.appendLog(message);
-      this.flashStatus.textContent = `Flash failed: ${message}`;
-      this.setDeviceStatus('Flash failed. See recovery steps below.', 'error');
+
+      if (firmwareWritten && board.postFlashReset === 'manual') {
+        this.appendLog(MANUAL_RESET_TIMEOUT_MESSAGE);
+        this.flashStatus.textContent = MANUAL_RESET_TIMEOUT_MESSAGE;
+        this.setDeviceStatus(MANUAL_RESET_TIMEOUT_MESSAGE, 'error');
+      } else {
+        this.flashStatus.textContent = `Flash failed: ${message}`;
+        this.setDeviceStatus('Flash failed. See recovery steps below.', 'error');
+      }
     } finally {
       if (transport) {
         try {
@@ -805,6 +817,39 @@ class DeviceController {
 
       this.endOperation('flash');
     }
+  }
+
+  async disconnectFlashTransport(loader, transport, postFlashReset) {
+    if (postFlashReset === 'automatic') {
+      this.flashStatus.textContent = 'Restarting the board…';
+      await loader.after('hard_reset');
+    }
+
+    await transport.disconnect();
+  }
+
+  async connectAfterFlash(port, board) {
+    if (board.postFlashReset === 'manual') {
+      this.flashStatus.textContent = MANUAL_RESET_INSTRUCTION;
+      this.setDeviceStatus(MANUAL_RESET_INSTRUCTION, 'working');
+      this.appendLog(
+        `Firmware written and verified. ${MANUAL_RESET_INSTRUCTION}.`,
+      );
+      return this.openSession(
+        port,
+        board.id,
+        board.firmwareVersion,
+        MANUAL_HANDSHAKE_TIMEOUT_MS,
+      );
+    }
+
+    this.flashStatus.textContent =
+      'Flash complete. Waiting for the Stream32 handshake…';
+    return this.connectWithRetries(
+      port,
+      board.id,
+      board.firmwareVersion,
+    );
   }
 
   async connectWithRetries(
@@ -967,7 +1012,16 @@ class DeviceController {
     port,
     expectedBoardId,
     expectedFirmwareVersion = null,
+    handshakeTimeoutMs = HANDSHAKE_TIMEOUT_MS,
   ) {
+    if (
+      !Number.isSafeInteger(handshakeTimeoutMs) ||
+      handshakeTimeoutMs < MIN_HANDSHAKE_TIMEOUT_MS ||
+      handshakeTimeoutMs > MAX_HANDSHAKE_TIMEOUT_MS
+    ) {
+      throw new RangeError('Handshake timeout is outside the supported range.');
+    }
+
     await this.closeSessionForPort(port);
     await port.open({ baudRate: 115200, bufferSize: 4096 });
 
@@ -1136,7 +1190,7 @@ class DeviceController {
     // Opening the USB Serial/JTAG port can reset the board, so a hello sent
     // while the firmware is still booting is lost. Repeat it until the
     // device answers or the handshake window closes.
-    const helloTimer = setInterval(async () => {
+    const helloTimer = setInterval(() => {
       if (
         this.sessions.get(port) !== session ||
         session.handshakeComplete ||
@@ -1146,31 +1200,30 @@ class DeviceController {
         return;
       }
 
-      const retryWriter = port.writable.getWriter();
-
-      try {
-        await retryWriter.write(encodeHostHello());
-      } catch {
+      session.send(encodeHostHello()).catch(() => {
         // The timeout or read loop will report a failed connection.
-      } finally {
-        retryWriter.releaseLock();
-      }
+      });
     }, HELLO_RETRY_MS);
 
+    let timeoutTimer;
     const timeout = new Promise((_, reject) => {
-      setTimeout(
-        () => reject(new Error('Timed out waiting for the device hello.')),
-        HANDSHAKE_TIMEOUT_MS,
-      );
+      timeoutTimer = setTimeout(() => {
+        const error = new Error('Timed out waiting for the device hello.');
+        error.code = 'DEVICE_HANDSHAKE_TIMEOUT';
+        reject(error);
+      }, handshakeTimeoutMs);
     });
 
     try {
       return await Promise.race([handshake, timeout]);
     } catch (error) {
+      clearInterval(helloTimer);
+      clearTimeout(timeoutTimer);
       await this.closeSessionForPort(port);
       throw error;
     } finally {
       clearInterval(helloTimer);
+      clearTimeout(timeoutTimer);
     }
   }
 
@@ -1198,6 +1251,8 @@ class DeviceController {
     } catch {
       // The read loop already reports connection errors to the UI.
     }
+
+    await session.sendChain;
 
     try {
       await session.port.close();

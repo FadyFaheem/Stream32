@@ -28,7 +28,7 @@ const elecrow = {
 };
 const profiles = [waveshare, elecrow];
 
-test('CrowPanel profile matches the observed COM6 CH340K bridge', () => {
+test('board profiles declare their post-flash reset behavior', () => {
   const profile = JSON.parse(
     readFileSync(
       path.join(
@@ -56,6 +56,20 @@ test('CrowPanel profile matches the observed COM6 CH340K bridge', () => {
     true,
   );
   assert.equal(profile.preferredFlashBaud, 921600);
+  assert.equal(profile.postFlashReset, 'manual');
+
+  const waveshareProfile = JSON.parse(
+    readFileSync(
+      path.join(
+        __dirname,
+        '..',
+        'waveshare-esp32-s3-touch-lcd-4-v3',
+        'board.json',
+      ),
+      'utf8',
+    ),
+  );
+  assert.equal(waveshareProfile.postFlashReset, 'automatic');
 });
 
 test('selects only the board whose profile or firmware changed', () => {

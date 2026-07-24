@@ -23,6 +23,7 @@ const BOARD_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PROFILE_PATH_PATTERN = /^[a-z0-9][a-z0-9./-]+\.json$/;
 const IMAGE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.bin$/;
 const VERSION_PATTERN = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/;
+const POST_FLASH_RESETS = new Set(['automatic', 'manual']);
 // idfTarget feeds the CI build matrix; bootOffset is where the chip's ROM
 // expects the second-stage bootloader, i.e. where the 0xE9 image magic sits
 // inside a merged image flashed at 0x0.
@@ -166,6 +167,11 @@ function validateProfile(source, profilePath) {
     115200,
     2000000,
   );
+  const postFlashReset = source.postFlashReset ?? 'automatic';
+
+  if (!POST_FLASH_RESETS.has(postFlashReset)) {
+    fail(`${profilePath} postFlashReset must be automatic or manual.`);
+  }
 
   const projectPath = requireString(
     source.firmware.projectPath,
@@ -259,6 +265,7 @@ function validateProfile(source, profilePath) {
     protocolVersion,
     minimumDesktopVersion,
     preferredFlashBaud,
+    postFlashReset,
     usbFilters,
     ...(deck ? { deck } : {}),
     firmware: {
@@ -391,6 +398,7 @@ const boards = profiles.map((profile) => {
     protocolVersion: profile.protocolVersion,
     minimumDesktopVersion: profile.minimumDesktopVersion,
     preferredFlashBaud: profile.preferredFlashBaud,
+    postFlashReset: profile.postFlashReset,
     usbFilters: profile.usbFilters,
     ...(profile.deck ? { deck: profile.deck } : {}),
     capabilities: profile.capabilities,

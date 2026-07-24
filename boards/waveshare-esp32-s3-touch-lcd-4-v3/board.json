@@ -7,6 +7,7 @@
   "chip": "ESP32-S3",
   "protocolVersion": 1,
   "minimumDesktopVersion": "0.1.0",
+  "postFlashReset": "automatic",
   "usbFilters": [
     {
       "usbVendorId": 12346,
@@ -33,6 +34,6 @@
     "Disconnect power from the board.",
     "Hold BOOT while reconnecting the USB data cable, then release BOOT.",
     "Leave Full erase off to preserve saved decks; enable it only for slow, destructive troubleshooting.",
-    "Run Flash again. After a successful flash, press RESET or reconnect power."
+    "The desktop resets the board automatically after a successful flash. If it does not reconnect, press RESET or reconnect power."
   ]
 }

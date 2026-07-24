@@ -13,6 +13,10 @@ catalog last with the final file sizes and SHA-256 hashes.
 
 ## Supported hardware
 
+Looking to buy a board? See [Buying a display](./BUYING.md) for purchase links
+and the exact model and revision to choose. For a first-time setup walkthrough,
+see the [Getting started guide](../docs/GETTING_STARTED.md).
+
 Waveshare `ESP32-S3-Touch-LCD-4` (profile
 `waveshare-esp32-s3-touch-lcd-4-v3`):
 
@@ -235,7 +239,16 @@ automatic bootloader entry fails:
 1. Disconnect power.
 2. Hold **BOOT** while reconnecting USB, then release **BOOT**.
 3. Flash again.
-4. After a successful flash, press **RESET** or reconnect power.
+
+After a verified CrowPanel write, the desktop keeps UART0 open for 90 seconds
+and sends a protocol hello once per second. Press and release **RST** during
+that window; do not hold **BOOT**. If the window expires, the firmware is still
+written and verified—press **RST** or power-cycle, then use **Reconnect**. The
+Waveshare profile uses the normal automatic post-flash reset.
+
+Board profiles declare this behavior with `postFlashReset`, validated as
+`automatic` (the default) or `manual`. This is desktop/catalog metadata and
+does not change firmware images or versions.
 
 Normal flashing replaces only firmware-image sectors and preserves the
 dedicated deck partition. Use **Full erase (slow troubleshooting)** only when

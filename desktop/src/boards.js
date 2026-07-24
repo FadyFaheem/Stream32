@@ -26,6 +26,7 @@ const ASSET_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.bin$/;
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const VERSION_PATTERN =
   /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?$/;
+const POST_FLASH_RESETS = new Set(['automatic', 'manual']);
 const BOOT_MAGIC = 0xe9;
 // bootMagicOffset is where the chip's ROM expects the second-stage
 // bootloader, i.e. where the 0xE9 image magic sits inside a merged image
@@ -343,6 +344,13 @@ function validateBoard(board, appVersion) {
     115200,
     2000000,
   );
+  const postFlashReset = board.postFlashReset ?? 'automatic';
+
+  if (!POST_FLASH_RESETS.has(postFlashReset)) {
+    throw new TypeError(
+      `${id} postFlashReset must be automatic or manual.`,
+    );
+  }
 
   return {
     id,
@@ -357,6 +365,7 @@ function validateBoard(board, appVersion) {
     protocolVersion,
     minimumDesktopVersion,
     preferredFlashBaud,
+    postFlashReset,
     compatible:
       chipSupport !== null &&
       deckSupported &&
@@ -527,6 +536,7 @@ function publicBoard(board) {
     minimumDesktopVersion: board.minimumDesktopVersion,
     compatible: board.compatible,
     preferredFlashBaud: board.preferredFlashBaud,
+    postFlashReset: board.postFlashReset,
     usbFilters: board.usbFilters,
     capabilities: board.capabilities,
     deck: board.deck,

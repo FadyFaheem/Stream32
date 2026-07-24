@@ -92,6 +92,30 @@ test('defaults flash baud and accepts a board preference', () => {
   );
 });
 
+test('validates post-flash reset behavior and defaults to automatic', () => {
+  const image = Buffer.from([0xe9, 1, 2, 3]);
+
+  assert.equal(
+    validateCatalog(catalogFor(image), '0.1.0').boards[0].postFlashReset,
+    'automatic',
+  );
+  assert.equal(
+    validateCatalog(
+      catalogFor(image, { postFlashReset: 'manual' }),
+      '0.1.0',
+    ).boards[0].postFlashReset,
+    'manual',
+  );
+  assert.throws(
+    () =>
+      validateCatalog(
+        catalogFor(image, { postFlashReset: 'sometimes' }),
+        '0.1.0',
+      ),
+    /postFlashReset/,
+  );
+});
+
 test('marks boards with unknown chips incompatible without failing the catalog', () => {
   const image = Buffer.from([0xe9, 1, 2, 3]);
   const catalog = catalogFor(image);
@@ -261,6 +285,8 @@ test('downloads from the fixed release base, verifies, and caches firmware', asy
     const firmware = await service.getFirmware(catalog.boards[0].id);
 
     assert.equal(listed.source, 'network');
+    assert.equal(listed.boards[0].postFlashReset, 'automatic');
+    assert.equal(firmware.board.postFlashReset, 'automatic');
     assert.equal(firmware.images[0].address, 0);
     assert.deepEqual(Buffer.from(firmware.images[0].data), image);
     assert.deepEqual(requestedUrls, [

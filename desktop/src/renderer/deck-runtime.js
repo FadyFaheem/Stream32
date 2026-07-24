@@ -41,6 +41,7 @@ class DeckRuntime {
     renderPageImages,
     limitsFor,
     resolveProfileForSnapshot,
+    resolvePageForSnapshot,
     getFocusStatus,
     getFocusSnapshot,
     onDeviceRegistered,
@@ -84,9 +85,12 @@ class DeckRuntime {
       getDevices,
       getProfile,
       resolveProfile: resolveProfileForSnapshot,
+      resolvePage: resolvePageForSnapshot,
       getFocusStatus,
       setDevice,
       scheduleSync: (deviceId, delay) => this.scheduleSync(deviceId, delay),
+      sendPage: (deviceId, profileId, page) =>
+        this.sendFocusedPage(deviceId, profileId, page),
       onSelectedPage,
       onRender: onRenderAll,
       onStatus: onProfileStatus,
@@ -574,6 +578,25 @@ class DeckRuntime {
     this.onSelectedPage(deviceId, index);
   }
 
+  async sendFocusedPage(deviceId, profileId, page) {
+    const session = this.sessions.get(deviceId);
+
+    if (!session) {
+      return;
+    }
+
+    if (
+      session.profileInputBlocked ||
+      session.committedProfileId !== profileId
+    ) {
+      this.scheduleSync(deviceId, 0);
+      return;
+    }
+
+    await session.send(encodePageMessage(page));
+    this.refreshLiveStates(deviceId);
+  }
+
   async switchDevicePage(
     deviceId,
     page,
@@ -583,8 +606,19 @@ class DeckRuntime {
   ) {
     const profile = this.getProfile(deviceId, profileId);
 
-    if (!profileId || !profile || page >= profile.pages.length) {
+    if (
+      !profileId ||
+      !profile ||
+      !Number.isInteger(page) ||
+      page < 0 ||
+      page >= profile.pages.length
+    ) {
       throw new RangeError('The target page no longer exists.');
+    }
+
+    if (profile.activePage === page) {
+      this.onSelectedPage(deviceId, page);
+      return false;
     }
 
     const session = this.sessions.get(deviceId);
@@ -601,8 +635,29 @@ class DeckRuntime {
 
     await session?.send(encodePageMessage(page));
     profile.activePage = page;
-    this.persistProfile(deviceId, profileId);
+    await this.persistProfile(deviceId, profileId);
     this.onSelectedPage(deviceId, page);
+    this.refreshLiveStates(deviceId);
+    return true;
+  }
+
+  async switchDeviceProfile(deviceId, profileId) {
+    const previousProfileId = this.getSelectedProfileId(deviceId);
+    const device = await this.api.runProfileOperation(deviceId, {
+      type: 'select',
+      profileId,
+    });
+    this.setDevice(deviceId, device);
+
+    if (device.activeProfileId === previousProfileId) {
+      return false;
+    }
+
+    this.clearLiveRuntime(deviceId);
+    const page = this.getProfile(deviceId, device.activeProfileId)?.activePage ?? 0;
+    this.onSelectedPage(deviceId, page);
+    this.scheduleSync(deviceId, 0);
+    return true;
   }
 
   async runKeyAction(deviceId, action, origin = {}) {
@@ -614,6 +669,11 @@ class DeckRuntime {
           origin.profileId || this.getSelectedProfileId(deviceId),
         );
         this.flipToggleAfterSuccess(deviceId, origin);
+        return true;
+      }
+
+      if (action.type === 'profile') {
+        await this.switchDeviceProfile(deviceId, action.profileId);
         return true;
       }
 
@@ -640,6 +700,8 @@ class DeckRuntime {
           runLeaf: (step) => this.api.runAction(step),
           switchPage: (page) =>
             this.switchDevicePage(deviceId, page, profileId),
+          switchProfile: (targetProfileId) =>
+            this.switchDeviceProfile(deviceId, targetProfileId),
           isCancelled: () =>
             this.getSelectedProfileId(deviceId) !== profileId ||
             Boolean(

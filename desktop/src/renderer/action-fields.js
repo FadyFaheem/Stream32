@@ -34,7 +34,7 @@ function describeHotkey(hotkey) {
   return parts.join('+');
 }
 
-function newActionForDefinition(definition) {
+function newActionForDefinition(definition, profiles = []) {
   if (!definition.coreType) {
     return {
       type: 'plugin',
@@ -73,6 +73,8 @@ function newActionForDefinition(definition) {
       return { type: 'launch', command: '' };
     case 'page':
       return { type: 'page', page: 0 };
+    case 'profile':
+      return { type: 'profile', profileId: profiles[0]?.id || '' };
     case 'multi':
       return { type: 'multi', steps: [] };
     default:
@@ -149,6 +151,9 @@ function buildLeafAction(draft, definition, pageCount) {
       break;
     case 'page':
       candidate = { type: 'page', page: draft.page ?? 0 };
+      break;
+    case 'profile':
+      candidate = { type: 'profile', profileId: draft.profileId };
       break;
     default:
       throw new TypeError(`Expected a leaf action, received ${definition.coreType}.`);
@@ -404,6 +409,38 @@ function renderPage({ action, commit, container, document, pages }) {
   container.append(makeField(document, 'Target page', select));
 }
 
+function renderProfile({ action, commit, container, document, profiles }) {
+  const select = document.createElement('select');
+  const target = profiles.find((profile) => profile.id === action.profileId);
+
+  if (!target && action.profileId) {
+    const missing = document.createElement('option');
+    missing.value = action.profileId;
+    missing.textContent = `Missing profile · ${action.profileId}`;
+    select.append(missing);
+  }
+
+  for (const profile of profiles) {
+    const option = document.createElement('option');
+    option.value = profile.id;
+    option.textContent = profile.name;
+    select.append(option);
+  }
+
+  select.value = action.profileId || profiles[0]?.id || '';
+  select.addEventListener('change', () => {
+    action.profileId = select.value;
+    commit();
+  });
+  container.append(makeField(document, 'Target profile', select));
+
+  const note = document.createElement('p');
+  note.className = 'helper action-host-note';
+  note.textContent =
+    'Requires the Stream32 desktop app to be running on this computer.';
+  container.append(note);
+}
+
 function renderPlugin({ action, commit, container, definition, document }) {
   action.settings ||= {};
 
@@ -458,6 +495,7 @@ const FIELD_BUILDERS = Object.freeze({
   media: renderMedia,
   mouse: renderMouse,
   page: renderPage,
+  profile: renderProfile,
   plugin: renderPlugin,
   text: renderText,
   url: renderString,
@@ -477,6 +515,7 @@ function renderActionFields({
   definition,
   document,
   pages,
+  profiles = [],
   reportMessage = () => {},
   showLimitation = true,
 }) {
@@ -515,6 +554,7 @@ function renderActionFields({
     definition,
     document,
     pages,
+    profiles,
   });
 
   if (showLimitation && limitation) {

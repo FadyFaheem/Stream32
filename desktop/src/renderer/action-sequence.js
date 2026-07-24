@@ -14,6 +14,7 @@ async function runActionSequence(
   {
     runLeaf,
     switchPage,
+    switchProfile,
     sleep = defaultSleep,
     isCancelled = () => false,
   },
@@ -30,6 +31,8 @@ async function runActionSequence(
         await sleep(step.ms);
       } else if (step.type === 'page') {
         await switchPage(step.page);
+      } else if (step.type === 'profile') {
+        await switchProfile(step.profileId);
       } else {
         await runLeaf(step);
       }

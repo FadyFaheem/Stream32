@@ -143,17 +143,30 @@ select {
 
 .content {
   display: flex;
-  width: min(100%, 1280px);
+  width: 100%;
   min-height: 100vh;
-  margin: 0 auto;
   flex-direction: column;
-  padding: 1.75rem clamp(1.5rem, 3.5vw, 3rem) 2.5rem;
+}
+
+.content:has(.view-deck:not([hidden])) {
+  height: 100vh;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .view:not([hidden]) {
   flex: 1;
   display: flex;
+  width: min(100%, 1280px);
+  margin: 0 auto;
   flex-direction: column;
+  padding: 1.75rem clamp(1.5rem, 3.5vw, 3rem) 2.5rem;
+}
+
+.view-deck:not([hidden]) {
+  min-height: 100%;
 }
 
 #view-flash:not([hidden]),
@@ -546,10 +559,10 @@ input:disabled {
 
 .deck-editor {
   display: flex;
-  flex: 1;
+  flex: 0 0 auto;
   flex-direction: column;
   gap: 0.9rem;
-  min-height: 0;
+  min-height: auto;
 }
 
 .deck-toolbar {
@@ -615,8 +628,9 @@ input:disabled {
 
 .deck-toolbar input[type="text"],
 .deck-page-settings input[type="text"],
-.deck-key-fields input,
-.deck-key-fields select {
+.deck-key-editor-body input,
+.deck-key-editor-body select,
+.deck-profile-dialog input {
   min-height: 2.55rem;
   padding: 0 0.85rem;
   color: var(--ink);
@@ -688,25 +702,33 @@ input:disabled {
   border-color: rgba(255, 173, 34, 0.58);
 }
 
-.deck-profile-rulebar {
+.deck-profile-rulebar,
+.deck-page-rulebar {
   display: flex;
   align-items: end;
   gap: 0.7rem;
   flex-wrap: wrap;
 }
 
-.deck-profile-match-field {
+.deck-rule-label {
+  flex: 1 0 100%;
+}
+
+.deck-profile-match-field,
+.deck-page-match-field {
   display: grid;
   flex: 1 1 300px;
   gap: 0.35rem;
 }
 
-.deck-profile-match-field label {
+.deck-profile-match-field label,
+.deck-page-match-field label {
   font-size: 0.76rem;
   font-weight: 700;
 }
 
-.deck-profile-match-field input {
+.deck-profile-match-field input,
+.deck-page-match-field input {
   width: 100%;
   min-height: 2.55rem;
   padding: 0 0.85rem;
@@ -716,24 +738,28 @@ input:disabled {
   background: var(--surface-strong);
 }
 
-.deck-profile-match-actions {
+.deck-profile-match-actions,
+.deck-page-match-actions {
   display: flex;
   gap: 0.45rem;
   flex-wrap: wrap;
 }
 
-.deck-profile-match-status {
+.deck-profile-match-status,
+.deck-page-match-status {
   flex: 1 0 100%;
   min-height: 1.1rem;
   margin: 0;
 }
 
-.deck-profile-match-status[data-state="ready"] {
+.deck-profile-match-status[data-state="ready"],
+.deck-page-match-status[data-state="ready"] {
   color: var(--success);
 }
 
-.deck-profile-match-status[data-state="error"] {
-  color: var(--danger);
+.deck-profile-match-status[data-state="error"],
+.deck-page-match-status[data-state="error"] {
+  color: var(--error);
 }
 
 .deck-pagebar {
@@ -786,12 +812,13 @@ input:disabled {
   min-height: 2.35rem;
 }
 
-/* The stage fills the leftover height so the deck feels like the device. */
+/* The Deck view owns vertical scrolling; the stage only handles its grid. */
 .deck-stage {
   display: grid;
-  flex: 1;
+  flex: 0 0 auto;
+  height: clamp(320px, 48vh, 560px);
   min-width: 0;
-  min-height: 260px;
+  min-height: 320px;
   padding: clamp(1rem, 3vh, 2.5rem);
   overflow: auto;
   place-items: center;
@@ -913,23 +940,51 @@ input:disabled {
   margin: 0;
 }
 
-.deck-key-fields {
-  display: flex;
-  align-items: end;
+.deck-key-editor-body {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.25fr);
+  align-items: start;
   gap: 1rem;
-  flex-wrap: wrap;
   margin-top: 0.9rem;
 }
 
-.deck-key-fields .deck-field {
-  flex: 1 1 190px;
+.deck-key-section {
+  display: grid;
+  min-width: 0;
+  margin: 0;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(10, 18, 23, 0.38);
+  gap: 0.9rem;
+}
+
+.deck-key-section > legend,
+.deck-live-state > legend {
+  padding: 0 0.35rem;
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.deck-appearance-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 0.8rem;
+  min-width: 0;
+}
+
+.deck-label-field,
+.deck-image-field {
+  grid-column: 1 / -1;
 }
 
 .deck-color-field {
-  flex: 0 0 auto !important;
+  min-width: 0;
 }
 
-.deck-key-fields input[type="color"] {
+.deck-key-editor-body input[type="color"] {
   width: 3.4rem;
   min-height: 2.55rem;
   padding: 0.25rem;
@@ -940,16 +995,57 @@ input:disabled {
   display: flex;
   align-items: center;
   gap: 0.7rem;
+  min-width: 0;
+  flex-wrap: wrap;
 }
 
 .deck-image-row input[type="file"] {
-  flex: 1;
+  flex: 1 1 180px;
+  min-width: 0;
   padding: 0.5rem 0.85rem;
   font-size: 0.75rem;
 }
 
 .deck-action-field {
-  flex: 2 1 420px !important;
+  min-width: 0;
+}
+
+.deck-live-state {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+  margin: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  gap: 0.75rem;
+}
+
+.deck-live-provider,
+.deck-live-helper,
+#deck-live-status {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-width: 0;
+}
+
+.deck-live-helper,
+#deck-live-status {
+  margin: 0;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.deck-live-toggle-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: end;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.deck-live-image-field {
+  grid-column: 1 / -1;
 }
 
 .deck-action-summary {
@@ -1034,7 +1130,7 @@ input:disabled {
   font-weight: 700;
 }
 
-.deck-key-fields .hotkey-modifier input {
+.deck-key-editor-body .hotkey-modifier input {
   width: 1rem;
   min-height: 1rem;
   padding: 0;
@@ -1043,6 +1139,10 @@ input:disabled {
 
 .deck-action-config .helper {
   margin: 0;
+}
+
+.action-host-note {
+  flex: 1 0 100%;
 }
 
 .multi-step-list {
@@ -1107,6 +1207,42 @@ input:disabled {
 .deck-action-message {
   min-height: 1em;
   margin: 0.45rem 0 0;
+}
+
+.deck-profile-dialog {
+  width: min(92vw, 420px);
+  padding: 1.2rem;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 28px 70px rgba(0, 0, 0, 0.55);
+}
+
+.deck-profile-dialog::backdrop {
+  background: rgba(4, 8, 11, 0.66);
+}
+
+.deck-profile-dialog form {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.deck-profile-dialog h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.deck-profile-dialog-error {
+  min-height: 1.1rem;
+  margin: 0;
+  color: var(--error);
+}
+
+.deck-profile-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
 }
 
 .deck-action-dialog {
@@ -1252,6 +1388,7 @@ input:disabled {
   display: flex;
   align-items: center;
   gap: 0.9rem;
+  flex-wrap: wrap;
 }
 
 .deck-icon-dialog {
@@ -1626,6 +1763,25 @@ progress::-webkit-progress-value {
   50% {
     opacity: 0.3;
     transform: scale(1.4);
+  }
+}
+
+@media (max-width: 940px) {
+  .deck-key-editor-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 620px) {
+  .deck-appearance-grid,
+  .deck-live-toggle-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .deck-label-field,
+  .deck-image-field,
+  .deck-live-image-field {
+    grid-column: auto;
   }
 }
 

@@ -4,9 +4,11 @@ class ProfileSwitcher {
     getDevices,
     getProfile,
     resolveProfile,
+    resolvePage,
     getFocusStatus,
     setDevice,
     scheduleSync,
+    sendPage,
     onSelectedPage,
     onRender,
     onStatus,
@@ -15,16 +17,18 @@ class ProfileSwitcher {
     this.getDevices = getDevices;
     this.getProfile = getProfile;
     this.resolveProfile = resolveProfile;
+    this.resolvePage = resolvePage;
     this.getFocusStatus = getFocusStatus;
     this.setDevice = setDevice;
     this.scheduleSync = scheduleSync;
+    this.sendPage = sendPage;
     this.onSelectedPage = onSelectedPage;
     this.onRender = onRender;
     this.onStatus = onStatus;
     this.latest = null;
     this.revision = 0;
     this.running = null;
-    this.unsynced = new Set();
+    this.unsynced = new Map();
   }
 
   enqueue(snapshot) {
@@ -80,15 +84,25 @@ class ProfileSwitcher {
 
       const device = this.getDevices()[deviceId];
       const profileId = this.resolveProfile(device, snapshot);
+      const profile = this.getProfile(deviceId, profileId);
+      const page = this.resolvePage(profile, snapshot);
+      const profileChanged = profileId !== device.activeProfileId;
+      const pageChanged = page !== profile.activePage;
 
-      if (profileId === device.activeProfileId) {
-        if (this.unsynced.delete(deviceId)) {
+      if (!profileChanged && !pageChanged) {
+        const unsynced = this.unsynced.get(deviceId);
+
+        if (unsynced) {
+          this.unsynced.delete(deviceId);
           changed.push(deviceId);
-          this.scheduleSync(deviceId, 0);
-          this.onSelectedPage(
-            deviceId,
-            this.getProfile(deviceId, profileId)?.activePage ?? 0,
-          );
+
+          if (unsynced === 'profile') {
+            this.scheduleSync(deviceId, 0);
+          } else {
+            await this.sendPage(deviceId, profileId, page);
+          }
+
+          this.onSelectedPage(deviceId, page);
         }
         continue;
       }
@@ -96,7 +110,9 @@ class ProfileSwitcher {
       try {
         const updated = await this.api.runProfileOperation(
           deviceId,
-          { type: 'select', profileId },
+          profileChanged
+            ? { type: 'focus-select', profileId, page }
+            : { type: 'set-active-page', profileId, page },
         );
         this.setDevice(deviceId, updated);
       } catch (error) {
@@ -108,17 +124,20 @@ class ProfileSwitcher {
       }
 
       if (isStale()) {
-        this.unsynced.add(deviceId);
+        this.unsynced.set(deviceId, profileChanged ? 'profile' : 'page');
         break;
       }
 
       this.unsynced.delete(deviceId);
       changed.push(deviceId);
-      this.scheduleSync(deviceId, 0);
-      this.onSelectedPage(
-        deviceId,
-        this.getProfile(deviceId, profileId)?.activePage ?? 0,
-      );
+
+      if (profileChanged) {
+        this.scheduleSync(deviceId, 0);
+      } else {
+        await this.sendPage(deviceId, profileId, page);
+      }
+
+      this.onSelectedPage(deviceId, page);
     }
 
     if (changed.length > 0) {

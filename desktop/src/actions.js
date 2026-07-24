@@ -817,6 +817,9 @@ function createActionRunner({
       case 'page':
         // Page switches are resolved renderer-side against the device session.
         throw new TypeError('Page actions never reach the main process.');
+      case 'profile':
+        // Profile switches are resolved renderer-side against the device session.
+        throw new TypeError('Profile actions never reach the main process.');
       default:
         throw new TypeError(`Unknown action type: ${action?.type}`);
     }

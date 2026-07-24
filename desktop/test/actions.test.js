@@ -135,6 +135,10 @@ test('validates renderer actions before privileged execution', () => {
     () => validateHostAction({ type: 'page', page: 0 }),
     /never reach/,
   );
+  assert.throws(
+    () => validateHostAction({ type: 'profile', profileId: 'streaming' }),
+    /Profile actions.*never reach/,
+  );
 });
 
 test('builds structured Windows text and mouse messages', () => {

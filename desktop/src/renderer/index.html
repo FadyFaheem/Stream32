@@ -148,15 +148,18 @@
             </div>
 
             <div class="deck-profile-rulebar">
+              <span class="field-label deck-rule-label">Profile focus rule</span>
               <button
                 id="deck-profile-default"
                 class="button button-secondary"
                 type="button"
               >
-                Make default
+                Make profile default
               </button>
               <div class="deck-profile-match-field">
-                <label for="deck-profile-match">App match on this computer</label>
+                <label for="deck-profile-match">
+                  Profile app match on this computer
+                </label>
                 <input
                   id="deck-profile-match"
                   type="text"
@@ -170,6 +173,7 @@
                   id="deck-profile-match-focused"
                   class="button button-secondary"
                   type="button"
+                  aria-label="Use focused app for profile"
                 >
                   Use focused app
                 </button>
@@ -177,13 +181,15 @@
                   id="deck-profile-match-save"
                   class="button button-quiet"
                   type="button"
+                  aria-label="Save profile app match"
                 >
-                  Save match
+                  Save profile match
                 </button>
                 <button
                   id="deck-profile-match-clear"
                   class="button button-quiet"
                   type="button"
+                  aria-label="Clear profile app match"
                 >
                   Clear
                 </button>
@@ -226,6 +232,61 @@
               ></p>
             </div>
 
+            <div class="deck-page-rulebar">
+              <span class="field-label deck-rule-label">Page focus rule</span>
+              <button
+                id="deck-page-default"
+                class="button button-secondary"
+                type="button"
+              >
+                Make page default
+              </button>
+              <div class="deck-page-match-field">
+                <label for="deck-page-match">
+                  Page app match on this computer
+                </label>
+                <input
+                  id="deck-page-match"
+                  type="text"
+                  maxlength="260"
+                  autocomplete="off"
+                  spellcheck="false"
+                >
+              </div>
+              <div class="deck-page-match-actions">
+                <button
+                  id="deck-page-match-focused"
+                  class="button button-secondary"
+                  type="button"
+                  aria-label="Use focused app for page"
+                >
+                  Use focused app
+                </button>
+                <button
+                  id="deck-page-match-save"
+                  class="button button-quiet"
+                  type="button"
+                  aria-label="Save page app match"
+                >
+                  Save page match
+                </button>
+                <button
+                  id="deck-page-match-clear"
+                  class="button button-quiet"
+                  type="button"
+                  aria-label="Clear page app match"
+                >
+                  Clear
+                </button>
+              </div>
+              <p
+                id="deck-page-match-status"
+                class="helper deck-page-match-status"
+                data-state="idle"
+                aria-live="polite"
+              ></p>
+            </div>
+
             <div class="deck-stage">
               <div id="deck-grid" class="deck-grid" aria-label="Deck keys"></div>
             </div>
@@ -251,124 +312,184 @@
                   </button>
                 </div>
               </div>
-              <div class="deck-key-fields">
-                <label class="deck-field">
-                  Label
-                  <input id="deck-key-label" type="text" maxlength="32">
-                </label>
-                <label class="deck-field deck-color-field">
-                  Key color
-                  <input id="deck-key-color" type="color" value="#172630">
-                </label>
-                <label class="deck-field deck-color-field">
-                  Text color
-                  <input id="deck-key-label-color" type="color" value="#f3f7f9">
-                </label>
-                <div class="deck-field">
-                  <label for="deck-key-image">Image</label>
-                  <div class="deck-image-row">
-                    <button
-                      id="deck-icon-open"
-                      class="button button-secondary"
-                      type="button"
-                    >
-                      Icon library
-                    </button>
-                    <input id="deck-key-image" type="file" accept="image/*">
-                    <button
-                      id="deck-key-image-clear"
-                      class="button button-quiet"
-                      type="button"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-                <fieldset class="deck-field deck-live-state">
-                  <legend>Live state</legend>
-                  <label>
-                    Provider
-                    <select id="deck-live-provider">
-                      <option value="">None</option>
-                      <option value="toggle">Local toggle</option>
-                      <option value="clock">Clock</option>
-                      <option value="focused-app">Focused app</option>
-                    </select>
-                  </label>
-                  <p class="helper">
-                    Toggle status is local to Stream32 and does not report remote app truth.
-                  </p>
-                  <div id="deck-live-toggle-fields">
-                    <label>
-                      On label
-                      <input id="deck-live-on-label" type="text" maxlength="32">
+              <div class="deck-key-editor-body">
+                <fieldset class="deck-key-section deck-key-appearance">
+                  <legend>Appearance</legend>
+                  <div class="deck-appearance-grid">
+                    <label class="deck-field deck-label-field">
+                      Label
+                      <input id="deck-key-label" type="text" maxlength="32">
                     </label>
-                    <label class="deck-color-field">
-                      On key color
-                      <input id="deck-live-on-color" type="color" value="#2f8f5b">
+                    <label class="deck-field deck-color-field">
+                      Key color
+                      <input id="deck-key-color" type="color" value="#172630">
                     </label>
-                    <label class="deck-color-field">
-                      On text color
-                      <input id="deck-live-on-label-color" type="color" value="#ffffff">
+                    <label class="deck-field deck-color-field">
+                      Text color
+                      <input id="deck-key-label-color" type="color" value="#f3f7f9">
                     </label>
-                    <div class="deck-image-row">
-                      <label for="deck-live-on-image">On image</label>
-                      <input id="deck-live-on-image" type="file" accept="image/*">
-                      <button id="deck-live-on-image-clear" class="button button-quiet" type="button">
-                        Remove
-                      </button>
+                    <div class="deck-field deck-image-field">
+                      <label for="deck-key-image">Image</label>
+                      <div class="deck-image-row">
+                        <button
+                          id="deck-icon-open"
+                          class="button button-secondary"
+                          type="button"
+                        >
+                          Icon library
+                        </button>
+                        <input id="deck-key-image" type="file" accept="image/*">
+                        <button
+                          id="deck-key-image-clear"
+                          class="button button-quiet"
+                          type="button"
+                        >
+                          Remove
+                        </button>
+                      </div>
                     </div>
                   </div>
-                  <label id="deck-live-clock-field">
-                    Clock format
-                    <select id="deck-live-clock-format">
-                      <option value="24">24-hour</option>
-                      <option value="12">12-hour</option>
-                    </select>
-                  </label>
-                  <p id="deck-live-status" class="helper" aria-live="polite"></p>
                 </fieldset>
-                <div class="deck-field deck-action-field">
-                  <span class="field-label">Action</span>
-                  <div class="deck-action-summary">
-                    <button
-                      id="deck-action-open"
-                      class="action-summary-button"
-                      type="button"
-                    >
-                      <span
-                        id="deck-action-summary-icon"
-                        class="ms-icon action-summary-icon"
-                        aria-hidden="true"
-                      >add</span>
-                      <span class="action-summary-copy">
-                        <strong id="deck-action-summary-name">Choose an action</strong>
-                        <span id="deck-action-summary-source">
-                          Search Stream32 and installed plugins
+
+                <fieldset class="deck-key-section deck-key-behavior">
+                  <legend>Behavior</legend>
+                  <div class="deck-field deck-action-field">
+                    <span class="field-label">Action</span>
+                    <div class="deck-action-summary">
+                      <button
+                        id="deck-action-open"
+                        class="action-summary-button"
+                        type="button"
+                      >
+                        <span
+                          id="deck-action-summary-icon"
+                          class="ms-icon action-summary-icon"
+                          aria-hidden="true"
+                        >add</span>
+                        <span class="action-summary-copy">
+                          <strong id="deck-action-summary-name">Choose an action</strong>
+                          <span id="deck-action-summary-source">
+                            Search Stream32 and installed plugins
+                          </span>
                         </span>
-                      </span>
-                      <span class="action-summary-change">Change</span>
-                    </button>
-                    <button
-                      id="deck-action-clear"
-                      class="button button-quiet"
-                      type="button"
-                      hidden
-                    >
-                      Clear
-                    </button>
+                        <span class="action-summary-change">Change</span>
+                      </button>
+                      <button
+                        id="deck-action-clear"
+                        class="button button-quiet"
+                        type="button"
+                        hidden
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <div id="deck-action-config" class="deck-action-config"></div>
+                    <p
+                      id="deck-action-message"
+                      class="helper deck-action-message"
+                      aria-live="polite"
+                    ></p>
                   </div>
-                  <div id="deck-action-config" class="deck-action-config"></div>
-                  <p
-                    id="deck-action-message"
-                    class="helper deck-action-message"
-                    aria-live="polite"
-                  ></p>
-                </div>
+
+                  <fieldset class="deck-live-state">
+                    <legend>Live state</legend>
+                    <label class="deck-field deck-live-provider">
+                      Provider
+                      <select id="deck-live-provider">
+                        <option value="">None</option>
+                        <option value="toggle">Local toggle</option>
+                        <option value="clock">Clock</option>
+                        <option value="focused-app">Focused app</option>
+                      </select>
+                    </label>
+                    <p class="helper deck-live-helper">
+                      Local toggle status exists only in Stream32 while the
+                      desktop app is running; it does not report remote app truth.
+                    </p>
+                    <div id="deck-live-toggle-fields" class="deck-live-toggle-grid">
+                      <label class="deck-field deck-live-on-label">
+                        On label
+                        <input id="deck-live-on-label" type="text" maxlength="32">
+                      </label>
+                      <label class="deck-field deck-color-field">
+                        On key color
+                        <input id="deck-live-on-color" type="color" value="#2f8f5b">
+                      </label>
+                      <label class="deck-field deck-color-field">
+                        On text color
+                        <input id="deck-live-on-label-color" type="color" value="#ffffff">
+                      </label>
+                      <div class="deck-field deck-live-image-field">
+                        <label for="deck-live-on-image">On image</label>
+                        <div class="deck-image-row">
+                          <input id="deck-live-on-image" type="file" accept="image/*">
+                          <button
+                            id="deck-live-on-image-clear"
+                            class="button button-quiet"
+                            type="button"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <label id="deck-live-clock-field" class="deck-field">
+                      Clock format
+                      <select id="deck-live-clock-format">
+                        <option value="24">24-hour</option>
+                        <option value="12">12-hour</option>
+                      </select>
+                    </label>
+                    <p id="deck-live-status" class="helper" aria-live="polite"></p>
+                  </fieldset>
+                </fieldset>
               </div>
             </div>
           </div>
         </section>
+
+        <dialog
+          id="deck-profile-dialog"
+          class="deck-profile-dialog"
+          aria-labelledby="deck-profile-dialog-title"
+        >
+          <form id="deck-profile-form" novalidate>
+            <h2 id="deck-profile-dialog-title">Add profile</h2>
+            <label class="deck-field" for="deck-profile-name">
+              Profile name
+              <input
+                id="deck-profile-name"
+                type="text"
+                maxlength="60"
+                autocomplete="off"
+                aria-describedby="deck-profile-dialog-error"
+                autofocus
+              >
+            </label>
+            <p
+              id="deck-profile-dialog-error"
+              class="helper deck-profile-dialog-error"
+              role="alert"
+              aria-live="polite"
+            ></p>
+            <div class="deck-profile-dialog-actions">
+              <button
+                id="deck-profile-dialog-cancel"
+                class="button button-quiet"
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                id="deck-profile-dialog-submit"
+                class="button button-primary"
+                type="submit"
+              >
+                Add profile
+              </button>
+            </div>
+          </form>
+        </dialog>
 
         <dialog id="deck-icon-dialog" class="deck-icon-dialog">
           <div class="deck-icon-head">
@@ -520,7 +641,7 @@
             </div>
 
             <details class="recovery">
-              <summary>BOOT-mode recovery steps</summary>
+              <summary>Flash and startup recovery steps</summary>
               <ol id="recovery-steps"></ol>
             </details>
 

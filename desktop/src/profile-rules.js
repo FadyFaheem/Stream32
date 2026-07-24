@@ -149,8 +149,8 @@ function appMatchEquals(rule, snapshot) {
 }
 
 function selectProfileForSnapshot(device, snapshot) {
-  if (!device?.profiles || !device.profiles[device.defaultProfileId]) {
-    throw new TypeError('Device default profile is invalid.');
+  if (!device?.profiles || !device.profiles[device.activeProfileId]) {
+    throw new TypeError('Device active profile is invalid.');
   }
 
   for (const profileId of Object.keys(device.profiles).sort()) {
@@ -161,7 +161,26 @@ function selectProfileForSnapshot(device, snapshot) {
     }
   }
 
-  return device.defaultProfileId;
+  return device.activeProfileId;
+}
+
+function selectPageForSnapshot(profile, snapshot) {
+  if (
+    !Array.isArray(profile?.pages) ||
+    !profile.pages[profile.activePage]
+  ) {
+    throw new TypeError('Profile active page is invalid.');
+  }
+
+  for (const [pageIndex, page] of profile.pages.entries()) {
+    const rule = page.appMatches?.[snapshot.platform];
+
+    if (rule && appMatchEquals(rule, snapshot)) {
+      return pageIndex;
+    }
+  }
+
+  return profile.activePage;
 }
 
 function preferredRuleForSnapshot(snapshot) {
@@ -232,6 +251,7 @@ module.exports = {
   appMatchEquals,
   parseManualAppMatch,
   preferredRuleForSnapshot,
+  selectPageForSnapshot,
   selectProfileForSnapshot,
   validateAppMatch,
   validateAppMatches,

@@ -8,6 +8,7 @@ const {
   pasteKey,
 } = require('./key-clipboard');
 const { remapActionAfterPageDeletion } = require('../action-model');
+const { MAX_NAME_LENGTH } = require('../deck-model');
 const {
   mergeKeyOverlay,
 } = require('../dynamic-state');
@@ -22,6 +23,7 @@ const {
 const {
   parseManualAppMatch,
   preferredRuleForSnapshot,
+  selectPageForSnapshot,
   selectProfileForSnapshot,
 } = require('../profile-rules');
 
@@ -50,6 +52,42 @@ function appMatchText(platform, rule) {
   }
 
   return rule.value;
+}
+
+function pageIndexAfterDeletion(index, removed, pageCount) {
+  if (index > removed) {
+    return index - 1;
+  }
+
+  return index === removed ? Math.min(removed, pageCount - 1) : index;
+}
+
+function removeProfilePage(profile, removed) {
+  profile.pages.splice(removed, 1);
+  profile.activePage = pageIndexAfterDeletion(
+    profile.activePage,
+    removed,
+    profile.pages.length,
+  );
+  profile.defaultPage = pageIndexAfterDeletion(
+    profile.defaultPage,
+    removed,
+    profile.pages.length,
+  );
+
+  // Page targets pointing at or past the removed page are remapped so
+  // top-level and multi actions remain valid.
+  for (const page of profile.pages) {
+    for (const key of page.keys) {
+      const action = remapActionAfterPageDeletion(key.action, removed);
+
+      if (!action) {
+        delete key.action;
+      } else {
+        key.action = action;
+      }
+    }
+  }
 }
 
 async function loadImage(dataUrl) {
@@ -89,6 +127,9 @@ class DeckController {
     this.focusSnapshot = null;
     this.focusStatus = null;
     this.storageErrors = [];
+    this.profileDialogMode = null;
+    this.profileDialogProfileId = null;
+    this.profileDialogReturnFocus = null;
 
     this.connectPanel = document.querySelector('#deck-connect');
     this.deviceSelect = document.querySelector('#deck-device');
@@ -99,6 +140,17 @@ class DeckController {
     this.profileDuplicate = document.querySelector('#deck-profile-duplicate');
     this.profileRename = document.querySelector('#deck-profile-rename');
     this.profileDelete = document.querySelector('#deck-profile-delete');
+    this.profileDialog = document.querySelector('#deck-profile-dialog');
+    this.profileForm = document.querySelector('#deck-profile-form');
+    this.profileDialogTitle =
+      document.querySelector('#deck-profile-dialog-title');
+    this.profileName = document.querySelector('#deck-profile-name');
+    this.profileDialogError =
+      document.querySelector('#deck-profile-dialog-error');
+    this.profileDialogCancel =
+      document.querySelector('#deck-profile-dialog-cancel');
+    this.profileDialogSubmit =
+      document.querySelector('#deck-profile-dialog-submit');
     this.profileDefault = document.querySelector('#deck-profile-default');
     this.profileMatchInput = document.querySelector('#deck-profile-match');
     this.profileMatchSave = document.querySelector('#deck-profile-match-save');
@@ -113,6 +165,14 @@ class DeckController {
     this.pageTabs = document.querySelector('#deck-page-tabs');
     this.addPageButton = document.querySelector('#deck-add-page');
     this.removePageButton = document.querySelector('#deck-remove-page');
+    this.pageDefault = document.querySelector('#deck-page-default');
+    this.pageMatchInput = document.querySelector('#deck-page-match');
+    this.pageMatchSave = document.querySelector('#deck-page-match-save');
+    this.pageMatchClear = document.querySelector('#deck-page-match-clear');
+    this.pageMatchFocused =
+      document.querySelector('#deck-page-match-focused');
+    this.pageMatchStatus =
+      document.querySelector('#deck-page-match-status');
     this.pageName = document.querySelector('#deck-page-name');
     this.rowsSelect = document.querySelector('#deck-rows');
     this.colsSelect = document.querySelector('#deck-cols');
@@ -167,6 +227,7 @@ class DeckController {
       renderPageImages: (page, keyPx) => this.renderPageImages(page, keyPx),
       limitsFor: (profile) => this.limitsFor(profile),
       resolveProfileForSnapshot: selectProfileForSnapshot,
+      resolvePageForSnapshot: selectPageForSnapshot,
       getFocusStatus: () => this.focusStatus,
       getFocusSnapshot: () => this.focusSnapshot,
       onDeviceRegistered: (deviceId) => {
@@ -313,14 +374,7 @@ class DeckController {
       }
     });
     this.profileCreate.addEventListener('click', () => {
-      const name = window.prompt('Name the new profile:', 'Profile');
-
-      if (name !== null) {
-        this.runProfileOperation({
-          type: 'create',
-          name: name.trim() || 'Profile',
-        });
-      }
+      this.openProfileDialog('create', this.profileCreate);
     });
     this.profileDuplicate.addEventListener('click', () => {
       const profileId = this.selectedProfileId();
@@ -330,22 +384,26 @@ class DeckController {
       }
     });
     this.profileRename.addEventListener('click', () => {
-      const profileId = this.selectedProfileId();
-      const profile = this.selectedProfile();
-
-      if (!profileId || !profile) {
-        return;
+      this.openProfileDialog('rename', this.profileRename);
+    });
+    this.profileForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      this.submitProfileDialog();
+    });
+    this.profileDialogCancel.addEventListener('click', () => {
+      this.profileDialog.close();
+    });
+    this.profileDialog.addEventListener('click', (event) => {
+      if (event.target === this.profileDialog) {
+        this.profileDialog.close();
       }
-
-      const name = window.prompt('Rename this profile:', profile.name);
-
-      if (name !== null) {
-        this.runProfileOperation({
-          type: 'rename',
-          profileId,
-          name: name.trim(),
-        });
-      }
+    });
+    this.profileDialog.addEventListener('close', () => {
+      const target = this.profileDialogReturnFocus;
+      this.profileDialogMode = null;
+      this.profileDialogProfileId = null;
+      this.profileDialogReturnFocus = null;
+      target?.focus();
     });
     this.profileDelete.addEventListener('click', () => {
       const profileId = this.selectedProfileId();
@@ -430,6 +488,77 @@ class DeckController {
       });
       this.runtime.queueAutoSwitch(this.focusSnapshot);
     });
+    this.pageDefault.addEventListener('click', async () => {
+      const profileId = this.selectedProfileId();
+
+      if (profileId) {
+        await this.runProfileOperation({
+          type: 'set-default-page',
+          profileId,
+          page: this.selectedPage,
+        });
+        this.runtime.queueAutoSwitch(this.focusSnapshot);
+      }
+    });
+    this.pageMatchFocused.addEventListener('click', async () => {
+      const profileId = this.selectedProfileId();
+      const platform = this.focusStatus?.platform;
+
+      if (!profileId || !platform || !this.focusSnapshot) {
+        return;
+      }
+
+      try {
+        await this.runProfileOperation({
+          type: 'set-page-app-match',
+          profileId,
+          page: this.selectedPage,
+          platform,
+          rule: preferredRuleForSnapshot(this.focusSnapshot),
+        });
+        this.runtime.queueAutoSwitch(this.focusSnapshot);
+      } catch (error) {
+        this.setPageMatchStatus(error.message, 'error');
+      }
+    });
+    this.pageMatchSave.addEventListener('click', async () => {
+      const profileId = this.selectedProfileId();
+      const platform = this.focusStatus?.platform;
+
+      if (!profileId || !platform) {
+        return;
+      }
+
+      try {
+        await this.runProfileOperation({
+          type: 'set-page-app-match',
+          profileId,
+          page: this.selectedPage,
+          platform,
+          rule: parseManualAppMatch(platform, this.pageMatchInput.value),
+        });
+        this.runtime.queueAutoSwitch(this.focusSnapshot);
+      } catch (error) {
+        this.setPageMatchStatus(error.message, 'error');
+      }
+    });
+    this.pageMatchClear.addEventListener('click', async () => {
+      const profileId = this.selectedProfileId();
+      const platform = this.focusStatus?.platform;
+
+      if (!profileId || !platform) {
+        return;
+      }
+
+      await this.runProfileOperation({
+        type: 'set-page-app-match',
+        profileId,
+        page: this.selectedPage,
+        platform,
+        rule: null,
+      });
+      this.runtime.queueAutoSwitch(this.focusSnapshot);
+    });
     this.exportButton.addEventListener('click', async () => {
       try {
         const result = await this.api.exportDeck(this.selectedDeviceId);
@@ -448,6 +577,7 @@ class DeckController {
       this.updateProfile((profile) => {
         profile.pages.push({
           name: `Page ${profile.pages.length + 1}`,
+          appMatches: {},
           rows: 3,
           cols: 3,
           keys: [],
@@ -463,30 +593,12 @@ class DeckController {
         }
 
         const removed = this.selectedPage;
-        profile.pages.splice(removed, 1);
+        removeProfilePage(profile, removed);
         this.selectedPage = Math.min(
           this.selectedPage,
           profile.pages.length - 1,
         );
         this.selectedKey = null;
-        profile.activePage = Math.min(
-          profile.activePage,
-          profile.pages.length - 1,
-        );
-
-        // Page targets pointing at or past the removed page are remapped so
-        // top-level and multi actions remain valid.
-        for (const page of profile.pages) {
-          for (const key of page.keys) {
-            const action = remapActionAfterPageDeletion(key.action, removed);
-
-            if (!action) {
-              delete key.action;
-            } else {
-              key.action = action;
-            }
-          }
-        }
       });
     });
     this.pageName.addEventListener('change', () => {
@@ -670,6 +782,90 @@ class DeckController {
     });
   }
 
+  setProfileDialogError(message) {
+    this.profileDialogError.textContent = message;
+    this.profileName.setAttribute('aria-invalid', String(Boolean(message)));
+  }
+
+  openProfileDialog(mode, returnFocus) {
+    const profileId = this.selectedProfileId();
+    const profile = this.selectedProfile();
+
+    if (mode === 'rename' && (!profileId || !profile)) {
+      return;
+    }
+
+    this.profileDialogMode = mode;
+    this.profileDialogProfileId = mode === 'rename' ? profileId : null;
+    this.profileDialogReturnFocus = returnFocus || this.document.activeElement;
+    this.profileDialogTitle.textContent =
+      mode === 'rename' ? 'Rename profile' : 'Add profile';
+    this.profileDialogSubmit.textContent =
+      mode === 'rename' ? 'Rename profile' : 'Add profile';
+    this.profileDialogSubmit.disabled = false;
+    this.profileName.maxLength = MAX_NAME_LENGTH;
+    this.profileName.value = mode === 'rename' ? profile.name : 'Profile';
+    this.setProfileDialogError('');
+    this.profileDialog.showModal();
+    this.profileName.focus();
+    this.profileName.select();
+  }
+
+  profileNameError(name) {
+    if (!name) {
+      return 'Enter a profile name.';
+    }
+
+    if (name.length > MAX_NAME_LENGTH) {
+      return `Profile names can be at most ${MAX_NAME_LENGTH} characters.`;
+    }
+
+    const duplicate = Object.entries(this.selectedDevice()?.profiles || {})
+      .some(([profileId, profile]) =>
+        profileId !== this.profileDialogProfileId &&
+        profile.name.toLowerCase() === name.toLowerCase());
+    return duplicate ? 'Profile names must be unique per device.' : '';
+  }
+
+  async submitProfileDialog() {
+    const name = this.profileName.value.trim();
+    const validationError = this.profileNameError(name);
+
+    if (validationError) {
+      this.setProfileDialogError(validationError);
+      this.profileName.focus();
+      return false;
+    }
+
+    const mode = this.profileDialogMode;
+
+    if (!mode) {
+      return false;
+    }
+
+    this.profileDialogSubmit.disabled = true;
+    this.setProfileDialogError('');
+    const operation = mode === 'rename'
+      ? {
+          type: 'rename',
+          profileId: this.profileDialogProfileId,
+          name,
+        }
+      : { type: 'create', name };
+    const succeeded = await this.runProfileOperation(operation, {
+      onError: (error) => this.setProfileDialogError(error.message),
+    });
+    this.profileDialogSubmit.disabled = false;
+
+    if (succeeded) {
+      this.profileDialog.close();
+    } else {
+      this.profileName.focus();
+    }
+
+    return succeeded;
+  }
+
   renderIconGrid(query) {
     const needle = query.trim().toLowerCase().replace(/[\s-]+/g, '_');
     const matches = [];
@@ -829,7 +1025,7 @@ class DeckController {
       ?.focus();
   }
 
-  async runProfileOperation(operation) {
+  async runProfileOperation(operation, { onError } = {}) {
     if (!this.selectedDeviceId) {
       return false;
     }
@@ -861,6 +1057,7 @@ class DeckController {
       }
       return true;
     } catch (error) {
+      onError?.(error);
       this.setSyncStatus(`Profile change failed: ${error.message}`, 'error');
       return false;
     }
@@ -1257,6 +1454,11 @@ class DeckController {
     this.profileMatchStatus.dataset.state = state;
   }
 
+  setPageMatchStatus(message, state) {
+    this.pageMatchStatus.textContent = message;
+    this.pageMatchStatus.dataset.state = state;
+  }
+
   renderSyncStatus() {
     if (this.storageErrors.length > 0) {
       this.setSyncStatus(
@@ -1396,70 +1598,94 @@ class DeckController {
     const device = this.selectedDevice();
     const profileId = this.selectedProfileId();
     const profile = this.selectedProfile();
+    const page = profile?.pages[this.selectedPage];
     const platform = this.focusStatus?.platform;
-    const rule = platform ? profile?.appMatches?.[platform] : null;
+    const profileRule = platform ? profile?.appMatches?.[platform] : null;
+    const pageRule = platform ? page?.appMatches?.[platform] : null;
     const hasProfile = Boolean(device && profileId && profile);
+    const hasPage = Boolean(hasProfile && page);
 
     this.profileDefault.disabled =
       !hasProfile || profileId === device.defaultProfileId;
     this.profileDefault.textContent =
       hasProfile && profileId === device.defaultProfileId
         ? 'Default profile'
-        : 'Make default';
+        : 'Make profile default';
     this.profileMatchFocused.disabled =
       !hasProfile ||
       !this.focusStatus?.supported ||
       this.focusStatus.state !== 'watching' ||
       !this.focusSnapshot;
     this.profileMatchSave.disabled = !hasProfile || !platform;
-    this.profileMatchClear.disabled = !rule;
+    this.profileMatchClear.disabled = !profileRule;
+    this.pageDefault.disabled =
+      !hasPage || this.selectedPage === profile.defaultPage;
+    this.pageDefault.textContent =
+      hasPage && this.selectedPage === profile.defaultPage
+        ? 'Default page'
+        : 'Make page default';
+    this.pageMatchFocused.disabled =
+      !hasPage ||
+      !this.focusStatus?.supported ||
+      this.focusStatus.state !== 'watching' ||
+      !this.focusSnapshot;
+    this.pageMatchSave.disabled = !hasPage || !platform;
+    this.pageMatchClear.disabled = !pageRule;
 
     if (this.document.activeElement !== this.profileMatchInput) {
-      this.profileMatchInput.value = appMatchText(platform, rule);
+      this.profileMatchInput.value = appMatchText(platform, profileRule);
+    }
+
+    if (this.document.activeElement !== this.pageMatchInput) {
+      this.pageMatchInput.value = appMatchText(platform, pageRule);
     }
 
     this.profileMatchInput.disabled = !hasProfile || !platform;
+    this.pageMatchInput.disabled = !hasPage || !platform;
 
     if (platform === 'win32') {
       this.profileMatchInput.placeholder = 'obs64.exe or folder/obs64.exe';
+      this.pageMatchInput.placeholder = 'obs64.exe or folder/obs64.exe';
     } else if (platform === 'darwin') {
       this.profileMatchInput.placeholder =
+        'com.vendor.app or process:App Name';
+      this.pageMatchInput.placeholder =
         'com.vendor.app or process:App Name';
     } else if (platform === 'linux') {
       this.profileMatchInput.placeholder =
         'class:obs or process:obs';
+      this.pageMatchInput.placeholder =
+        'class:obs or process:obs';
     } else {
       this.profileMatchInput.placeholder = 'Focused app unavailable';
+      this.pageMatchInput.placeholder = 'Focused app unavailable';
     }
 
     if (this.focusStatus?.reason) {
-      this.setProfileMatchStatus(
-        this.focusStatus.reason,
-        this.focusStatus.state === 'error' ? 'error' : 'idle',
-      );
+      const state = this.focusStatus.state === 'error' ? 'error' : 'idle';
+      this.setProfileMatchStatus(this.focusStatus.reason, state);
+      this.setPageMatchStatus(this.focusStatus.reason, state);
       return;
     }
 
     if (this.focusSnapshot) {
       try {
         const focused = preferredRuleForSnapshot(this.focusSnapshot);
-        this.setProfileMatchStatus(
-          `Focused app: ${focused.value}`,
-          'ready',
-        );
+        const message = `Focused app: ${focused.value}`;
+        this.setProfileMatchStatus(message, 'ready');
+        this.setPageMatchStatus(message, 'ready');
       } catch {
-        this.setProfileMatchStatus(
-          'The focused app has no supported stable identity.',
-          'idle',
-        );
+        const message = 'The focused app has no supported stable identity.';
+        this.setProfileMatchStatus(message, 'idle');
+        this.setPageMatchStatus(message, 'idle');
       }
       return;
     }
 
-    this.setProfileMatchStatus(
-      'Focus another app, then return and choose “Use focused app”.',
-      'idle',
-    );
+    const message =
+      'Focus another app, then return and choose “Use focused app”.';
+    this.setProfileMatchStatus(message, 'idle');
+    this.setPageMatchStatus(message, 'idle');
   }
 
   renderPages() {
@@ -1476,12 +1702,22 @@ class DeckController {
       const tab = this.document.createElement('button');
       tab.type = 'button';
       tab.className = 'deck-page-tab';
-      tab.textContent = page.name;
+      tab.textContent =
+        `${page.name}${index === profile.defaultPage ? ' · Default' : ''}`;
       tab.dataset.active = String(index === this.selectedPage);
+      tab.setAttribute('role', 'tab');
+      tab.setAttribute(
+        'aria-selected',
+        String(index === this.selectedPage),
+      );
       tab.addEventListener('click', () => {
-        this.selectedPage = index;
-        this.selectedKey = null;
-        this.renderAll();
+        this.runtime.switchDevicePage(
+          this.selectedDeviceId,
+          index,
+          this.selectedProfileId(),
+        ).catch((error) => {
+          this.setSyncStatus(`Could not select the page: ${error.message}`, 'error');
+        });
       });
       tab.addEventListener('dragover', (event) => {
         if (this.isKeyDrag(event) && index !== this.selectedPage) {
@@ -1594,6 +1830,8 @@ class DeckController {
 
       if (key?.action?.type === 'page') {
         cell.dataset.badge = '⇒';
+      } else if (key?.action?.type === 'profile') {
+        cell.dataset.badge = '⇥';
       }
 
       cell.addEventListener('click', () => {
@@ -1710,6 +1948,9 @@ class DeckController {
         `${this.selectedDeviceId}:${this.selectedProfileId()}:` +
         `${this.selectedPage}:${this.selectedKey}`,
       pages: profile.pages,
+      profiles: Object.entries(this.selectedDevice().profiles).map(
+        ([id, entry]) => ({ id, name: entry.name }),
+      ),
     });
 
     this.keyTest.disabled = !action;
@@ -1720,4 +1961,4 @@ class DeckController {
   }
 }
 
-module.exports = { DeckController };
+module.exports = { DeckController, removeProfilePage };

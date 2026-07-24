@@ -98,9 +98,9 @@ test('matches stable identities without regex or partial basename matches', () =
   });
 });
 
-test('selects the first deterministic match and otherwise the device default', () => {
+test('selects the first deterministic match and otherwise stays active', () => {
   const device = {
-    activeProfileId: 'default',
+    activeProfileId: 'z-profile',
     defaultProfileId: 'default',
     profiles: {
       'z-profile': {
@@ -128,11 +128,12 @@ test('selects the first deterministic match and otherwise the device default', (
   };
 
   assert.equal(selectProfileForSnapshot(device, obs), 'a-profile');
-  assert.equal(selectProfileForSnapshot(device, terminal), 'default');
+  assert.equal(selectProfileForSnapshot(device, terminal), 'z-profile');
 });
 
-test('legacy profiles without rules fall back to the default', () => {
+test('profiles without rules remain on the active profile', () => {
   const device = {
+    activeProfileId: 'other',
     defaultProfileId: 'legacy',
     profiles: {
       legacy: { name: 'Legacy' },
@@ -146,6 +147,6 @@ test('legacy profiles without rules fall back to the default', () => {
       processId: 9,
       identities: [{ kind: 'bundleId', value: 'com.apple.Safari' }],
     }),
-    'legacy',
+    'other',
   );
 });

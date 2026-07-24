@@ -1,9 +1,21 @@
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 
-const { DeckController } = require('../src/renderer/deck');
+const {
+  DeckController,
+  removeProfilePage,
+} = require('../src/renderer/deck');
 const { DeckRuntime } = require('../src/renderer/deck-runtime');
-const { selectProfileForSnapshot } = require('../src/profile-rules');
+const {
+  keyPayload,
+  pasteKey,
+} = require('../src/renderer/key-clipboard');
+const {
+  selectPageForSnapshot,
+  selectProfileForSnapshot,
+} = require('../src/profile-rules');
 
 function createRuntime() {
   let runtime;
@@ -22,6 +34,7 @@ function createRuntime() {
     renderPageImages: (...args) => runtime.renderImages(...args),
     limitsFor: (profile) => runtime.resolveLimits(profile),
     resolveProfileForSnapshot: selectProfileForSnapshot,
+    resolvePageForSnapshot: selectPageForSnapshot,
     getFocusStatus: () => runtime.focusStatus,
     getFocusSnapshot: () => runtime.focusSnapshot,
     onDeviceRegistered: (deviceId) => {
@@ -127,6 +140,209 @@ test('manual connection visibility follows the selected deck only', () => {
   assert.equal(attributes['aria-hidden'], 'false');
 });
 
+test('page deletion remaps active and default fallbacks', () => {
+  const profile = {
+    activePage: 2,
+    defaultPage: 1,
+    pages: [
+      { keys: [] },
+      { keys: [{ index: 0, action: { type: 'page', page: 2 } }] },
+      { keys: [] },
+    ],
+  };
+
+  removeProfilePage(profile, 0);
+
+  assert.equal(profile.activePage, 1);
+  assert.equal(profile.defaultPage, 0);
+  assert.equal(profile.pages[0].keys[0].action.page, 1);
+
+  removeProfilePage(profile, 0);
+  assert.equal(profile.activePage, 0);
+  assert.equal(profile.defaultPage, 0);
+});
+
+test('clipboard preserves top-level and Multi profile actions', () => {
+  const source = {
+    index: 3,
+    action: {
+      type: 'multi',
+      steps: [
+        { type: 'profile', profileId: 'streaming' },
+        { type: 'media', command: 'mute' },
+      ],
+    },
+  };
+  const payload = keyPayload(source);
+  const [pasted] = pasteKey([], 7, payload, 1);
+
+  assert.equal(pasted.index, 7);
+  assert.deepEqual(pasted.action, source.action);
+  assert.notEqual(pasted.action, source.action);
+});
+
+test('profile and page focus controls have distinct DOM ownership', () => {
+  const html = readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'index.html'),
+    'utf8',
+  );
+
+  assert.match(html, /Profile app match on this computer/);
+  assert.match(html, /Page app match on this computer/);
+  assert.match(html, /aria-label="Use focused app for profile"/);
+  assert.match(html, /aria-label="Use focused app for page"/);
+  assert.match(html, /id="deck-profile-match-status"/);
+  assert.match(html, /id="deck-page-match-status"/);
+});
+
+test('profile create and rename use one accessible in-app dialog', () => {
+  const html = readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'index.html'),
+    'utf8',
+  );
+  const source = readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'deck.js'),
+    'utf8',
+  );
+  const selectors = [
+    'deck-profile-dialog',
+    'deck-profile-form',
+    'deck-profile-dialog-title',
+    'deck-profile-name',
+    'deck-profile-dialog-error',
+    'deck-profile-dialog-cancel',
+    'deck-profile-dialog-submit',
+  ];
+
+  assert.doesNotMatch(source, /window\.prompt\s*\(/);
+  assert.match(html, /<dialog[^>]*id="deck-profile-dialog"[\s\S]*aria-labelledby=/);
+  assert.match(html, /id="deck-profile-name"[\s\S]*maxlength="60"[\s\S]*autofocus/);
+  assert.match(html, /id="deck-profile-dialog-cancel"[\s\S]*type="button"/);
+  assert.match(source, /profileForm\.addEventListener\('submit'/);
+  assert.match(source, /profileDialog\.addEventListener\('close'/);
+
+  for (const id of selectors) {
+    assert.equal(html.match(new RegExp(`id="${id}"`, 'g'))?.length, 1, id);
+    assert.match(source, new RegExp(`querySelector\\('#${id}'\\)`), id);
+  }
+});
+
+test('profile dialog creates, renames, and reports validation inline', async () => {
+  const controller = Object.create(DeckController.prototype);
+  const operations = [];
+  let closes = 0;
+  controller.devices = {
+    aaaa11112222: {
+      activeProfileId: 'default',
+      profiles: {
+        default: { name: 'Default' },
+        streaming: { name: 'Streaming' },
+      },
+    },
+  };
+  controller.selectedDeviceId = 'aaaa11112222';
+  controller.selectedDevice = () =>
+    controller.devices[controller.selectedDeviceId];
+  controller.selectedProfileId = () =>
+    controller.selectedDevice().activeProfileId;
+  controller.selectedProfile = () =>
+    controller.selectedDevice().profiles[controller.selectedProfileId()];
+  controller.document = { activeElement: null };
+  controller.profileDialog = {
+    showModal() {},
+    close() {
+      closes++;
+    },
+  };
+  controller.profileDialogTitle = {};
+  controller.profileDialogSubmit = {};
+  controller.profileDialogError = {};
+  controller.profileName = {
+    value: '',
+    focus() {},
+    select() {},
+    setAttribute(name, value) {
+      this[name] = value;
+    },
+  };
+  controller.runProfileOperation = async (operation, options) => {
+    operations.push(operation);
+
+    if (operation.name === 'Server error') {
+      options.onError(new Error('Profile name is invalid.'));
+      return false;
+    }
+
+    return true;
+  };
+
+  controller.openProfileDialog('create', null);
+  assert.equal(controller.profileDialogTitle.textContent, 'Add profile');
+  assert.equal(controller.profileName.value, 'Profile');
+  controller.profileName.value = 'Studio';
+  assert.equal(await controller.submitProfileDialog(), true);
+  assert.deepEqual(operations.at(-1), { type: 'create', name: 'Studio' });
+
+  controller.openProfileDialog('rename', null);
+  assert.equal(controller.profileDialogTitle.textContent, 'Rename profile');
+  assert.equal(controller.profileName.value, 'Default');
+  controller.profileName.value = 'Renamed';
+  assert.equal(await controller.submitProfileDialog(), true);
+  assert.deepEqual(operations.at(-1), {
+    type: 'rename',
+    profileId: 'default',
+    name: 'Renamed',
+  });
+
+  controller.openProfileDialog('create', null);
+  controller.profileName.value = '  ';
+  assert.equal(await controller.submitProfileDialog(), false);
+  assert.match(controller.profileDialogError.textContent, /Enter/);
+  controller.profileName.value = 'streaming';
+  assert.equal(await controller.submitProfileDialog(), false);
+  assert.match(controller.profileDialogError.textContent, /unique/);
+  controller.profileName.value = 'Server error';
+  assert.equal(await controller.submitProfileDialog(), false);
+  assert.equal(
+    controller.profileDialogError.textContent,
+    'Profile name is invalid.',
+  );
+  assert.equal(closes, 2);
+});
+
+test('the full-width content pane owns Deck scrolling', () => {
+  const css = readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'styles.css'),
+    'utf8',
+  );
+
+  assert.match(
+    css,
+    /\.content:has\(\.view-deck:not\(\[hidden\]\)\)\s*\{[^}]*overflow-y:\s*auto;/s,
+  );
+  assert.doesNotMatch(
+    css,
+    /\.view-deck:not\(\[hidden\]\)\s*\{[^}]*overflow-y:\s*auto;/s,
+  );
+  assert.match(css, /\.deck-stage\s*\{[^}]*overflow:\s*auto;/s);
+  assert.match(
+    css,
+    /\.deck-key-editor-body\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*0\.9fr\)\s+minmax\(0,\s*1\.25fr\);/s,
+  );
+  assert.match(
+    css,
+    /@media \(max-width:\s*940px\)[\s\S]*?\.deck-key-editor-body\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/s,
+  );
+  assert.match(
+    css,
+    /\.deck-live-helper,[\s\S]*?grid-column:\s*1\s*\/\s*-1;[\s\S]*?min-width:\s*0;/s,
+  );
+  assert.match(
+    css,
+    /\.deck-live-helper,[\s\S]*?overflow-wrap:\s*normal;[\s\S]*?word-break:\s*normal;/s,
+  );
+});
+
 test('sync resolves the active named profile for a device', async () => {
   const controller = createRuntime();
   const synced = [];
@@ -185,6 +401,177 @@ test('sync resolves the active named profile for a device', async () => {
   assert.match(Buffer.from(sent.at(-1)).toString('utf8'), /"index":1/);
   assert.equal(session.committedProfileId, 'live');
   assert.equal(session.profileInputBlocked, false);
+});
+
+test('manual page selection updates active but not default page', async () => {
+  const controller = createRuntime();
+  const saves = [];
+  controller.devices = {
+    aaaa11112222: {
+      activeProfileId: 'default',
+      profiles: {
+        default: {
+          activePage: 0,
+          defaultPage: 0,
+          pages: [{}, {}],
+        },
+      },
+    },
+  };
+  controller.selectedDeviceId = 'aaaa11112222';
+  controller.saveProfile = async (...args) => saves.push(args);
+  controller.refreshLiveStates = () => {};
+  controller.renderAll = () => {};
+
+  assert.equal(
+    await controller.switchDevicePage('aaaa11112222', 1, 'default'),
+    true,
+  );
+  assert.equal(
+    await controller.switchDevicePage('aaaa11112222', 1, 'default'),
+    false,
+  );
+  assert.equal(
+    controller.devices.aaaa11112222.profiles.default.activePage,
+    1,
+  );
+  assert.equal(
+    controller.devices.aaaa11112222.profiles.default.defaultPage,
+    0,
+  );
+  assert.deepEqual(saves, [['aaaa11112222', 'default']]);
+});
+
+test('profile actions switch locally, clear selection, render, and sync once', async () => {
+  const controller = createRuntime();
+  const operations = [];
+  const hostActions = [];
+  const syncs = [];
+  let renders = 0;
+  controller.devices = {
+    aaaa11112222: {
+      activeProfileId: 'default',
+      profiles: {
+        default: { activePage: 0, pages: [{}] },
+        streaming: { activePage: 2, pages: [{}, {}, {}] },
+      },
+    },
+  };
+  controller.selectedDeviceId = 'aaaa11112222';
+  controller.selectedPage = 0;
+  controller.selectedKey = 4;
+  controller.liveValues.set('aaaa11112222:default:0:4', true);
+  controller.api = {
+    async runProfileOperation(deviceId, operation) {
+      operations.push([deviceId, operation]);
+      return {
+        ...structuredClone(controller.devices[deviceId]),
+        activeProfileId: operation.profileId,
+      };
+    },
+    async runAction(action) {
+      hostActions.push(action);
+    },
+  };
+  controller.renderAll = () => {
+    renders++;
+  };
+  controller.scheduleSync = (...args) => syncs.push(args);
+
+  assert.equal(await controller.runKeyAction(
+    'aaaa11112222',
+    { type: 'profile', profileId: 'streaming' },
+    { profileId: 'default', page: 0, index: 4 },
+  ), true);
+
+  assert.deepEqual(operations, [[
+    'aaaa11112222',
+    { type: 'select', profileId: 'streaming' },
+  ]]);
+  assert.deepEqual(hostActions, []);
+  assert.equal(
+    controller.devices.aaaa11112222.activeProfileId,
+    'streaming',
+  );
+  assert.equal(controller.selectedPage, 2);
+  assert.equal(controller.selectedKey, null);
+  assert.equal(controller.liveValues.size, 0);
+  assert.equal(renders, 1);
+  assert.deepEqual(syncs, [['aaaa11112222', 0]]);
+});
+
+test('missing profile actions fail without privileged execution', async () => {
+  const controller = createRuntime();
+  const hostActions = [];
+  const statuses = [];
+  controller.devices = {
+    aaaa11112222: {
+      activeProfileId: 'default',
+      profiles: { default: { activePage: 0, pages: [{}] } },
+    },
+  };
+  controller.api = {
+    async runProfileOperation() {
+      throw new TypeError('Profile id is invalid.');
+    },
+    async runAction(action) {
+      hostActions.push(action);
+    },
+  };
+  controller.setSyncStatus = (...status) => statuses.push(status);
+
+  assert.equal(await controller.runKeyAction(
+    'aaaa11112222',
+    { type: 'profile', profileId: 'deleted-profile' },
+    { profileId: 'default', page: 0, index: 0 },
+  ), false);
+  assert.deepEqual(hostActions, []);
+  assert.match(statuses[0][0], /Profile id is invalid/);
+});
+
+test('Multi profile switch cancels every later step', async () => {
+  const controller = createRuntime();
+  const hostActions = [];
+  const syncs = [];
+  const statuses = [];
+  controller.devices = {
+    aaaa11112222: {
+      activeProfileId: 'default',
+      profiles: {
+        default: { activePage: 0, pages: [{}] },
+        streaming: { activePage: 0, pages: [{}] },
+      },
+    },
+  };
+  controller.api = {
+    async runProfileOperation(deviceId, operation) {
+      return {
+        ...structuredClone(controller.devices[deviceId]),
+        activeProfileId: operation.profileId,
+      };
+    },
+    async runAction(action) {
+      hostActions.push(action);
+    },
+  };
+  controller.scheduleSync = (...args) => syncs.push(args);
+  controller.setSyncStatus = (...status) => statuses.push(status);
+
+  assert.equal(await controller.runKeyAction(
+    'aaaa11112222',
+    {
+      type: 'multi',
+      steps: [
+        { type: 'profile', profileId: 'streaming' },
+        { type: 'media', command: 'mute' },
+      ],
+    },
+    { profileId: 'default', page: 0, index: 0 },
+  ), false);
+
+  assert.deepEqual(hostActions, []);
+  assert.deepEqual(syncs, [['aaaa11112222', 0]]);
+  assert.match(statuses[0][0], /canceled before step 2/);
 });
 
 test('local toggle flips only after its action succeeds', async () => {
@@ -505,6 +892,7 @@ test('focused-app auto-switch selects every saved device idempotently', async ()
   const profile = (name, appMatches = {}) => ({
     name,
     activePage: name === 'OBS' ? 1 : 0,
+    defaultPage: name === 'OBS' ? 1 : 0,
     appMatches,
     pages: [{}, {}],
   });
@@ -581,6 +969,210 @@ test('focused-app auto-switch selects every saved device idempotently', async ()
   ]);
 });
 
+test('page-only focus switches send one page without a full sync', async () => {
+  const controller = createRuntime();
+  const operations = [];
+  const syncs = [];
+  const sent = [];
+  const profile = () => ({
+    activePage: 0,
+    defaultPage: 0,
+    appMatches: {},
+    pages: [
+      { appMatches: {} },
+      {
+        appMatches: {
+          linux: { kind: 'wmClass', value: 'obs' },
+        },
+      },
+    ],
+  });
+  controller.devices = {
+    aaaa11112222: {
+      activeProfileId: 'default',
+      defaultProfileId: 'default',
+      profiles: { default: profile() },
+    },
+    bbbb33334444: {
+      activeProfileId: 'default',
+      defaultProfileId: 'default',
+      profiles: { default: profile() },
+    },
+  };
+  controller.selectedDeviceId = 'aaaa11112222';
+  controller.focusStatus = { platform: 'linux', editorFocused: false };
+  controller.refreshLiveStates = () => {};
+  controller.renderAll = () => {};
+  controller.api = {
+    async runProfileOperation(deviceId, operation) {
+      operations.push([deviceId, operation]);
+      const device = structuredClone(controller.devices[deviceId]);
+      device.profiles[operation.profileId].activePage = operation.page;
+      return device;
+    },
+  };
+  controller.profileSwitcher.api = controller.api;
+  controller.scheduleSync = (...args) => syncs.push(args);
+  controller.sessions.set('aaaa11112222', {
+    committedProfileId: 'default',
+    profileInputBlocked: false,
+    async send(bytes) {
+      sent.push(JSON.parse(Buffer.from(bytes).toString('utf8')));
+    },
+  });
+
+  const changed = await controller.profileSwitcher.switchProfiles({
+    platform: 'linux',
+    processId: 123,
+    identities: [{ kind: 'wmClass', value: 'OBS' }],
+  });
+
+  assert.deepEqual(changed, ['aaaa11112222', 'bbbb33334444']);
+  assert.deepEqual(
+    operations.map(([, operation]) => operation.type),
+    ['set-active-page', 'set-active-page'],
+  );
+  assert.deepEqual(sent, [{ type: 'page', index: 1 }]);
+  assert.deepEqual(syncs, []);
+  assert.equal(
+    controller.devices.bbbb33334444.profiles.default.activePage,
+    1,
+  );
+});
+
+test('profile focus switch stores its matched page before full sync', async () => {
+  const controller = createRuntime();
+  const syncs = [];
+  const profile = (appMatches = {}, pageMatches = {}) => ({
+    activePage: 0,
+    defaultPage: 0,
+    appMatches,
+    pages: [
+      { appMatches: {} },
+      { appMatches: pageMatches },
+    ],
+  });
+  controller.devices = {
+    aaaa11112222: {
+      activeProfileId: 'default',
+      defaultProfileId: 'default',
+      profiles: {
+        default: profile(),
+        obs: profile(
+          { linux: { kind: 'wmClass', value: 'obs' } },
+          { linux: { kind: 'wmClass', value: 'obs' } },
+        ),
+      },
+    },
+  };
+  controller.focusStatus = { platform: 'linux', editorFocused: false };
+  controller.renderAll = () => {};
+  controller.api = {
+    async runProfileOperation(deviceId, operation) {
+      assert.deepEqual(operation, {
+        type: 'focus-select',
+        profileId: 'obs',
+        page: 1,
+      });
+      const device = structuredClone(controller.devices[deviceId]);
+      device.activeProfileId = operation.profileId;
+      device.profiles[operation.profileId].activePage = operation.page;
+      return device;
+    },
+  };
+  controller.profileSwitcher.api = controller.api;
+  controller.scheduleSync = (deviceId, delay) => {
+    syncs.push([
+      deviceId,
+      delay,
+      controller.devices[deviceId].profiles.obs.activePage,
+    ]);
+  };
+
+  await controller.profileSwitcher.switchProfiles({
+    platform: 'linux',
+    processId: 123,
+    identities: [{ kind: 'wmClass', value: 'obs' }],
+  });
+
+  assert.equal(controller.devices.aaaa11112222.activeProfileId, 'obs');
+  assert.equal(controller.devices.aaaa11112222.profiles.obs.activePage, 1);
+  assert.deepEqual(syncs, [['aaaa11112222', 0, 1]]);
+});
+
+test('page focus switching keeps only the latest queued snapshot', async () => {
+  const controller = createRuntime();
+  const calls = [];
+  const sent = [];
+  let releaseFirst;
+  const firstBlocked = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  controller.devices = {
+    aaaa11112222: {
+      activeProfileId: 'default',
+      defaultProfileId: 'default',
+      profiles: {
+        default: {
+          activePage: 0,
+          defaultPage: 0,
+          appMatches: {},
+          pages: [
+            { appMatches: {} },
+            {
+              appMatches: {
+                linux: { kind: 'wmClass', value: 'obs' },
+              },
+            },
+          ],
+        },
+      },
+    },
+  };
+  controller.focusStatus = { platform: 'linux', editorFocused: false };
+  controller.refreshLiveStates = () => {};
+  controller.renderAll = () => {};
+  controller.api = {
+    async runProfileOperation(deviceId, operation) {
+      calls.push(operation.page);
+
+      if (calls.length === 1) {
+        await firstBlocked;
+      }
+
+      const device = structuredClone(controller.devices[deviceId]);
+      device.profiles.default.activePage = operation.page;
+      return device;
+    },
+  };
+  controller.profileSwitcher.api = controller.api;
+  controller.sessions.set('aaaa11112222', {
+    committedProfileId: 'default',
+    profileInputBlocked: false,
+    async send(bytes) {
+      sent.push(JSON.parse(Buffer.from(bytes).toString('utf8')).index);
+    },
+  });
+  const snapshot = (value) => ({
+    platform: 'linux',
+    processId: 123,
+    identities: [{ kind: 'wmClass', value }],
+  });
+
+  const running = controller.queueAutoSwitch(snapshot('obs'));
+  await Promise.resolve();
+  controller.queueAutoSwitch(snapshot('browser'));
+  releaseFirst();
+  await running;
+
+  assert.deepEqual(calls, [1]);
+  assert.deepEqual(sent, [1]);
+  assert.equal(
+    controller.devices.aaaa11112222.profiles.default.activePage,
+    1,
+  );
+});
+
 test('focused-app auto-switch keeps only the latest queued snapshot', async () => {
   const controller = createRuntime();
   const calls = [];
@@ -591,6 +1183,7 @@ test('focused-app auto-switch keeps only the latest queued snapshot', async () =
   });
   const profile = (appMatches = {}) => ({
     activePage: 0,
+    defaultPage: 0,
     appMatches,
     pages: [{}],
   });
@@ -643,9 +1236,9 @@ test('focused-app auto-switch keeps only the latest queued snapshot', async () =
   releaseFirst();
   await running;
 
-  assert.deepEqual(calls, ['obs', 'default']);
-  assert.deepEqual(syncs, [['aaaa11112222', 0, 'default']]);
-  assert.equal(controller.devices.aaaa11112222.activeProfileId, 'default');
+  assert.deepEqual(calls, ['obs']);
+  assert.deepEqual(syncs, [['aaaa11112222', 0, 'obs']]);
+  assert.equal(controller.devices.aaaa11112222.activeProfileId, 'obs');
 });
 
 test('session attach and detach own runtime state and cleanup', async () => {

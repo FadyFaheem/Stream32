@@ -433,6 +433,19 @@ function renameDevice(deviceId, name, decksPath) {
   return device;
 }
 
+function requireOperationPage(device, operation) {
+  if (
+    !PROFILE_ID_PATTERN.test(operation.profileId) ||
+    !device.profiles[operation.profileId] ||
+    !Number.isInteger(operation.page) ||
+    !device.profiles[operation.profileId].pages[operation.page]
+  ) {
+    throw new TypeError('Profile page is invalid.');
+  }
+
+  return device.profiles[operation.profileId];
+}
+
 function applyProfileOperation(deviceId, operation, decksPath) {
   if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
     throw new TypeError('Profile operation is invalid.');
@@ -454,6 +467,18 @@ function applyProfileOperation(deviceId, operation, decksPath) {
       delete device[PRESERVED_DEVICE_FIELDS]?.activeProfileId;
       break;
     }
+    case 'focus-select': {
+      const profile = requireOperationPage(device, operation);
+      device.activeProfileId = operation.profileId;
+      profile.activePage = operation.page;
+      delete device[PRESERVED_DEVICE_FIELDS]?.activeProfileId;
+      break;
+    }
+    case 'set-active-page': {
+      const profile = requireOperationPage(device, operation);
+      profile.activePage = operation.page;
+      break;
+    }
     case 'set-default': {
       if (
         !PROFILE_ID_PATTERN.test(operation.profileId) ||
@@ -464,6 +489,11 @@ function applyProfileOperation(deviceId, operation, decksPath) {
 
       device.defaultProfileId = operation.profileId;
       delete device[PRESERVED_DEVICE_FIELDS]?.defaultProfileId;
+      break;
+    }
+    case 'set-default-page': {
+      const profile = requireOperationPage(device, operation);
+      profile.defaultPage = operation.page;
       break;
     }
     case 'set-app-match': {
@@ -484,6 +514,24 @@ function applyProfileOperation(deviceId, operation, decksPath) {
         delete profile.appMatches[operation.platform];
       } else {
         profile.appMatches[operation.platform] = validateAppMatch(
+          operation.platform,
+          operation.rule,
+        );
+      }
+      break;
+    }
+    case 'set-page-app-match': {
+      const profile = requireOperationPage(device, operation);
+      const page = profile.pages[operation.page];
+
+      if (operation.rule === null) {
+        if (!['win32', 'darwin', 'linux'].includes(operation.platform)) {
+          throw new TypeError('App match platform is invalid.');
+        }
+
+        delete page.appMatches[operation.platform];
+      } else {
+        page.appMatches[operation.platform] = validateAppMatch(
           operation.platform,
           operation.rule,
         );

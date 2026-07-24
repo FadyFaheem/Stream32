@@ -27,6 +27,10 @@ const {
   saveDeviceProfiles,
 } = require('../src/deck-store');
 const { readSettings, writeSettings } = require('../src/settings');
+const {
+  selectPageForSnapshot,
+  selectProfileForSnapshot,
+} = require('../src/profile-rules');
 
 const BOARD_ID = 'waveshare-esp32-s3-touch-lcd-4-v3';
 const DEVICE_ID = 'aabbccddeeff';
@@ -42,6 +46,9 @@ function sampleProfile() {
     pages: [
       {
         name: 'Main',
+        appMatches: {
+          linux: { kind: 'wmClass', value: 'obs' },
+        },
         rows: 3,
         cols: 3,
         keys: [
@@ -62,6 +69,10 @@ function sampleProfile() {
               settings: {},
             },
           },
+          {
+            index: 3,
+            action: { type: 'profile', profileId: 'missing-profile' },
+          },
           { index: 8, action: { type: 'page', page: 1 } },
           {
             index: 2,
@@ -69,6 +80,7 @@ function sampleProfile() {
               type: 'multi',
               steps: [
                 { type: 'page', page: 1 },
+                { type: 'profile', profileId: 'missing-profile' },
                 { type: 'delay', ms: 250 },
                 {
                   type: 'plugin',
@@ -104,7 +116,12 @@ test('validates a full multi-page profile', () => {
 
   assert.equal(validated.pages.length, 2);
   assert.equal(validated.activePage, 1);
+  assert.equal(validated.defaultPage, 1);
   assert.equal(validated.keyPx['3x3'], 150);
+  assert.deepEqual(validated.pages[0].appMatches.linux, {
+    kind: 'wmClass',
+    value: 'obs',
+  });
   assert.equal(validated.pages[0].keys[0].labelColor, '#0b1116');
   assert.deepEqual(validated.pages[0].keys[1].action, {
     type: 'plugin',
@@ -133,6 +150,7 @@ test('validates bounded Multi Actions without nesting or top-level delays', () =
       { type: 'media', command: 'mute' },
       { type: 'delay', ms: 30_000 },
       { type: 'page', page: 1 },
+      { type: 'profile', profileId: 'streaming' },
       { type: 'delay', ms: 0 },
     ],
   };
@@ -183,6 +201,14 @@ test('validates bounded Multi Actions without nesting or top-level delays', () =
   assert.throws(
     () => validateHostAction({ type: 'delay', ms: 1 }),
     /never reach.*unexpanded/,
+  );
+  assert.throws(
+    () => validateHostAction({ type: 'profile', profileId: 'streaming' }),
+    /Profile actions.*never reach.*unexpanded/,
+  );
+  assert.throws(
+    () => validateAction({ type: 'profile', profileId: '../streaming' }, 2),
+    /profile id.*invalid/i,
   );
 });
 
@@ -283,6 +309,17 @@ test('rejects invalid profiles', () => {
     on: { color: 'green' },
   };
   assert.throws(() => validateProfile(badLiveState), /Toggle on color/);
+
+  const badDefaultPage = sampleProfile();
+  badDefaultPage.defaultPage = 7;
+  assert.throws(() => validateProfile(badDefaultPage), /Default page/);
+
+  const badPageMatch = sampleProfile();
+  badPageMatch.pages[0].appMatches.win32 = {
+    kind: 'processName',
+    value: 'obs',
+  };
+  assert.throws(() => validateProfile(badPageMatch), /identity kind/);
 });
 
 test('migrates legacy profiles without losing device or board identity', () => {
@@ -303,7 +340,7 @@ test('migrates legacy profiles without losing device or board identity', () => {
     assert.equal(device.profiles.default.name, 'Default');
     assert.equal(
       device.profiles.default.pages[0].keys.find((key) => key.index === 2)
-        .action.steps[2].pluginId,
+        .action.steps[3].pluginId,
       'missing-plugin',
     );
     assert.deepEqual(
@@ -439,7 +476,21 @@ test('creates, duplicates, renames, selects, and deletes with fallbacks', () => 
     assert.match(gamingId, /^[a-z0-9][a-z0-9-]{0,31}$/);
     assert.equal(device.profiles[gamingId].name, 'Gaming');
 
-    device.profiles[gamingId].pages[0].keys.push({ index: 0, label: 'Game' });
+    device.profiles[gamingId].pages[0].keys.push({
+      index: 0,
+      label: 'Game',
+      action: { type: 'profile', profileId: gamingId },
+    });
+    device.profiles[gamingId].pages.push({
+      name: 'Code',
+      appMatches: {
+        linux: { kind: 'processName', value: 'code' },
+      },
+      rows: 1,
+      cols: 1,
+      keys: [],
+    });
+    device.profiles[gamingId].defaultPage = 1;
     saveDeviceProfile(
       DEVICE_ID,
       gamingId,
@@ -455,6 +506,15 @@ test('creates, duplicates, renames, selects, and deletes with fallbacks', () => 
     assert.notEqual(copyId, gamingId);
     assert.equal(device.profiles[copyId].name, 'Gaming copy');
     assert.equal(device.profiles[copyId].pages[0].keys[0].label, 'Game');
+    assert.equal(
+      device.profiles[copyId].pages[0].keys[0].action.profileId,
+      gamingId,
+    );
+    assert.equal(device.profiles[copyId].defaultPage, 1);
+    assert.deepEqual(device.profiles[copyId].pages[1].appMatches.linux, {
+      kind: 'processName',
+      value: 'code',
+    });
     device.profiles[copyId].pages[0].keys[0].label = 'Changed locally';
     assert.equal(device.profiles[gamingId].pages[0].keys[0].label, 'Game');
 
@@ -508,6 +568,60 @@ test('creates, duplicates, renames, selects, and deletes with fallbacks', () => 
   }
 });
 
+test('deleting a target profile preserves visible action references', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'stream32-decks-'));
+  const decksPath = path.join(directory, 'decks.json');
+
+  try {
+    registerDevice(DEVICE_ID, BOARD_ID, 'Desk', decksPath);
+    let device = applyProfileOperation(
+      DEVICE_ID,
+      { type: 'create', name: 'Streaming' },
+      decksPath,
+    );
+    const targetId = device.activeProfileId;
+    device = applyProfileOperation(
+      DEVICE_ID,
+      { type: 'select', profileId: 'default' },
+      decksPath,
+    );
+    device.profiles.default.pages[0].keys = [
+      {
+        index: 0,
+        action: { type: 'profile', profileId: targetId },
+      },
+      {
+        index: 1,
+        action: {
+          type: 'multi',
+          steps: [
+            { type: 'profile', profileId: targetId },
+            { type: 'media', command: 'mute' },
+          ],
+        },
+      },
+    ];
+    saveDeviceProfile(
+      DEVICE_ID,
+      'default',
+      device.profiles.default,
+      decksPath,
+    );
+
+    applyProfileOperation(
+      DEVICE_ID,
+      { type: 'delete', profileId: targetId },
+      decksPath,
+    );
+    const keys = readDecks(decksPath)
+      .devices[DEVICE_ID].profiles.default.pages[0].keys;
+    assert.equal(keys[0].action.profileId, targetId);
+    assert.equal(keys[1].action.steps[0].profileId, targetId);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
 test('persists one validated app match per platform and one device default', () => {
   const directory = mkdtempSync(path.join(tmpdir(), 'stream32-decks-'));
   const decksPath = path.join(directory, 'decks.json');
@@ -520,6 +634,8 @@ test('persists one validated app match per platform and one device default', () 
       decksPath,
     );
     const profileId = device.activeProfileId;
+    const profile = sampleProfile();
+    saveDeviceProfile(DEVICE_ID, profileId, profile, decksPath);
     device = applyProfileOperation(
       DEVICE_ID,
       {
@@ -534,6 +650,40 @@ test('persists one validated app match per platform and one device default', () 
     assert.deepEqual(device.profiles[profileId].appMatches.win32, {
       kind: 'executable',
       value: 'obs-studio/obs64.exe',
+    });
+    device = applyProfileOperation(
+      DEVICE_ID,
+      { type: 'set-active-page', profileId, page: 0 },
+      decksPath,
+    );
+    assert.equal(device.profiles[profileId].activePage, 0);
+    device = applyProfileOperation(
+      DEVICE_ID,
+      { type: 'focus-select', profileId, page: 1 },
+      decksPath,
+    );
+    assert.equal(device.activeProfileId, profileId);
+    assert.equal(device.profiles[profileId].activePage, 1);
+    device = applyProfileOperation(
+      DEVICE_ID,
+      { type: 'set-default-page', profileId, page: 1 },
+      decksPath,
+    );
+    assert.equal(device.profiles[profileId].defaultPage, 1);
+    device = applyProfileOperation(
+      DEVICE_ID,
+      {
+        type: 'set-page-app-match',
+        profileId,
+        page: 1,
+        platform: 'win32',
+        rule: { kind: 'executable', value: 'Code.EXE' },
+      },
+      decksPath,
+    );
+    assert.deepEqual(device.profiles[profileId].pages[1].appMatches.win32, {
+      kind: 'executable',
+      value: 'code.exe',
     });
     device = applyProfileOperation(
       DEVICE_ID,
@@ -565,9 +715,64 @@ test('persists one validated app match per platform and one device default', () 
       decksPath,
     );
     assert.deepEqual(device.profiles[profileId].appMatches, {});
+    device = applyProfileOperation(
+      DEVICE_ID,
+      {
+        type: 'set-page-app-match',
+        profileId,
+        page: 1,
+        platform: 'win32',
+        rule: null,
+      },
+      decksPath,
+    );
+    assert.deepEqual(device.profiles[profileId].pages[1].appMatches, {});
+    assert.throws(
+      () => applyProfileOperation(
+        DEVICE_ID,
+        { type: 'set-default-page', profileId, page: 9 },
+        decksPath,
+      ),
+      /Profile page/,
+    );
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
+});
+
+test('resolves a deterministic profile and then page from one snapshot', () => {
+  const fallback = validateProfile(sampleProfile());
+  fallback.appMatches = {};
+  fallback.defaultPage = 1;
+  const matched = structuredClone(fallback);
+  matched.appMatches.linux = { kind: 'wmClass', value: 'obs' };
+  matched.pages[0].appMatches.linux = { kind: 'wmClass', value: 'obs' };
+  matched.pages[1].appMatches.linux = { kind: 'wmClass', value: 'obs' };
+  const device = {
+    activeProfileId: 'z-match',
+    defaultProfileId: 'fallback',
+    profiles: {
+      'z-match': structuredClone(matched),
+      fallback,
+      'a-match': matched,
+    },
+  };
+  const obs = {
+    platform: 'linux',
+    processId: 42,
+    identities: [{ kind: 'wmClass', value: 'OBS' }],
+  };
+  const browser = {
+    platform: 'linux',
+    processId: 43,
+    identities: [{ kind: 'wmClass', value: 'browser' }],
+  };
+
+  const profileId = selectProfileForSnapshot(device, obs);
+  assert.equal(profileId, 'a-match');
+  assert.equal(selectPageForSnapshot(device.profiles[profileId], obs), 0);
+  assert.equal(selectProfileForSnapshot(device, browser), 'z-match');
+  assert.equal(selectPageForSnapshot(device.profiles['z-match'], browser), 1);
 });
 
 test('imports a compatible file as a new selected profile', () => {
@@ -582,6 +787,11 @@ test('imports a compatible file as a new selected profile', () => {
 
     assert.equal(Object.keys(device.profiles).length, 2);
     assert.equal(device.profiles[device.activeProfileId].name, 'Imported');
+    assert.equal(device.profiles[device.activeProfileId].defaultPage, 1);
+    assert.deepEqual(
+      device.profiles[device.activeProfileId].pages[0].appMatches.linux,
+      { kind: 'wmClass', value: 'obs' },
+    );
     device = addImportedProfile(DEVICE_ID, imported, decksPath);
     assert.equal(device.profiles[device.activeProfileId].name, 'Imported 2');
 
@@ -719,16 +929,19 @@ test('preserves corrupt named profiles across valid reads and saves', () => {
   }
 });
 
-test('round-trips export and import and rejects malformed files', () => {
+test('exports schema 5 and migrates schema 1-4 page defaults', () => {
   const exported = exportProfile(sampleProfile());
   const imported = importProfile(exported);
 
-  assert.equal(JSON.parse(exported).stream32Deck, 4);
+  assert.equal(JSON.parse(exported).stream32Deck, 5);
   assert.deepEqual(imported, validateProfile(sampleProfile()));
-  for (const version of [1, 2, 3]) {
+  for (const version of [1, 2, 3, 4]) {
     const legacy = JSON.parse(exported);
     legacy.stream32Deck = version;
-    assert.deepEqual(importProfile(JSON.stringify(legacy)), imported);
+    delete legacy.profile.defaultPage;
+    const migrated = importProfile(JSON.stringify(legacy));
+    assert.equal(migrated.defaultPage, migrated.activePage);
+    assert.deepEqual(migrated.pages, imported.pages);
   }
   assert.throws(() => importProfile('not json'), /not valid JSON/);
   assert.throws(

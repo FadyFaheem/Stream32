@@ -99,6 +99,17 @@ const CORE_ACTIONS = [
     coreType: 'page',
   },
   {
+    key: 'core:profile',
+    source: 'Stream32',
+    category: 'Deck',
+    name: 'Switch profile',
+    description: 'Switch this deck to another named profile.',
+    icon: 'switch_account',
+    keywords: ['navigation', 'profile', 'switch', 'deck'],
+    available: true,
+    coreType: 'profile',
+  },
+  {
     key: 'core:multi',
     source: 'Stream32',
     category: 'Deck',
@@ -221,6 +232,7 @@ class ActionEditor {
     this.draftKey = null;
     this.draft = {};
     this.pages = [];
+    this.profiles = [];
 
     this.openButton = document.querySelector('#deck-action-open');
     this.clearButton = document.querySelector('#deck-action-clear');
@@ -317,7 +329,7 @@ class ActionEditor {
     this.pluginStatus.textContent = `Plugins could not be loaded: ${message}`;
   }
 
-  render({ action, context, pages }) {
+  render({ action, context, pages, profiles = [] }) {
     if (context !== this.context) {
       this.context = context;
       this.draftKey = actionKey(action);
@@ -331,6 +343,7 @@ class ActionEditor {
 
     this.action = action;
     this.pages = pages;
+    this.profiles = profiles;
     this.renderSummary();
     this.renderConfig();
   }
@@ -412,7 +425,7 @@ class ActionEditor {
 
   choose(definition) {
     this.draftKey = definition.key;
-    this.draft = newActionForDefinition(definition);
+    this.draft = newActionForDefinition(definition, this.profiles);
     this.dialog.close();
     this.emit(definition.appearance);
   }
@@ -444,6 +457,7 @@ class ActionEditor {
       definition,
       document: this.document,
       pages: this.pages,
+      profiles: this.profiles,
       reportMessage: (message) => {
         this.message.textContent = message;
       },
@@ -601,7 +615,10 @@ class ActionEditor {
           );
 
           if (next) {
-            this.draft.steps[index] = newActionForDefinition(next);
+            this.draft.steps[index] = newActionForDefinition(
+              next,
+              this.profiles,
+            );
             this.emit();
           }
         });
@@ -619,6 +636,7 @@ class ActionEditor {
           definition,
           document: this.document,
           pages: this.pages,
+          profiles: this.profiles,
           reportMessage: (text) => {
             const message = this.document.createElement('p');
             message.className = 'helper';

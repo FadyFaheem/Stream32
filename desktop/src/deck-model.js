@@ -11,8 +11,8 @@ const { validatePluginReference } = require('./plugin-manifest');
 const { validateAppMatches } = require('./profile-rules');
 
 const DECK_REGISTRY_VERSION = 2;
-const EXPORT_SCHEMA_VERSION = 4;
-const IMPORT_SCHEMA_VERSIONS = new Set([1, 2, 3, EXPORT_SCHEMA_VERSION]);
+const EXPORT_SCHEMA_VERSION = 5;
+const IMPORT_SCHEMA_VERSIONS = new Set([1, 2, 3, 4, EXPORT_SCHEMA_VERSION]);
 const MAX_DEVICES = 32;
 const MAX_PROFILES = 16;
 const MAX_PAGES = 8;
@@ -119,6 +119,20 @@ function validateLeafAction(action, pageCount) {
         type: 'page',
         page: requireInteger(action.page, 'Action page', 0, pageCount - 1),
       };
+    case 'profile': {
+      const profileId = optionalString(
+        action.profileId,
+        'Action profile id',
+        32,
+        PROFILE_ID_PATTERN,
+      );
+
+      if (!profileId) {
+        throw new TypeError('Action profile id is required.');
+      }
+
+      return { type: 'profile', profileId };
+    }
     case 'plugin':
       return validatePluginReference(action);
     default:
@@ -192,9 +206,13 @@ function validateAction(action, pageCount) {
 }
 
 function validateHostAction(action) {
-  if (['page', 'multi', 'delay'].includes(action?.type)) {
+  if (['page', 'profile', 'multi', 'delay'].includes(action?.type)) {
     throw new TypeError(
-      `${action?.type === 'page' ? 'Page' : 'Multi and delay'} actions ` +
+      `${action?.type === 'page'
+        ? 'Page'
+        : action?.type === 'profile'
+          ? 'Profile'
+          : 'Multi and delay'} actions ` +
       'never reach the main process unexpanded.',
     );
   }
@@ -283,6 +301,7 @@ function validatePage(page, pageCount) {
 
   return {
     name: optionalString(page.name, 'Page name', MAX_NAME_LENGTH) || 'Page',
+    appMatches: validateAppMatches(page.appMatches),
     rows,
     cols,
     keys,
@@ -321,6 +340,12 @@ function validateProfile(profile) {
       0,
       pageCount - 1,
     ),
+    defaultPage: requireInteger(
+      profile.defaultPage ?? profile.activePage ?? 0,
+      'Default page',
+      0,
+      pageCount - 1,
+    ),
     pages: profile.pages.map((page) => validatePage(page, pageCount)),
     keyPx: {},
   };
@@ -351,6 +376,7 @@ function createDefaultProfile(boardId) {
     name: 'Default',
     boardId,
     activePage: 0,
+    defaultPage: 0,
     pages: [{ name: 'Main', rows: 3, cols: 3, keys: [] }],
   });
 }

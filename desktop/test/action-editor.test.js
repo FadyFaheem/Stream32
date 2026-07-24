@@ -52,6 +52,10 @@ test('maps native and plugin actions to stable catalog keys', () => {
   );
   assert.equal(actionKey({ type: 'multi', steps: [] }), 'core:multi');
   assert.equal(
+    actionKey({ type: 'profile', profileId: 'streaming' }),
+    'core:profile',
+  );
+  assert.equal(
     actionKey({
       type: 'plugin',
       pluginId: 'microsoft-teams',
@@ -344,6 +348,7 @@ test('top-level and Multi leaves resolve every action type to shared builders', 
       clicks: 1,
     },
     page: { type: 'page', page: 0 },
+    profile: { type: 'profile', profileId: 'default' },
     plugin: {
       type: 'plugin',
       pluginId: 'test',
@@ -363,6 +368,7 @@ test('top-level and Multi leaves resolve every action type to shared builders', 
       definition,
       document,
       pages: [{ name: 'Main' }],
+      profiles: [{ id: 'default', name: 'Default' }],
     };
 
     assert.equal(fieldBuilderForDefinition(definition), expected);
@@ -422,6 +428,11 @@ test('top-level and Multi leaves share canonical validation for every type', () 
     ],
     ['page', { type: 'page', page: 1 }, { type: 'page', page: 2 }],
     [
+      'profile',
+      { type: 'profile', profileId: 'streaming' },
+      { type: 'profile', profileId: 'Invalid profile id' },
+    ],
+    [
       'plugin',
       {
         type: 'plugin',
@@ -448,4 +459,53 @@ test('top-level and Multi leaves share canonical validation for every type', () 
     assert.equal(buildLeafAction(invalid, definition, pages.length), null, type);
     assert.notEqual(multiDraftError([invalid], actions, pages), '', type);
   }
+});
+
+test('profile action editor shows friendly and missing targets with host note', () => {
+  const elements = [];
+  const document = {
+    createElement(tagName) {
+      const element = {
+        tagName,
+        children: [],
+        listeners: {},
+        append(...children) {
+          this.children.push(...children);
+        },
+        addEventListener(type, listener) {
+          this.listeners[type] = listener;
+        },
+      };
+      elements.push(element);
+      return element;
+    },
+  };
+  const container = {
+    children: [],
+    append(...children) {
+      this.children.push(...children);
+    },
+  };
+  const definition = CORE_ACTIONS.find(
+    (action) => action.coreType === 'profile',
+  );
+
+  renderActionFields({
+    action: { type: 'profile', profileId: 'deleted-profile' },
+    commit() {},
+    container,
+    definition,
+    document,
+    pages: [{ name: 'Main' }],
+    profiles: [{ id: 'default', name: 'Default profile' }],
+  });
+
+  const select = elements.find((element) => element.tagName === 'select');
+  assert.equal(select.children[0].textContent, 'Missing profile · deleted-profile');
+  assert.equal(select.children[1].textContent, 'Default profile');
+  assert.match(
+    elements.find((element) => element.className === 'helper action-host-note')
+      .textContent,
+    /desktop app.*running/i,
+  );
 });

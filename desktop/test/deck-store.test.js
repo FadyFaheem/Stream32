@@ -151,6 +151,7 @@ test('validates bounded Multi Actions without nesting or top-level delays', () =
       { type: 'delay', ms: 30_000 },
       { type: 'page', page: 1 },
       { type: 'profile', profileId: 'streaming' },
+      { type: 'sleep' },
       { type: 'delay', ms: 0 },
     ],
   };
@@ -205,6 +206,10 @@ test('validates bounded Multi Actions without nesting or top-level delays', () =
   assert.throws(
     () => validateHostAction({ type: 'profile', profileId: 'streaming' }),
     /Profile actions.*never reach.*unexpanded/,
+  );
+  assert.throws(
+    () => validateHostAction({ type: 'sleep' }),
+    /Sleep actions.*never reach.*unexpanded/,
   );
   assert.throws(
     () => validateAction({ type: 'profile', profileId: '../streaming' }, 2),

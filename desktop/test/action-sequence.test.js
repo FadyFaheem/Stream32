@@ -12,12 +12,14 @@ test('runs Multi Action leaves, delays, and pages in order', async () => {
     { type: 'media', command: 'mute' },
     { type: 'delay', ms: 250 },
     { type: 'page', page: 2 },
+    { type: 'sleep' },
     { type: 'url', url: 'https://stream32.dev' },
   ];
 
   await runActionSequence(steps, {
     runLeaf: async (step) => calls.push(`leaf:${step.type}`),
     switchPage: async (page) => calls.push(`page:${page}`),
+    blankDisplay: async () => calls.push('sleep'),
     sleep: async (ms) => calls.push(`delay:${ms}`),
   });
 
@@ -25,6 +27,7 @@ test('runs Multi Action leaves, delays, and pages in order', async () => {
     'leaf:media',
     'delay:250',
     'page:2',
+    'sleep',
     'leaf:url',
   ]);
 });

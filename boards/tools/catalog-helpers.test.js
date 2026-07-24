@@ -6,6 +6,7 @@ const test = require('node:test');
 const {
   reusePublishedImage,
   selectAffectedProfiles,
+  selectFirmwareBuildProfiles,
 } = require('./catalog-helpers');
 
 const waveshare = {
@@ -72,7 +73,7 @@ test('board profiles declare their post-flash reset behavior', () => {
   assert.equal(waveshareProfile.postFlashReset, 'automatic');
 });
 
-test('selects only the board whose profile or firmware changed', () => {
+test('maps board-specific firmware changes to that board', () => {
   assert.deepEqual(
     selectAffectedProfiles(profiles, [
       'boards/elecrow/firmware/main/main.c',
@@ -81,31 +82,94 @@ test('selects only the board whose profile or firmware changed', () => {
   );
   assert.deepEqual(
     selectAffectedProfiles(profiles, ['boards/waveshare/board.json']),
-    [waveshare],
-  );
-});
-
-test('selects every board for shared code, tooling, catalog, or workflows', () => {
-  for (const changedPath of [
-    'boards/common/components/deck/deck_ui.c',
-    'boards/tools/build-catalog.js',
-    'boards/catalog.json',
-    '.github/workflows/ci-boards.yml',
-  ]) {
-    assert.deepEqual(selectAffectedProfiles(profiles, [changedPath]), profiles);
-  }
-});
-
-test('selects no firmware for documentation-only changes', () => {
-  assert.deepEqual(
-    selectAffectedProfiles(profiles, ['boards/README.md', 'README.md']),
     [],
   );
 });
 
-test('fails safe when an unknown board path changes', () => {
+test('builds only boards whose firmware version changed', () => {
+  const previousProfiles = [
+    {
+      ...waveshare,
+      firmware: { ...waveshare.firmware, version: '0.9.0' },
+    },
+    elecrow,
+  ];
+
   assert.deepEqual(
-    selectAffectedProfiles(profiles, ['boards/new-board/firmware/main.c']),
+    selectFirmwareBuildProfiles(
+      profiles,
+      previousProfiles,
+      ['boards/waveshare/board.json'],
+    ),
+    [waveshare],
+  );
+});
+
+test('skips firmware builds for tooling and metadata-only changes', () => {
+  assert.deepEqual(
+    selectFirmwareBuildProfiles(
+      profiles,
+      profiles,
+      [
+        '.github/workflows/ci-boards.yml',
+        'boards/tools/build-catalog.js',
+        'boards/elecrow/board.json',
+        'boards/README.md',
+      ],
+    ),
+    [],
+  );
+});
+
+test('requires version bumps for board-specific and shared firmware changes', () => {
+  assert.throws(
+    () =>
+      selectFirmwareBuildProfiles(
+        profiles,
+        profiles,
+        ['boards/elecrow/firmware/main/main.c'],
+      ),
+    /elecrow/,
+  );
+  assert.throws(
+    () =>
+      selectFirmwareBuildProfiles(
+        profiles,
+        profiles,
+        ['boards/common/components/deck/deck_ui.c'],
+      ),
+    /waveshare, elecrow/,
+  );
+  assert.throws(
+    () =>
+      selectFirmwareBuildProfiles(
+        profiles,
+        profiles,
+        ['boards/tools/build-firmware.sh'],
+      ),
+    /waveshare, elecrow/,
+  );
+
+  const previousProfiles = profiles.map((profile) => ({
+    ...profile,
+    firmware: { ...profile.firmware, version: '0.0.1' },
+  }));
+  assert.deepEqual(
+    selectFirmwareBuildProfiles(
+      profiles,
+      previousProfiles,
+      ['boards/common/components/deck/deck_ui.c'],
+    ),
+    profiles,
+  );
+});
+
+test('fails safe when an unknown firmware path changes', () => {
+  assert.deepEqual(
+    selectAffectedProfiles(
+      profiles,
+      ['boards/new-board/firmware/main/main.c'],
+    ),
     profiles,
   );
 });

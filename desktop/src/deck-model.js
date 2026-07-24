@@ -133,6 +133,8 @@ function validateLeafAction(action, pageCount) {
 
       return { type: 'profile', profileId };
     }
+    case 'sleep':
+      return { type: 'sleep' };
     case 'plugin':
       return validatePluginReference(action);
     default:
@@ -206,13 +208,15 @@ function validateAction(action, pageCount) {
 }
 
 function validateHostAction(action) {
-  if (['page', 'profile', 'multi', 'delay'].includes(action?.type)) {
+  if (['page', 'profile', 'sleep', 'multi', 'delay'].includes(action?.type)) {
     throw new TypeError(
       `${action?.type === 'page'
         ? 'Page'
         : action?.type === 'profile'
           ? 'Profile'
-          : 'Multi and delay'} actions ` +
+          : action?.type === 'sleep'
+            ? 'Sleep'
+            : 'Multi and delay'} actions ` +
       'never reach the main process unexpanded.',
     );
   }

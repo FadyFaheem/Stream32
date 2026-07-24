@@ -138,12 +138,13 @@ Desktop messages:
 {"type":"image","mode":"ephemeral","page":0,"index":0,"seq":0,"of":13,"w":150,"h":150,"data":"<base64 RGB565>"}
 {"type":"page","index":1}
 {"type":"display","awake":false,"idleTimeoutSeconds":600}
+{"type":"display","blankNow":true}
 ```
 
 Firmware messages:
 
 ```json
-{"type":"hello","protocol":1,"boardId":"waveshare-esp32-s3-touch-lcd-4-v3","firmwareVersion":"0.2.8","deviceId":"aabbccddeeff","features":["display-control","key-update","image-rle"]}
+{"type":"hello","protocol":1,"boardId":"waveshare-esp32-s3-touch-lcd-4-v3","firmwareVersion":"0.2.9","deviceId":"aabbccddeeff","features":["display-control","display-blank","key-update","image-rle"]}
 {"type":"pong","id":1}
 {"type":"touch","phase":"down","x":120,"y":240}
 {"type":"layout-ack","page":0,"rows":3,"cols":3,"keyPx":150,"needImages":[0,4]}
@@ -208,10 +209,13 @@ default. The desktop can change that interval with the additive `display`
 message when the firmware hello advertises `display-control`. `awake:false`
 forces the display to remain off while the host is locked; `awake:true` wakes
 it and restores normal idle timing. `idleTimeoutSeconds` is bounded to
-0-86400.
+0-86400. Firmware advertising `display-blank` also accepts the separate
+`{"type":"display","blankNow":true}` command used by the Sleep action. It
+blanks immediately without entering host-forced sleep.
 
 Touch stays active while the display is off. The first touch after an idle
-timeout only wakes the display and does not press a deck key. Touches remain
+timeout or Sleep action only wakes the display and does not press a deck key.
+Touches remain
 consumed during host-forced sleep, so locked computers cannot run key actions.
 The optional `brightness` field is bounded to 0-100 and is sent only when hello
 also advertises `display-brightness`. The global desktop brightness setting

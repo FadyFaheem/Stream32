@@ -1,4 +1,5 @@
 const { createHash } = require('node:crypto');
+const { execFileSync } = require('node:child_process');
 const {
   existsSync,
   mkdirSync,
@@ -11,6 +12,7 @@ const path = require('node:path');
 const {
   reusePublishedImage,
   selectAffectedProfiles,
+  selectFirmwareBuildProfiles,
 } = require('./catalog-helpers');
 
 const boardsDirectory = path.resolve(__dirname, '..');
@@ -19,6 +21,7 @@ const outputDirectory = path.join(boardsDirectory, 'dist');
 const validateOnly = process.argv.includes('--validate-only');
 const matrixOnly = process.argv.includes('--matrix');
 const changedStdin = process.argv.includes('--changed-stdin');
+const baseRef = argumentValue('--base-ref');
 const BOARD_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PROFILE_PATH_PATTERN = /^[a-z0-9][a-z0-9./-]+\.json$/;
 const IMAGE_NAME_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}\.bin$/;
@@ -41,6 +44,26 @@ function readJson(filePath) {
     return JSON.parse(readFileSync(filePath, 'utf8'));
   } catch (error) {
     fail(`Could not read ${filePath}: ${error.message}`);
+  }
+}
+
+function readProfileAtRef(ref, sourcePath) {
+  let contents;
+
+  try {
+    contents = execFileSync(
+      'git',
+      ['show', `${ref}:boards/${sourcePath}`],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] },
+    );
+  } catch {
+    return null;
+  }
+
+  try {
+    return JSON.parse(contents);
+  } catch (error) {
+    fail(`Could not parse ${sourcePath} at ${ref}: ${error.message}`);
   }
 }
 
@@ -328,12 +351,20 @@ const profiles = sourceCatalog.boards.map((relativeProfilePath) => {
 });
 
 if (matrixOnly) {
-  const matrixProfiles = changedStdin
-    ? selectAffectedProfiles(
+  const changedFiles = changedStdin
+    ? readFileSync(0, 'utf8').split(/\r?\n/)
+    : [];
+  const matrixProfiles = baseRef
+    ? selectFirmwareBuildProfiles(
         profiles,
-        readFileSync(0, 'utf8').split(/\r?\n/),
+        profiles
+          .map((profile) => readProfileAtRef(baseRef, profile.sourcePath))
+          .filter(Boolean),
+        changedFiles,
       )
-    : profiles;
+    : changedStdin
+      ? selectAffectedProfiles(profiles, changedFiles)
+      : profiles;
 
   console.log(
     JSON.stringify({

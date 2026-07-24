@@ -12,6 +12,7 @@ const {
   FIELD_BUILDERS,
   buildLeafAction,
   fieldBuilderForDefinition,
+  newActionForDefinition,
   renderActionFields,
 } = require('../src/renderer/action-fields');
 
@@ -51,6 +52,7 @@ test('maps native and plugin actions to stable catalog keys', () => {
     'core:mouse',
   );
   assert.equal(actionKey({ type: 'multi', steps: [] }), 'core:multi');
+  assert.equal(actionKey({ type: 'sleep' }), 'core:sleep');
   assert.equal(
     actionKey({ type: 'profile', profileId: 'streaming' }),
     'core:profile',
@@ -65,6 +67,18 @@ test('maps native and plugin actions to stable catalog keys', () => {
     'plugin:microsoft-teams:toggle-mute',
   );
   assert.equal(actionKey(null), null);
+});
+
+test('builds the parameterless Sleep action', () => {
+  const definition = CORE_ACTIONS.find(
+    (action) => action.coreType === 'sleep',
+  );
+
+  assert.deepEqual(newActionForDefinition(definition), { type: 'sleep' });
+  assert.deepEqual(
+    buildLeafAction({ type: 'sleep' }, definition, 1),
+    { type: 'sleep' },
+  );
 });
 
 test('applies plugin appearance after required settings become valid', () => {
@@ -349,6 +363,7 @@ test('top-level and Multi leaves resolve every action type to shared builders', 
     },
     page: { type: 'page', page: 0 },
     profile: { type: 'profile', profileId: 'default' },
+    sleep: { type: 'sleep' },
     plugin: {
       type: 'plugin',
       pluginId: 'test',

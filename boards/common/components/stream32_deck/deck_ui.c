@@ -415,6 +415,10 @@ static void build_page_locked(uint8_t page_index)
             );
             lv_label_set_long_mode(label_obj, LV_LABEL_LONG_DOT);
             lv_obj_set_width(label_obj, key_px - 12);
+            lv_obj_set_height(
+                label_obj,
+                lv_font_get_line_height(LV_FONT_DEFAULT)
+            );
             lv_obj_set_style_text_align(
                 label_obj,
                 LV_TEXT_ALIGN_CENTER,
@@ -807,6 +811,13 @@ const char *deck_ui_select_page(uint8_t page)
        the whole sync in one render instead of exposing each incoming key. */
     build_page(page);
     deck_storage_set_active_page(page);
+    return NULL;
+}
+
+const char *deck_ui_blank_display(void)
+{
+    s_consume_touch = false;
+    set_panel_awake(false);
     return NULL;
 }
 

@@ -61,6 +61,7 @@ const char *deck_ui_commit_image(
     uint32_t size
 );
 const char *deck_ui_select_page(uint8_t page);
+const char *deck_ui_blank_display(void);
 const char *deck_ui_apply_display(const deck_protocol_display_t *display);
 
 #ifdef __cplusplus

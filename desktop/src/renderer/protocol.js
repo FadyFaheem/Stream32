@@ -528,6 +528,10 @@ function encodeDisplayMessage({ awake, idleTimeoutSeconds, brightness }) {
   return encodeLine(message);
 }
 
+function encodeDisplayBlankMessage() {
+  return encodeLine({ type: 'display', blankNow: true });
+}
+
 function validateLayoutAck(message) {
   const page = requireProtocolInteger(
     message.page,
@@ -684,6 +688,7 @@ module.exports = {
   crc32,
   layoutLineLimitFor,
   createLineDecoder,
+  encodeDisplayBlankMessage,
   encodeDisplayMessage,
   encodeHostHello,
   encodeImageChunks,

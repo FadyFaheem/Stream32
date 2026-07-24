@@ -2,11 +2,6 @@ const path = require('node:path');
 
 const HASH_PATTERN = /^[a-f0-9]{64}$/;
 const MAX_IMAGE_BYTES = 32 * 1024 * 1024;
-const BUILD_ALL_PATHS = new Set([
-  '.github/workflows/ci-boards.yml',
-  '.github/workflows/release-boards.yml',
-  'boards/catalog.json',
-]);
 
 function normalizeChangedPath(filePath) {
   return String(filePath).trim().replaceAll('\\', '/').replace(/^\.\//, '');
@@ -18,9 +13,8 @@ function selectAffectedProfiles(profiles, changedFiles) {
   if (
     files.some(
       (filePath) =>
-        BUILD_ALL_PATHS.has(filePath) ||
         filePath.startsWith('boards/common/') ||
-        filePath.startsWith('boards/tools/'),
+        filePath === 'boards/tools/build-firmware.sh',
     )
   ) {
     return profiles;
@@ -35,7 +29,7 @@ function selectAffectedProfiles(profiles, changedFiles) {
   const affected = new Set();
 
   for (const filePath of files) {
-    if (!filePath.startsWith('boards/') || filePath === 'boards/README.md') {
+    if (!filePath.startsWith('boards/') || !filePath.includes('/firmware/')) {
       continue;
     }
 
@@ -53,6 +47,28 @@ function selectAffectedProfiles(profiles, changedFiles) {
   }
 
   return profiles.filter((profile) => affected.has(profile));
+}
+
+function selectFirmwareBuildProfiles(profiles, previousProfiles, changedFiles) {
+  const previousVersions = new Map(
+    previousProfiles.map((profile) => [profile.id, profile.firmware?.version]),
+  );
+  const selected = profiles.filter(
+    (profile) =>
+      previousVersions.get(profile.id) !== profile.firmware.version,
+  );
+  const selectedIds = new Set(selected.map((profile) => profile.id));
+  const missingBumps = selectAffectedProfiles(profiles, changedFiles)
+    .filter((profile) => !selectedIds.has(profile.id));
+
+  if (missingBumps.length > 0) {
+    throw new Error(
+      `Firmware changed without a version bump: ` +
+        missingBumps.map((profile) => profile.id).join(', '),
+    );
+  }
+
+  return selected;
 }
 
 function reusePublishedImage(profile, previousCatalog) {
@@ -107,4 +123,5 @@ function reusePublishedImage(profile, previousCatalog) {
 module.exports = {
   reusePublishedImage,
   selectAffectedProfiles,
+  selectFirmwareBuildProfiles,
 };

@@ -127,6 +127,9 @@ class DeckController {
     this.focusSnapshot = null;
     this.focusStatus = null;
     this.storageErrors = [];
+    // Optional observer so the Device Manager view can mirror device and
+    // session changes without the deck knowing about that controller.
+    this.onRender = null;
     this.profileDialogMode = null;
     this.profileDialogProfileId = null;
     this.profileDialogReturnFocus = null;
@@ -1504,6 +1507,21 @@ class DeckController {
     this.renderGrid();
     this.renderKeyEditor();
     this.renderSyncStatus();
+    this.onRender?.();
+  }
+
+  // Selects a known device and shows its deck; used by the device picker and
+  // the Device Manager's "Open in Deck" action.
+  selectDevice(deviceId) {
+    if (!this.devices[deviceId]) {
+      return false;
+    }
+
+    this.selectedDeviceId = deviceId;
+    this.selectedPage = this.selectedProfile()?.activePage ?? 0;
+    this.selectedKey = null;
+    this.renderAll();
+    return true;
   }
 
   setManualConnectionHidden(hidden) {

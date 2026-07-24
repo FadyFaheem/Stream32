@@ -820,6 +820,9 @@ function createActionRunner({
       case 'profile':
         // Profile switches are resolved renderer-side against the device session.
         throw new TypeError('Profile actions never reach the main process.');
+      case 'sleep':
+        // Display blanking is resolved renderer-side against the device session.
+        throw new TypeError('Sleep actions never reach the main process.');
       default:
         throw new TypeError(`Unknown action type: ${action?.type}`);
     }

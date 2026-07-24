@@ -167,6 +167,7 @@ select {
 
 .view-deck:not([hidden]) {
   min-height: 100%;
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
 }
 
 #view-flash:not([hidden]),
@@ -1624,6 +1625,79 @@ progress::-webkit-progress-value {
   display: flex;
   justify-content: flex-end;
   gap: 0.55rem;
+}
+
+.device-manager-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.device-manager-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.device-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(10, 18, 23, 0.52);
+}
+
+.device-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.device-card-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.device-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.55rem;
+}
+
+.device-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 2.4rem;
+  padding: 0 0.7rem;
+  color: var(--ink);
+  background: rgba(4, 10, 14, 0.6);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.device-badge {
+  justify-self: start;
+  padding: 0.25rem 0.55rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.68rem;
+}
+
+.device-badge[data-state="current"] {
+  color: var(--success);
+  border-color: rgba(103, 208, 154, 0.45);
+}
+
+.device-badge[data-state="update"] {
+  color: var(--accent-strong);
+  border-color: rgba(255, 173, 34, 0.45);
 }
 
 .plugin-built-in-section,

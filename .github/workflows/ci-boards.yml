@@ -51,7 +51,8 @@ jobs:
           else
             matrix="$(
               git diff --name-only "$BASE_SHA" "$GITHUB_SHA" |
-                node boards/tools/build-catalog.js --matrix --changed-stdin
+                node boards/tools/build-catalog.js \
+                  --matrix --changed-stdin --base-ref "$BASE_SHA"
             )"
           fi
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"

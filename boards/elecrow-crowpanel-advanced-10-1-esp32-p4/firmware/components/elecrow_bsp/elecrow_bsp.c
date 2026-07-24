@@ -375,11 +375,6 @@ esp_err_t bsp_display_set_awake(bool awake)
 
     if (awake) {
         ESP_RETURN_ON_ERROR(
-            esp_lcd_panel_disp_on_off(s_panel, true),
-            TAG,
-            "panel on"
-        );
-        ESP_RETURN_ON_ERROR(
             backlight_set(s_brightness_percent),
             TAG,
             "backlight on"
@@ -388,12 +383,10 @@ esp_err_t bsp_display_set_awake(bool awake)
         return ESP_OK;
     }
 
+    /* Keep the EK79007/DSI stream and LVGL touch polling alive while the
+       display is blanked. The panel's disp_on_off command does not reliably
+       resume on this board, and the backlight is the dominant power draw. */
     ESP_RETURN_ON_ERROR(backlight_set(0), TAG, "backlight off");
-    ESP_RETURN_ON_ERROR(
-        esp_lcd_panel_disp_on_off(s_panel, false),
-        TAG,
-        "panel off"
-    );
     s_display_awake = false;
     return ESP_OK;
 }

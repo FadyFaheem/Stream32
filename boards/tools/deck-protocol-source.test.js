@@ -103,3 +103,25 @@ test('both board transports dispatch through the shared protocol module', () => 
     /SRCS "deck_protocol\.c" "deck_storage\.c" "deck_ui\.c"/,
   );
 });
+
+test('CrowPanel blanking keeps the touch and DSI pipeline alive', () => {
+  const bsp = read(
+    path.join(
+      ROOT,
+      'boards',
+      'elecrow-crowpanel-advanced-10-1-esp32-p4',
+      'firmware',
+      'components',
+      'elecrow_bsp',
+      'elecrow_bsp.c',
+    ),
+  );
+  const setAwake = bsp.slice(
+    bsp.indexOf('esp_err_t bsp_display_set_awake('),
+    bsp.indexOf('esp_err_t bsp_display_set_brightness('),
+  );
+
+  assert.match(setAwake, /backlight_set\(0\)/);
+  assert.match(setAwake, /backlight_set\(s_brightness_percent\)/);
+  assert.doesNotMatch(setAwake, /esp_lcd_panel_disp_on_off/);
+});

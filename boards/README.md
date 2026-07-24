@@ -216,9 +216,11 @@ consumed during host-forced sleep, so locked computers cannot run key actions.
 The optional `brightness` field is bounded to 0-100 and is sent only when hello
 also advertises `display-brightness`. The global desktop brightness setting
 therefore controls the Elecrow PWM backlight and is restored after idle or lock
-sleep. Waveshare Rev 3 does not advertise brightness because its current BSP
-has no software-controlled backlight pin; idle and lock still blank its ST7701
-image, although the backlight may remain lit.
+sleep. CrowPanel blanking keeps its EK79007/DSI and LVGL touch polling active
+while switching off the power-dominant PWM backlight, so an idle wake touch is
+reliable. Waveshare Rev 3 does not advertise brightness because its current
+BSP has no software-controlled backlight pin; idle and lock still blank its
+ST7701 image, although the backlight may remain lit.
 
 The firmware persists layouts and artwork to the dedicated `deck` flash
 partition (header last, CRC-checked), so a standalone device boots straight

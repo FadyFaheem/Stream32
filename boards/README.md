@@ -23,6 +23,9 @@ Waveshare `ESP32-S3-Touch-LCD-4` (profile
 - Silkscreen hardware revision `3.0`
 - ESP32-S3 N16R8, ST7701 480×480 LCD, GT911 touch, and TCA9554 I/O expander
 - The native USB Serial/JTAG connection (`303a:1001`)
+- An optional
+  [power-button bypass](../docs/WAVESHARE_V3_POWER_BUTTON_BYPASS.md) for
+  automatic startup
 
 The similarly named 4.3-inch board and hardware Rev 4 are different devices.
 Do not select the Rev3 profile for either one.
@@ -37,10 +40,10 @@ Elecrow `CrowPanel Advanced 10.1"` (profile
 - Flashing and the Stream32 protocol both run through the on-board CH340K
   USB-UART bridge on the port labeled `UART0`. Shipping hardware has been
   observed as `USB-SERIAL CH340K` (`1a86:7522`, for example COM6); the profile
-  also retains `1a86:7523` for earlier documented CH340 variants. The USB 2.0
-  port must also be connected for power: the display draws roughly 8–10 W,
-  more than UART0 alone can supply. The pre-installed ESP32-C6 radio module
-  is not used.
+  also retains `1a86:7523` for earlier documented CH340 variants. One UART0
+  connection normally supplies both power and data. The USB 2.0 port can
+  provide supplemental power when needed. The pre-installed ESP32-C6 radio
+  module is not used.
 
 The Espressif ROM reports the chip family, which the desktop verifies
 before erasing. The ROM cannot identify the attached display or PCB
@@ -72,10 +75,11 @@ only the verified merged-image range, preserving the CrowPanel's dedicated
 option is off by default and deliberately erases the entire chip, including
 saved layouts and artwork.
 
-For the CrowPanel, connect both UART0 with a known-good USB data cable and
-USB 2.0 for power. Close serial monitors, install the current WCH CH340 driver
-if Windows does not expose the COM port reliably, and try a shorter cable or
-different direct USB port if the automatic 460800 fallback also fails.
+For the CrowPanel, connect UART0 with a known-good USB data cable. Close serial
+monitors, install the current WCH CH340 driver if Windows does not expose the
+COM port reliably, and try a shorter cable or different direct USB port if the
+automatic 460800 fallback also fails. USB 2.0 can be connected as supplemental
+power if the display is unstable.
 
 ### Deck sync performance
 
@@ -238,9 +242,9 @@ storage decisions, and live-overlay pixel ownership in `deck_ui.c`.
 
 ## Flash recovery
 
-Use a USB data cable and close other serial monitors before flashing. The
-CrowPanel additionally needs USB 2.0 power while UART0 carries data. If
-automatic bootloader entry fails:
+Use a USB data cable and close other serial monitors before flashing. Connect
+the CrowPanel through UART0; USB 2.0 is only needed as supplemental power if
+the display is unstable. If automatic bootloader entry fails:
 
 1. Disconnect power.
 2. Hold **BOOT** while reconnecting USB, then release **BOOT**.

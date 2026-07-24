@@ -47,7 +47,7 @@ including the USB and power requirements for each board.
 | Display | Screen | Deck size | Notes |
 | --- | --- | --- | --- |
 | Waveshare `ESP32-S3-Touch-LCD-4` | 480x480, 4" | up to 5x5, 8 pages | **Rev 3.0 only** (not Rev 4 or the 4.3" board) |
-| Elecrow `CrowPanel Advanced 10.1"` ESP32-P4 | 1024x600, 10.1" | up to 40 keys/page, 8 pages | Needs UART0 data **and** USB 2.0 power |
+| Elecrow `CrowPanel Advanced 10.1"` ESP32-P4 | 1024x600, 10.1" | up to 40 keys/page, 8 pages | UART0 carries power and data; USB 2.0 is optional supplemental power |
 
 Purchase links and buying tips are in [Buying a display](./boards/BUYING.md).
 Firmware, flashing, and the USB protocol are documented in
@@ -59,6 +59,7 @@ Firmware, flashing, and the USB protocol are documented in
 | --- | --- | --- |
 | [Getting started](./docs/GETTING_STARTED.md) | Users | Install, flash, and set up your first deck |
 | [Buying a display](./boards/BUYING.md) | Users | Which board to buy and what to avoid |
+| [Waveshare Rev 3 power-button bypass](./docs/WAVESHARE_V3_POWER_BUTTON_BYPASS.md) | Waveshare owners | Optional automatic power-on hardware modification |
 | [Decks and profiles](./desktop/DECKS.md) | Users | Profiles, focused-app switching, editing, Multi Actions |
 | [Action plugins](./desktop/PLUGINS.md) | Users and authors | Installing, publishing, and writing action plugins |
 | [Board support](./boards/README.md) | Contributors | Firmware builds, flashing behavior, and the USB protocol |

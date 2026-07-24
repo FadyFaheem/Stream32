@@ -39,7 +39,7 @@
   ],
   "recoveryInstructions": [
     "Use the USB port labeled UART0, slide POWER to ON, and close other serial monitors.",
-    "Also connect the USB 2.0 port for power; the 10.1 inch screen draws more than UART0 alone can supply.",
+    "UART0 normally supplies both power and data; connect USB 2.0 only as supplemental power if the display is unstable.",
     "Hold BOOT, press and release RST, then release BOOT to enter download mode.",
     "If 921600 baud is unstable, the desktop automatically restarts the complete write once at 460800 baud.",
     "Leave Full erase off to preserve saved decks; enable it only for slow, destructive troubleshooting.",

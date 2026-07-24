@@ -17,10 +17,14 @@ before flashing, because look-alike products are not interchangeable.
 | Display | Confirm before you flash | Power and data |
 | --- | --- | --- |
 | Waveshare `ESP32-S3-Touch-LCD-4` | Silkscreen reads **Rev 3.0** (not Rev 4, and not the 4.3" board) | Single USB-C carries data and power |
-| Elecrow `CrowPanel Advanced 10.1"` ESP32-P4 | It is the **10.1" ESP32-P4** model, not a 5"/7"/9" or ESP32-S3 variant | **UART0** carries data; the **USB 2.0** port must also be connected for power |
+| Elecrow `CrowPanel Advanced 10.1"` ESP32-P4 | It is the **10.1" ESP32-P4** model, not a 5"/7"/9" or ESP32-S3 variant | **UART0** normally carries both power and data; **USB 2.0** is optional supplemental power |
 
 See [Buying a display](../boards/BUYING.md) for exactly what to look for on each
 product page.
+
+Waveshare Rev 3 owners who want the board to start without pressing its power
+button can follow the optional
+[power-button bypass guide](./WAVESHARE_V3_POWER_BUTTON_BYPASS.md).
 
 ## 2. Install the desktop app
 
@@ -91,9 +95,9 @@ live key state, and multi-step actions, see
 - **The board does not appear.** Use a data cable, close other serial monitors,
   and on Windows install the WCH CH340 driver for the CrowPanel. Reconnect and
   retry.
-- **The CrowPanel screen is dim or resets during flashing.** Connect the USB 2.0
-  power port in addition to UART0; the 10.1" panel draws more power than UART0
-  alone can supply.
+- **The CrowPanel screen is dim or resets during flashing.** Try a shorter
+  cable or a USB port that can provide more power. If needed, connect the
+  USB 2.0 port as supplemental power while keeping data on UART0.
 - **Flashing fails repeatedly.** Enter BOOT mode manually: disconnect power,
   hold **BOOT** while reconnecting USB, release **BOOT**, then flash again. See
   [flash recovery](../boards/README.md#flash-recovery).

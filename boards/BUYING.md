@@ -30,6 +30,10 @@ to get running.
     hardware and is not supported.
   - It is the **4-inch** `ESP32-S3-Touch-LCD-4`. The similarly named **4.3-inch**
     board is a different device and will not work.
+- **Optional automatic power-on:** The
+  [Rev 3 power-button bypass](../docs/WAVESHARE_V3_POWER_BUTTON_BYPASS.md)
+  documents a board-level modification for installations that should start
+  without pressing the power button.
 
 ## Elecrow CrowPanel Advanced 10.1" ESP32-P4
 
@@ -43,18 +47,16 @@ sizes and chip variants, so choose carefully.
     "10.1" ESP32-P4 Display"). The 5", 7", 9", and ESP32-S3 variants are
     different devices.
   - Hardware revisions **1.0 to 1.2** are supported.
-- **Plan for two USB connections.** The board flashes and talks over the **UART0**
-  port, but the 10.1" panel draws more power than UART0 alone can supply, so the
-  separate **USB 2.0** port must also be connected. The box includes one
-  USB-A-to-Type-C cable, so have a **second USB cable** ready to power the board
-  while UART0 carries data.
+- **Use the UART0 port.** One USB data cable connected to **UART0** normally
+  provides both power and data. The separate **USB 2.0** port can provide
+  supplemental power if the display is unstable on a power-limited USB port.
 
 The on-board ESP32-C6 wireless module is not used by Stream32.
 
 ## What else you need
 
-- A **USB data cable** (not a charge-only cable). The Waveshare uses one USB-C
-  connection; the CrowPanel needs two connections at once (data plus power).
+- A **USB data cable** (not a charge-only cable). The Waveshare uses its USB-C
+  port; the CrowPanel uses the port labeled **UART0**.
 - Nothing else is required to get started. Enclosures and stands are optional and
   up to you.
 

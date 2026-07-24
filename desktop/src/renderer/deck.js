@@ -90,6 +90,17 @@ function removeProfilePage(profile, removed) {
   }
 }
 
+function keyIsEmpty(key) {
+  return (
+    !key.label &&
+    !key.color &&
+    !key.labelColor &&
+    !key.image &&
+    !key.action &&
+    !key.liveState
+  );
+}
+
 async function loadImage(dataUrl) {
   const image = new Image();
   image.src = dataUrl;
@@ -134,6 +145,8 @@ class DeckController {
     this.profileDialogProfileId = null;
     this.profileDialogReturnFocus = null;
     this.confirmDialogResolve = null;
+    // Unsaved key-editor changes; committed only by saveKeyDraft.
+    this.keyDraft = null;
 
     this.connectPanel = document.querySelector('#deck-connect');
     this.deviceSelect = document.querySelector('#deck-device');
@@ -159,6 +172,7 @@ class DeckController {
     this.confirmTitle = document.querySelector('#deck-confirm-title');
     this.confirmMessage = document.querySelector('#deck-confirm-message');
     this.confirmAccept = document.querySelector('#deck-confirm-accept');
+    this.confirmCancel = document.querySelector('#deck-confirm-cancel');
     this.profileDefault = document.querySelector('#deck-profile-default');
     this.profileMatchInput = document.querySelector('#deck-profile-match');
     this.profileMatchSave = document.querySelector('#deck-profile-match-save');
@@ -214,6 +228,8 @@ class DeckController {
     this.keyCut = document.querySelector('#deck-key-cut');
     this.keyPaste = document.querySelector('#deck-key-paste');
     this.keyClear = document.querySelector('#deck-key-clear');
+    this.keySave = document.querySelector('#deck-key-save');
+    this.keyCancel = document.querySelector('#deck-key-cancel');
     this.actionEditor = new ActionEditor({
       document,
       onChange: (action, appearance) => {
@@ -678,7 +694,7 @@ class DeckController {
       });
     });
     this.liveProvider.addEventListener('change', () => {
-      this.runtime.clearLiveRuntime(this.selectedDeviceId);
+      // Live runtime resets happen in saveKeyDraft once the change commits.
       this.updateSelectedKey((key) => {
         const provider = this.liveProvider.value;
 
@@ -698,7 +714,6 @@ class DeckController {
           key.liveState = { provider: 'focused-app' };
         }
       });
-      this.runtime.refreshLiveStates(this.selectedDeviceId);
     });
     for (const control of [
       this.liveOnLabel,
@@ -723,7 +738,6 @@ class DeckController {
             key.liveState.on.image = image;
           }
         });
-        this.runtime.refreshLiveStates(this.selectedDeviceId);
       } catch (error) {
         this.setSyncStatus(`Could not read live image: ${error.message}`, 'error');
       }
@@ -734,7 +748,6 @@ class DeckController {
           delete key.liveState.on.image;
         }
       });
-      this.runtime.refreshLiveStates(this.selectedDeviceId);
     });
     this.iconOpen.addEventListener('click', () => {
       this.iconSearch.value = '';
@@ -755,7 +768,7 @@ class DeckController {
       }
     });
     this.keyTest.addEventListener('click', () => {
-      const key = this.selectedKeyData();
+      const key = this.editedKeyData();
 
       if (key?.action) {
         this.runtime.runKeyAction(this.selectedDeviceId, key.action, {
@@ -769,6 +782,7 @@ class DeckController {
     this.keyCut.addEventListener('click', () => this.copySelectedKey(true));
     this.keyPaste.addEventListener('click', () => this.pasteSelectedKey());
     this.keyClear.addEventListener('click', () => {
+      this.keyDraft = null;
       this.updateProfile((profile) => {
         const page = profile.pages[this.selectedPage];
         page.keys = page.keys.filter(
@@ -776,6 +790,8 @@ class DeckController {
         );
       });
     });
+    this.keySave.addEventListener('click', () => this.saveKeyDraft());
+    this.keyCancel.addEventListener('click', () => this.discardKeyDraft());
     this.document.addEventListener('keydown', (event) => {
       if (
         event.altKey ||
@@ -813,16 +829,26 @@ class DeckController {
   // renderer.js, so destructive actions keep the Stream32 look instead of
   // raising a native OS dialog. Resolves true only when the confirm button
   // submits the dialog form.
-  openConfirmDialog({ title, message, confirmLabel }) {
+  openConfirmDialog({
+    title,
+    message,
+    confirmLabel,
+    cancelLabel = 'Cancel',
+    focusConfirm = false,
+  }) {
     this.confirmTitle.textContent = title;
     this.confirmMessage.textContent = message;
     this.confirmAccept.textContent = confirmLabel;
+    this.confirmCancel.textContent = cancelLabel;
     // returnValue persists across opens; clear it so Escape or a backdrop
     // click never replays an earlier confirmation.
     this.confirmDialog.returnValue = '';
     return new Promise((resolve) => {
       this.confirmDialogResolve = resolve;
       this.confirmDialog.showModal();
+      // Enter activates the safe answer: Cancel for destructive confirms,
+      // Save for the unsaved-changes prompt.
+      (focusConfirm ? this.confirmAccept : this.confirmCancel).focus();
     });
   }
 
@@ -1109,9 +1135,10 @@ class DeckController {
   }
 
   copySelectedKey(cut = false) {
-    const key = this.selectedKeyData();
+    // Copies the key as shown, including unsaved draft edits.
+    const key = this.editedKeyData();
 
-    if (!key) {
+    if (!key || keyIsEmpty(key)) {
       this.setSyncStatus('This key is empty.', 'idle');
       return;
     }
@@ -1119,6 +1146,7 @@ class DeckController {
     this.clipboard = keyPayload(key);
 
     if (cut) {
+      this.keyDraft = null;
       this.updateProfile((profile) => {
         const page = profile.pages[this.selectedPage];
         page.keys = page.keys.filter(
@@ -1168,6 +1196,9 @@ class DeckController {
         this.clipboard,
         profile.pages.length,
       );
+      // ponytail: paste and drag overwrite the saved key directly, so any
+      // open draft is dropped instead of prompting a second time.
+      this.keyDraft = null;
       this.persistProfile(deviceId, profileId);
       this.renderAll();
       this.focusKey(index);
@@ -1252,6 +1283,7 @@ class DeckController {
       }
 
       this.selectedKey = destinationIndex;
+      this.keyDraft = null;
       this.renderAll();
       this.focusKey(destinationIndex);
       this.runtime.scheduleSync(source.deviceId);
@@ -1281,6 +1313,27 @@ class DeckController {
     this.runtime.scheduleSync(this.selectedDeviceId);
   }
 
+  // The draft is valid only for the exact key it was opened on; any other
+  // context (device, profile, page, or key) sees saved state.
+  activeDraft() {
+    const draft = this.keyDraft;
+    return draft &&
+      draft.deviceId === this.selectedDeviceId &&
+      draft.profileId === this.selectedProfileId() &&
+      draft.page === this.selectedPage &&
+      draft.index === this.selectedKey
+      ? draft
+      : null;
+  }
+
+  // The key as the editor currently shows it: the unsaved draft when one
+  // exists, otherwise the saved key.
+  editedKeyData() {
+    return this.activeDraft()?.key || this.selectedKeyData();
+  }
+
+  // Key-editor edits accumulate here; nothing persists or syncs to the
+  // device until the user saves the key.
   updateSelectedKey(mutate) {
     const profile = this.selectedProfile();
 
@@ -1288,33 +1341,96 @@ class DeckController {
       return;
     }
 
-    const page = profile.pages[this.selectedPage];
-    let key = page.keys.find((entry) => entry.index === this.selectedKey);
-
-    if (!key) {
-      key = { index: this.selectedKey };
-      page.keys.push(key);
-    }
-
-    mutate(key);
-
-    if (
-      !key.label &&
-      !key.color &&
-      !key.labelColor &&
-      !key.image &&
-      !key.action &&
-      !key.liveState
-    ) {
-      page.keys = page.keys.filter((entry) => entry !== key);
-    }
-
-    this.persistProfile(
-      this.selectedDeviceId,
-      this.selectedProfileId(),
-    );
+    const draft = this.activeDraft() || {
+      deviceId: this.selectedDeviceId,
+      profileId: this.selectedProfileId(),
+      page: this.selectedPage,
+      index: this.selectedKey,
+      key:
+        structuredClone(this.selectedKeyData()) ||
+        { index: this.selectedKey },
+    };
+    this.keyDraft = draft;
+    mutate(draft.key);
     this.renderAll();
-    this.runtime.scheduleSync(this.selectedDeviceId);
+  }
+
+  saveKeyDraft() {
+    const draft = this.activeDraft();
+
+    if (!draft) {
+      return;
+    }
+
+    const profile = this.selectedProfile();
+    const page = profile.pages[draft.page];
+    const saved = page.keys.find((entry) => entry.index === draft.index);
+    const providerChanged =
+      saved?.liveState?.provider !== draft.key.liveState?.provider;
+    const liveChanged =
+      JSON.stringify(saved?.liveState) !==
+      JSON.stringify(draft.key.liveState);
+    page.keys = page.keys.filter((entry) => entry.index !== draft.index);
+
+    if (!keyIsEmpty(draft.key)) {
+      page.keys.push(draft.key);
+    }
+
+    this.keyDraft = null;
+
+    if (providerChanged) {
+      this.runtime.clearLiveRuntime(draft.deviceId);
+    }
+
+    this.persistProfile(draft.deviceId, draft.profileId);
+    this.renderAll();
+    this.runtime.scheduleSync(draft.deviceId);
+
+    if (liveChanged) {
+      this.runtime.refreshLiveStates(draft.deviceId);
+    }
+  }
+
+  discardKeyDraft() {
+    this.keyDraft = null;
+    this.renderAll();
+  }
+
+  // Called before leaving a key with unsaved edits; both dialog answers
+  // proceed with the move, choosing whether the edits are kept.
+  async resolveKeyDraft() {
+    const draft = this.activeDraft();
+
+    if (!draft) {
+      this.keyDraft = null;
+      return;
+    }
+
+    const save = await this.openConfirmDialog({
+      title: 'Unsaved key changes',
+      message:
+        `Key ${draft.index + 1} has unsaved changes. ` +
+        'Save them before moving to another key?',
+      confirmLabel: 'Save changes',
+      cancelLabel: 'Discard changes',
+      focusConfirm: true,
+    });
+
+    if (save) {
+      this.saveKeyDraft();
+    } else {
+      this.keyDraft = null;
+    }
+  }
+
+  async selectKey(index) {
+    if (index !== this.selectedKey) {
+      await this.resolveKeyDraft();
+    }
+
+    this.selectedKey = index;
+    this.renderAll();
+    this.focusKey(index);
   }
 
   resizeSelectedPage() {
@@ -1345,7 +1461,6 @@ class DeckController {
         key.liveState.hour12 = this.liveClockFormat.value === '12';
       }
     });
-    this.runtime.refreshLiveStates(this.selectedDeviceId);
   }
 
   applyActionSelection(action, appearance) {
@@ -1395,7 +1510,7 @@ class DeckController {
         return;
       }
 
-      const key = this.selectedKeyData();
+      const key = this.editedKeyData();
 
       if (
         key?.image ||
@@ -1836,11 +1951,18 @@ class DeckController {
     }
 
     const page = profile.pages[this.selectedPage];
+    const draft = this.activeDraft();
     this.grid.style.setProperty('--deck-cols', String(page.cols));
     this.grid.style.setProperty('--deck-rows', String(page.rows));
 
     for (let index = 0; index < page.rows * page.cols; index++) {
-      const baseKey = page.keys.find((entry) => entry.index === index);
+      // The drafted cell previews unsaved edits; every other cell shows
+      // saved state. Drags always move saved keys, so a draft-only cell
+      // is not draggable.
+      const savedKey = page.keys.find((entry) => entry.index === index);
+      const baseKey = draft?.index === index
+        ? (keyIsEmpty(draft.key) ? undefined : draft.key)
+        : savedKey;
       const key = mergeKeyOverlay(
         baseKey,
         baseKey
@@ -1864,7 +1986,7 @@ class DeckController {
       cell.title = baseKey
         ? 'Click to edit. Drag to move or swap. Ctrl/Cmd+C or X to copy or cut.'
         : 'Click to edit. Drop or press Ctrl/Cmd+V to paste.';
-      cell.draggable = Boolean(baseKey);
+      cell.draggable = Boolean(savedKey);
 
       if (key?.color) {
         cell.style.background = key.color;
@@ -1901,21 +2023,21 @@ class DeckController {
       }
 
       cell.addEventListener('click', () => {
-        this.selectedKey = index;
-        this.renderAll();
-        this.focusKey(index);
+        this.selectKey(index);
       });
       cell.addEventListener('focus', () => {
-        this.selectedKey = index;
+        // Tabbing never moves selection away from unsaved edits; pressing
+        // the key (a click) asks to save or discard them first.
+        if (!this.activeDraft()) {
+          this.selectedKey = index;
+        }
       });
       cell.addEventListener('contextmenu', (event) => {
         event.preventDefault();
-        this.selectedKey = index;
-        this.renderAll();
-        this.focusKey(index);
+        this.selectKey(index);
       });
       cell.addEventListener('dragstart', (event) => {
-        if (!baseKey) {
+        if (!savedKey) {
           event.preventDefault();
           return;
         }
@@ -1962,6 +2084,13 @@ class DeckController {
   }
 
   renderKeyEditor() {
+    // ponytail: only key-to-key moves prompt about unsaved edits; any other
+    // context change (page, profile, or device switch, including remote and
+    // focus-driven ones) lands here and discards the stale draft.
+    if (this.keyDraft && !this.activeDraft()) {
+      this.keyDraft = null;
+    }
+
     const profile = this.selectedProfile();
 
     if (!profile || this.selectedKey === null) {
@@ -1972,11 +2101,14 @@ class DeckController {
     this.keyEditor.hidden = false;
 
     const page = profile.pages[this.selectedPage];
-    const key = this.selectedKeyData() || { index: this.selectedKey };
+    const draft = this.activeDraft();
+    const key = draft?.key || this.selectedKeyData() || { index: this.selectedKey };
     const row = Math.floor(this.selectedKey / page.cols) + 1;
     const col = (this.selectedKey % page.cols) + 1;
 
-    this.keyTitle.textContent = `Key ${this.selectedKey + 1} (row ${row}, column ${col})`;
+    this.keyTitle.textContent =
+      `Key ${this.selectedKey + 1} (row ${row}, column ${col})` +
+      `${draft ? ' · Unsaved changes' : ''}`;
     this.keyLabel.value = key.label || '';
     this.keyColor.value = key.color || DEFAULT_KEY_COLOR;
     this.keyLabelColor.value = key.labelColor || '#f3f7f9';
@@ -2020,10 +2152,14 @@ class DeckController {
     });
 
     this.keyTest.disabled = !action;
-    const configured = Boolean(this.selectedKeyData());
+    const configured = draft
+      ? !keyIsEmpty(draft.key)
+      : Boolean(this.selectedKeyData());
     this.keyCopy.disabled = !configured;
     this.keyCut.disabled = !configured;
     this.keyPaste.disabled = !this.clipboard;
+    this.keySave.disabled = !draft;
+    this.keyCancel.disabled = !draft;
   }
 }
 

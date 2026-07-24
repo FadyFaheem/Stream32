@@ -361,6 +361,7 @@ test('destructive confirmations stay in-app', () => {
     'deck-confirm-dialog',
     'deck-confirm-title',
     'deck-confirm-message',
+    'deck-confirm-cancel',
     'deck-confirm-accept',
   ]) {
     assert.match(source, new RegExp(`querySelector\\('#${id}'\\)`), id);
@@ -376,10 +377,12 @@ test('confirm dialog resolves per response and clears stale accepts', async () =
       this.open = true;
     },
   };
+  const focused = [];
   controller.confirmDialog = dialog;
   controller.confirmTitle = {};
   controller.confirmMessage = {};
-  controller.confirmAccept = {};
+  controller.confirmAccept = { focus: () => focused.push('accept') };
+  controller.confirmCancel = { focus: () => focused.push('cancel') };
 
   const dismissed = controller.openConfirmDialog({
     title: 'Delete profile',
@@ -395,18 +398,140 @@ test('confirm dialog resolves per response and clears stale accepts', async () =
   assert.equal(controller.confirmTitle.textContent, 'Delete profile');
   assert.equal(controller.confirmMessage.textContent, 'Delete profile “Default”?');
   assert.equal(controller.confirmAccept.textContent, 'Delete profile');
+  assert.equal(controller.confirmCancel.textContent, 'Cancel');
 
   const accepted = controller.openConfirmDialog({
-    title: 'Replace key',
-    message: 'Replace the key already in this position?',
-    confirmLabel: 'Replace key',
+    title: 'Unsaved key changes',
+    message: 'Key 3 has unsaved changes.',
+    confirmLabel: 'Save changes',
+    cancelLabel: 'Discard changes',
+    focusConfirm: true,
   });
+  assert.equal(controller.confirmCancel.textContent, 'Discard changes');
+  // The safe answer holds focus: Cancel by default, the confirm button
+  // when the prompt protects unsaved work.
+  assert.deepEqual(focused, ['cancel', 'accept']);
   dialog.returnValue = 'confirm';
   controller.settleConfirmDialog();
   assert.equal(await accepted, true);
 
   // A close event with no pending confirmation is a no-op.
   controller.settleConfirmDialog();
+});
+
+test('key edits stay in a draft until saved or discarded', async () => {
+  const controller = Object.create(DeckController.prototype);
+  const persisted = [];
+  const syncs = [];
+  const liveCalls = [];
+  controller.devices = {
+    aaaa11112222: {
+      activeProfileId: 'default',
+      profiles: {
+        default: {
+          activePage: 0,
+          pages: [{ rows: 1, cols: 2, keys: [{ index: 0, label: 'Saved' }] }],
+        },
+      },
+    },
+  };
+  controller.selectedDeviceId = 'aaaa11112222';
+  controller.selectedPage = 0;
+  controller.selectedKey = 0;
+  controller.keyDraft = null;
+  controller.renderAll = () => {};
+  controller.focusKey = () => {};
+  controller.persistProfile = (...args) => persisted.push(args);
+  controller.runtime = {
+    scheduleSync: (deviceId) => syncs.push(deviceId),
+    clearLiveRuntime: (deviceId) => liveCalls.push(['clear', deviceId]),
+    refreshLiveStates: (deviceId) => liveCalls.push(['refresh', deviceId]),
+  };
+  const savedKeys = () =>
+    controller.devices.aaaa11112222.profiles.default.pages[0].keys;
+
+  // Edits accumulate in the draft; the profile, storage, and device are
+  // untouched until an explicit save.
+  controller.updateSelectedKey((key) => {
+    key.label = 'Draft';
+  });
+  controller.updateSelectedKey((key) => {
+    key.liveState = { provider: 'toggle', on: { color: '#00aa44' } };
+  });
+  assert.equal(savedKeys()[0].label, 'Saved');
+  assert.equal(savedKeys()[0].liveState, undefined);
+  assert.deepEqual(persisted, []);
+  assert.deepEqual(syncs, []);
+  assert.equal(controller.editedKeyData().label, 'Draft');
+
+  controller.saveKeyDraft();
+  assert.equal(savedKeys()[0].label, 'Draft');
+  assert.equal(savedKeys()[0].liveState.provider, 'toggle');
+  assert.deepEqual(persisted, [['aaaa11112222', 'default']]);
+  assert.deepEqual(syncs, ['aaaa11112222']);
+  assert.deepEqual(liveCalls, [
+    ['clear', 'aaaa11112222'],
+    ['refresh', 'aaaa11112222'],
+  ]);
+  assert.equal(controller.activeDraft(), null);
+
+  // Cancel reverts to the last saved state.
+  controller.updateSelectedKey((key) => {
+    key.label = 'Ghost';
+  });
+  controller.discardKeyDraft();
+  assert.equal(savedKeys()[0].label, 'Draft');
+  assert.equal(controller.editedKeyData().label, 'Draft');
+
+  // The unsaved-changes prompt saves on confirm and discards on cancel,
+  // and never opens without a dirty draft.
+  controller.updateSelectedKey((key) => {
+    key.label = 'Prompted';
+  });
+  controller.openConfirmDialog = async () => false;
+  await controller.selectKey(1);
+  assert.equal(controller.selectedKey, 1);
+  assert.equal(controller.keyDraft, null);
+  assert.equal(savedKeys()[0].label, 'Draft');
+
+  controller.updateSelectedKey((key) => {
+    key.label = 'Kept';
+  });
+  controller.openConfirmDialog = async () => true;
+  await controller.selectKey(0);
+  assert.equal(savedKeys().find((key) => key.index === 1).label, 'Kept');
+
+  controller.openConfirmDialog = () => {
+    throw new Error('No dialog may open without unsaved changes.');
+  };
+  await controller.selectKey(1);
+  assert.equal(controller.selectedKey, 1);
+
+  // Saving an emptied key removes it entirely.
+  controller.updateSelectedKey((key) => {
+    delete key.label;
+  });
+  controller.saveKeyDraft();
+  assert.equal(savedKeys().some((key) => key.index === 1), false);
+});
+
+test('key editor exposes explicit save and cancel controls', () => {
+  const html = readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'index.html'),
+    'utf8',
+  );
+  const source = readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'deck.js'),
+    'utf8',
+  );
+
+  for (const id of ['deck-key-save', 'deck-key-cancel']) {
+    assert.equal(html.match(new RegExp(`id="${id}"`, 'g'))?.length, 1, id);
+    assert.match(source, new RegExp(`querySelector\\('#${id}'\\)`), id);
+  }
+
+  assert.match(source, /keySave\.addEventListener\('click'/);
+  assert.match(source, /keyCancel\.addEventListener\('click'/);
 });
 
 test('the full-width content pane owns Deck scrolling', () => {

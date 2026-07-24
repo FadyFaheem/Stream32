@@ -133,6 +133,7 @@ class DeckController {
     this.profileDialogMode = null;
     this.profileDialogProfileId = null;
     this.profileDialogReturnFocus = null;
+    this.confirmDialogResolve = null;
 
     this.connectPanel = document.querySelector('#deck-connect');
     this.deviceSelect = document.querySelector('#deck-device');
@@ -154,6 +155,10 @@ class DeckController {
       document.querySelector('#deck-profile-dialog-cancel');
     this.profileDialogSubmit =
       document.querySelector('#deck-profile-dialog-submit');
+    this.confirmDialog = document.querySelector('#deck-confirm-dialog');
+    this.confirmTitle = document.querySelector('#deck-confirm-title');
+    this.confirmMessage = document.querySelector('#deck-confirm-message');
+    this.confirmAccept = document.querySelector('#deck-confirm-accept');
     this.profileDefault = document.querySelector('#deck-profile-default');
     this.profileMatchInput = document.querySelector('#deck-profile-match');
     this.profileMatchSave = document.querySelector('#deck-profile-match-save');
@@ -408,17 +413,31 @@ class DeckController {
       this.profileDialogReturnFocus = null;
       target?.focus();
     });
-    this.profileDelete.addEventListener('click', () => {
+    this.confirmDialog.addEventListener('click', (event) => {
+      if (event.target === this.confirmDialog) {
+        this.confirmDialog.close();
+      }
+    });
+    this.confirmDialog.addEventListener('close', () => {
+      this.settleConfirmDialog();
+    });
+    this.profileDelete.addEventListener('click', async () => {
       const profileId = this.selectedProfileId();
       const profile = this.selectedProfile();
 
-      if (
-        profileId &&
-        profile &&
-        window.confirm(
-          `Delete profile “${profile.name}”? Keys and pages in it cannot be recovered.`,
-        )
-      ) {
+      if (!profileId || !profile) {
+        return;
+      }
+
+      const confirmed = await this.openConfirmDialog({
+        title: 'Delete profile',
+        message:
+          `Delete profile “${profile.name}”? ` +
+          'Keys and pages in it cannot be recovered.',
+        confirmLabel: 'Delete profile',
+      });
+
+      if (confirmed) {
         this.runProfileOperation({ type: 'delete', profileId });
       }
     });
@@ -790,6 +809,29 @@ class DeckController {
     this.profileName.setAttribute('aria-invalid', String(Boolean(message)));
   }
 
+  // In-app replacement for window.confirm, shared with the other views via
+  // renderer.js, so destructive actions keep the Stream32 look instead of
+  // raising a native OS dialog. Resolves true only when the confirm button
+  // submits the dialog form.
+  openConfirmDialog({ title, message, confirmLabel }) {
+    this.confirmTitle.textContent = title;
+    this.confirmMessage.textContent = message;
+    this.confirmAccept.textContent = confirmLabel;
+    // returnValue persists across opens; clear it so Escape or a backdrop
+    // click never replays an earlier confirmation.
+    this.confirmDialog.returnValue = '';
+    return new Promise((resolve) => {
+      this.confirmDialogResolve = resolve;
+      this.confirmDialog.showModal();
+    });
+  }
+
+  settleConfirmDialog() {
+    const resolve = this.confirmDialogResolve;
+    this.confirmDialogResolve = null;
+    resolve?.(this.confirmDialog.returnValue === 'confirm');
+  }
+
   openProfileDialog(mode, returnFocus) {
     const profileId = this.selectedProfileId();
     const profile = this.selectedProfile();
@@ -1092,20 +1134,29 @@ class DeckController {
     );
   }
 
-  pasteSelectedKey() {
+  async pasteSelectedKey() {
+    // Captured before the confirm dialog so a device-driven profile or page
+    // switch while it is open cannot retarget the paste the user approved.
+    const deviceId = this.selectedDeviceId;
+    const profileId = this.selectedProfileId();
     const profile = this.selectedProfile();
+    const index = this.selectedKey;
 
-    if (!profile || this.selectedKey === null || !this.clipboard) {
+    if (!profile || index === null || !this.clipboard) {
       this.setSyncStatus('Copy or cut a key before pasting.', 'idle');
       return;
     }
 
     const page = profile.pages[this.selectedPage];
-    const occupied = page.keys.some((key) => key.index === this.selectedKey);
+    const occupied = page.keys.some((key) => key.index === index);
 
     if (
       occupied &&
-      !window.confirm('Replace the key already in this position?')
+      !(await this.openConfirmDialog({
+        title: 'Replace key',
+        message: 'Replace the key already in this position?',
+        confirmLabel: 'Replace key',
+      }))
     ) {
       return;
     }
@@ -1113,17 +1164,14 @@ class DeckController {
     try {
       page.keys = pasteKey(
         page.keys,
-        this.selectedKey,
+        index,
         this.clipboard,
         profile.pages.length,
       );
-      this.persistProfile(
-        this.selectedDeviceId,
-        this.selectedProfileId(),
-      );
+      this.persistProfile(deviceId, profileId);
       this.renderAll();
-      this.focusKey(this.selectedKey);
-      this.runtime.scheduleSync(this.selectedDeviceId);
+      this.focusKey(index);
+      this.runtime.scheduleSync(deviceId);
       this.setSyncStatus('Key pasted.', 'ready');
     } catch (error) {
       this.setSyncStatus(`Could not paste key: ${error.message}`, 'error');

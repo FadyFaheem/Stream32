@@ -397,20 +397,8 @@ function registerIpcHandlers() {
       return { restored: false };
     }
 
-    const confirmation = await dialog.showMessageBox(mainWindow, {
-      type: 'warning',
-      buttons: ['Cancel', 'Restore and restart'],
-      cancelId: 0,
-      defaultId: 0,
-      message: 'Replace all Stream32 settings, decks, and user plugins?',
-      detail:
-        'Stream32 will first save a safety backup, then restart after restore.',
-    });
-
-    if (confirmation.response !== 1) {
-      return { restored: false };
-    }
-
+    // The renderer collects the destructive-restore confirmation in-app
+    // before this call; the file picker above stays the user-mediated gate.
     const fileInfo = await stat(filePaths[0]);
 
     if (fileInfo.size > MAX_BACKUP_BYTES) {

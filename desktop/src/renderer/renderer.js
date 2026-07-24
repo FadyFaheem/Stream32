@@ -146,12 +146,15 @@ function renderPluginCatalog(listing) {
       remove.className = 'button button-quiet';
       remove.type = 'button';
       remove.textContent = 'Remove';
-      remove.addEventListener('click', () => {
-        if (
-          window.confirm(
+      remove.addEventListener('click', async () => {
+        const confirmed = await deckController.openConfirmDialog({
+          title: 'Remove plugin',
+          message:
             `Remove ${plugin.name}? Saved deck references will be preserved.`,
-          )
-        ) {
+          confirmLabel: 'Remove plugin',
+        });
+
+        if (confirmed) {
           runPluginOperation(plugin, 'remove');
         }
       });
@@ -331,12 +334,16 @@ backupExportButton.addEventListener('click', () =>
   ),
 );
 
-backupRestoreButton.addEventListener('click', () => {
-  if (
-    !window.confirm(
-      'Restore will replace all settings, decks, artwork, and user plugins. Continue?',
-    )
-  ) {
+backupRestoreButton.addEventListener('click', async () => {
+  const confirmed = await deckController.openConfirmDialog({
+    title: 'Restore backup',
+    message:
+      'Restore will replace all settings, decks, artwork, and user plugins. ' +
+      'Stream32 saves a safety backup first, then restarts after the restore.',
+    confirmLabel: 'Restore and restart',
+  });
+
+  if (!confirmed) {
     return;
   }
 

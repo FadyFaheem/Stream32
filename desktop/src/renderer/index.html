@@ -494,6 +494,37 @@
           </form>
         </dialog>
 
+        <dialog
+          id="deck-confirm-dialog"
+          class="deck-profile-dialog"
+          aria-labelledby="deck-confirm-title"
+          aria-describedby="deck-confirm-message"
+        >
+          <form id="deck-confirm-form" method="dialog">
+            <h2 id="deck-confirm-title">Confirm</h2>
+            <p id="deck-confirm-message" class="deck-confirm-message"></p>
+            <div class="deck-profile-dialog-actions">
+              <button
+                id="deck-confirm-cancel"
+                class="button button-quiet"
+                type="submit"
+                value="cancel"
+                autofocus
+              >
+                Cancel
+              </button>
+              <button
+                id="deck-confirm-accept"
+                class="button button-primary"
+                type="submit"
+                value="confirm"
+              >
+                Confirm
+              </button>
+            </div>
+          </form>
+        </dialog>
+
         <dialog id="deck-icon-dialog" class="deck-icon-dialog">
           <div class="deck-icon-head">
             <input

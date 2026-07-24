@@ -1246,6 +1246,11 @@ input:disabled {
   gap: 0.6rem;
 }
 
+.deck-confirm-message {
+  margin: 0;
+  line-height: 1.5;
+}
+
 .deck-action-dialog {
   width: min(92vw, 760px);
   max-height: min(88vh, 760px);

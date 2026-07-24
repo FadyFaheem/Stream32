@@ -310,6 +310,105 @@ test('profile dialog creates, renames, and reports validation inline', async () 
   assert.equal(closes, 2);
 });
 
+test('destructive confirmations stay in-app', () => {
+  const html = readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'index.html'),
+    'utf8',
+  );
+  const source = readFileSync(
+    path.join(__dirname, '..', 'src', 'renderer', 'deck.js'),
+    'utf8',
+  );
+
+  assert.doesNotMatch(source, /window\.confirm\s*\(/);
+
+  // Every other view shares the deck controller's confirm dialog; no
+  // renderer file may reintroduce native confirm boxes.
+  for (const file of ['renderer.js', 'device.js', 'device-manager.js']) {
+    const view = readFileSync(
+      path.join(__dirname, '..', 'src', 'renderer', file),
+      'utf8',
+    );
+    assert.doesNotMatch(view, /window\.confirm\s*\(/, file);
+  }
+
+  assert.match(
+    readFileSync(
+      path.join(__dirname, '..', 'src', 'renderer', 'renderer.js'),
+      'utf8',
+    ),
+    /deckController\.openConfirmDialog\(/,
+  );
+  assert.match(
+    html,
+    /<dialog[^>]*id="deck-confirm-dialog"[^>]*aria-labelledby="deck-confirm-title"/,
+  );
+  assert.match(html, /id="deck-confirm-form"[^>]*method="dialog"/);
+  assert.match(html, /id="deck-confirm-cancel"[^>]*autofocus/);
+  assert.match(source, /confirmDialog\.addEventListener\('close'/);
+
+  for (const id of [
+    'deck-confirm-dialog',
+    'deck-confirm-title',
+    'deck-confirm-message',
+    'deck-confirm-cancel',
+    'deck-confirm-accept',
+  ]) {
+    assert.equal(html.match(new RegExp(`id="${id}"`, 'g'))?.length, 1, id);
+  }
+
+  for (const id of [
+    'deck-confirm-dialog',
+    'deck-confirm-title',
+    'deck-confirm-message',
+    'deck-confirm-accept',
+  ]) {
+    assert.match(source, new RegExp(`querySelector\\('#${id}'\\)`), id);
+  }
+});
+
+test('confirm dialog resolves per response and clears stale accepts', async () => {
+  const controller = Object.create(DeckController.prototype);
+  const dialog = {
+    returnValue: 'confirm',
+    open: false,
+    showModal() {
+      this.open = true;
+    },
+  };
+  controller.confirmDialog = dialog;
+  controller.confirmTitle = {};
+  controller.confirmMessage = {};
+  controller.confirmAccept = {};
+
+  const dismissed = controller.openConfirmDialog({
+    title: 'Delete profile',
+    message: 'Delete profile “Default”?',
+    confirmLabel: 'Delete profile',
+  });
+  assert.equal(dialog.open, true);
+  // The stale accept from the previous open must not leak into this one,
+  // so closing without submitting (Escape, backdrop) resolves false.
+  assert.equal(dialog.returnValue, '');
+  controller.settleConfirmDialog();
+  assert.equal(await dismissed, false);
+  assert.equal(controller.confirmTitle.textContent, 'Delete profile');
+  assert.equal(controller.confirmMessage.textContent, 'Delete profile “Default”?');
+  assert.equal(controller.confirmAccept.textContent, 'Delete profile');
+
+  const accepted = controller.openConfirmDialog({
+    title: 'Replace key',
+    message: 'Replace the key already in this position?',
+    confirmLabel: 'Replace key',
+  });
+  dialog.returnValue = 'confirm';
+  controller.settleConfirmDialog();
+  assert.equal(await accepted, true);
+
+  // A close event with no pending confirmation is a no-op.
+  controller.settleConfirmDialog();
+});
+
 test('the full-width content pane owns Deck scrolling', () => {
   const css = readFileSync(
     path.join(__dirname, '..', 'src', 'renderer', 'styles.css'),

@@ -9,7 +9,7 @@ Stream32 deck, two board-level bridges can make it start automatically.
 > its warranty. It has only been verified on hardware marked **Rev 3.0**.
 > Disconnect USB, external power, and any battery before soldering.
 
-![Waveshare Rev 3 board showing the Q2 and Q5 bridges](../assets/Waveshare_v3_fix.JPG)
+![Waveshare Rev 3 board showing the Q2 and Q5 bridges](../assets/Waveshare-v3_fix.png)
 
 1. Confirm that the board silkscreen says **Rev 3.0**.
 2. Electrically bridge **pin 1 to pin 3 on Q2**.

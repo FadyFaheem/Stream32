@@ -529,6 +529,40 @@ test('missing profile actions fail without privileged execution', async () => {
   assert.match(statuses[0][0], /Profile id is invalid/);
 });
 
+test('Sleep blanks capable firmware and rejects stale firmware', async () => {
+  const controller = createRuntime();
+  const messages = [];
+  const statuses = [];
+  controller.sessions = new Map([[
+    'aaaa11112222',
+    {
+      hello: { features: ['display-control', 'display-blank'] },
+      send: async (bytes) => {
+        messages.push(JSON.parse(new TextDecoder().decode(bytes)));
+      },
+    },
+  ]]);
+  controller.api = {
+    runAction: async () => {
+      throw new Error('Sleep reached privileged execution.');
+    },
+  };
+  controller.setSyncStatus = (...status) => statuses.push(status);
+
+  assert.equal(
+    await controller.runKeyAction('aaaa11112222', { type: 'sleep' }),
+    true,
+  );
+  assert.deepEqual(messages, [{ type: 'display', blankNow: true }]);
+
+  controller.sessions.get('aaaa11112222').hello.features = ['display-control'];
+  assert.equal(
+    await controller.runKeyAction('aaaa11112222', { type: 'sleep' }),
+    false,
+  );
+  assert.match(statuses.at(-1)[0], /updated board firmware/);
+});
+
 test('Multi profile switch cancels every later step', async () => {
   const controller = createRuntime();
   const hostActions = [];

@@ -167,6 +167,7 @@ select {
 
 .view-deck:not([hidden]) {
   min-height: 100%;
+  padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
 }
 
 #view-flash:not([hidden]),

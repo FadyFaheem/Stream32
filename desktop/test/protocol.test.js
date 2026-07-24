@@ -5,6 +5,7 @@ const {
   MAX_PROTOCOL_LINE_LENGTH,
   crc32,
   createLineDecoder,
+  encodeDisplayBlankMessage,
   encodeDisplayMessage,
   encodeHostHello,
   encodeImageChunks,
@@ -578,6 +579,10 @@ test('validates deck acknowledgements and events', () => {
 });
 
 test('encodes validated display policy messages', () => {
+  assert.equal(
+    new TextDecoder().decode(encodeDisplayBlankMessage()),
+    '{"type":"display","blankNow":true}\n',
+  );
   assert.equal(
     new TextDecoder().decode(
       encodeDisplayMessage({ awake: false, idleTimeoutSeconds: 600 }),

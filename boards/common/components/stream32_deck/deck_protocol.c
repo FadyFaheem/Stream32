@@ -780,6 +780,8 @@ static const char *handle_page(const cJSON *message)
 
 static const char *handle_display(const cJSON *message)
 {
+    const cJSON *blank_now =
+        cJSON_GetObjectItemCaseSensitive(message, "blankNow");
     const cJSON *awake = cJSON_GetObjectItemCaseSensitive(message, "awake");
     const cJSON *idle_seconds =
         cJSON_GetObjectItemCaseSensitive(message, "idleTimeoutSeconds");
@@ -787,6 +789,15 @@ static const char *handle_display(const cJSON *message)
         cJSON_GetObjectItemCaseSensitive(message, "brightness");
     int idle_timeout;
     int brightness_percent = 0;
+
+    if (blank_now != NULL) {
+        if (!cJSON_IsTrue(blank_now) || awake != NULL ||
+            idle_seconds != NULL || brightness != NULL) {
+            return "display-invalid";
+        }
+
+        return deck_ui_blank_display();
+    }
 
     if (!cJSON_IsBool(awake) ||
         !parse_integer(

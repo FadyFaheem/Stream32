@@ -96,12 +96,35 @@ test('both board transports dispatch through the shared protocol module', () => 
     assert.match(main, /#include "deck_protocol\.h"/);
     assert.match(main, /deck_protocol_dispatch\(/);
     assert.match(main, /deck_protocol_clear_overlays\(/);
+    assert.match(main, /display-blank/);
   }
 
   assert.match(
     read(componentPath('CMakeLists.txt')),
     /SRCS "deck_protocol\.c" "deck_storage\.c" "deck_ui\.c"/,
   );
+});
+
+test('Sleep blanks through the idle wake path without changing lock state', () => {
+  const blankDisplay = ui.slice(
+    ui.indexOf('const char *deck_ui_blank_display('),
+    ui.indexOf('const char *deck_ui_apply_display('),
+  );
+
+  assert.match(protocol, /"blankNow"[\s\S]*deck_ui_blank_display\(\)/);
+  assert.match(blankDisplay, /set_panel_awake\(false\)/);
+  assert.doesNotMatch(blankDisplay, /s_forced_asleep\s*=/);
+});
+
+test('key labels stay on one ellipsized line above artwork', () => {
+  const start = ui.lastIndexOf('static void build_page_locked(');
+  const buildPage = ui.slice(start, ui.indexOf('static void build_page(', start));
+
+  assert.match(
+    buildPage,
+    /lv_label_set_long_mode\(label_obj, LV_LABEL_LONG_DOT\);[\s\S]*lv_obj_set_width\(label_obj, key_px - 12\);[\s\S]*lv_obj_set_height\([\s\S]*lv_font_get_line_height\(LV_FONT_DEFAULT\)/,
+  );
+  assert.match(ui, /Labels stay above artwork[\s\S]*lv_obj_move_to_index\(image, 0\)/);
 });
 
 test('CrowPanel blanking keeps the touch and DSI pipeline alive', () => {

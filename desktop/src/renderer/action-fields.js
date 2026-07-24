@@ -75,6 +75,8 @@ function newActionForDefinition(definition, profiles = []) {
       return { type: 'page', page: 0 };
     case 'profile':
       return { type: 'profile', profileId: profiles[0]?.id || '' };
+    case 'sleep':
+      return { type: 'sleep' };
     case 'multi':
       return { type: 'multi', steps: [] };
     default:
@@ -154,6 +156,9 @@ function buildLeafAction(draft, definition, pageCount) {
       break;
     case 'profile':
       candidate = { type: 'profile', profileId: draft.profileId };
+      break;
+    case 'sleep':
+      candidate = { type: 'sleep' };
       break;
     default:
       throw new TypeError(`Expected a leaf action, received ${definition.coreType}.`);
@@ -482,11 +487,15 @@ function renderPlugin({ action, commit, container, definition, document }) {
   }
 
   if (definition.fields.length === 0) {
-    const ready = document.createElement('p');
-    ready.className = 'helper';
-    ready.textContent = 'This action is ready to use.';
-    container.append(ready);
+    renderReady({ container, document });
   }
+}
+
+function renderReady({ container, document }) {
+  const ready = document.createElement('p');
+  ready.className = 'helper';
+  ready.textContent = 'This action is ready to use.';
+  container.append(ready);
 }
 
 const FIELD_BUILDERS = Object.freeze({
@@ -497,6 +506,7 @@ const FIELD_BUILDERS = Object.freeze({
   page: renderPage,
   profile: renderProfile,
   plugin: renderPlugin,
+  sleep: renderReady,
   text: renderText,
   url: renderString,
 });

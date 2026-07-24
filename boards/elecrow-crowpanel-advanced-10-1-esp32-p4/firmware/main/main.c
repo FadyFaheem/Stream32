@@ -79,8 +79,8 @@ static void send_hello(void)
         sizeof(message),
         "{\"type\":\"hello\",\"protocol\":%d,\"boardId\":\"%s\","
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
-        "\"features\":[\"display-control\",\"display-brightness\",\"key-update\","
-        "\"image-rle\"]}",
+        "\"features\":[\"display-control\",\"display-brightness\",\"display-blank\","
+        "\"key-update\",\"image-rle\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,

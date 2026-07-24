@@ -9,6 +9,7 @@ const {
 } = require('../dynamic-state');
 const { ProfileSwitcher } = require('./profile-switcher');
 const {
+  encodeDisplayBlankMessage,
   encodeImageChunks,
   encodeKeyUpdateMessage,
   encodeLayoutMessage,
@@ -660,6 +661,20 @@ class DeckRuntime {
     return true;
   }
 
+  async blankDeviceDisplay(deviceId) {
+    const session = this.sessions.get(deviceId);
+
+    if (!session) {
+      throw new Error('The deck is not connected.');
+    }
+
+    if (!session.hello?.features?.includes('display-blank')) {
+      throw new Error('Sleep requires updated board firmware.');
+    }
+
+    await session.send(encodeDisplayBlankMessage());
+  }
+
   async runKeyAction(deviceId, action, origin = {}) {
     try {
       if (action.type === 'page') {
@@ -674,6 +689,12 @@ class DeckRuntime {
 
       if (action.type === 'profile') {
         await this.switchDeviceProfile(deviceId, action.profileId);
+        return true;
+      }
+
+      if (action.type === 'sleep') {
+        await this.blankDeviceDisplay(deviceId);
+        this.flipToggleAfterSuccess(deviceId, origin);
         return true;
       }
 
@@ -702,6 +723,7 @@ class DeckRuntime {
             this.switchDevicePage(deviceId, page, profileId),
           switchProfile: (targetProfileId) =>
             this.switchDeviceProfile(deviceId, targetProfileId),
+          blankDisplay: () => this.blankDeviceDisplay(deviceId),
           isCancelled: () =>
             this.getSelectedProfileId(deviceId) !== profileId ||
             Boolean(

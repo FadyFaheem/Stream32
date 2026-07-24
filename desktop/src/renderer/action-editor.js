@@ -110,6 +110,22 @@ const CORE_ACTIONS = [
     coreType: 'profile',
   },
   {
+    key: 'core:sleep',
+    source: 'Stream32',
+    category: 'Deck',
+    name: 'Sleep',
+    description: 'Blank this deck until the next touch.',
+    icon: 'bedtime',
+    keywords: ['blank', 'display', 'screen', 'sleep'],
+    available: true,
+    coreType: 'sleep',
+    appearance: {
+      label: 'Sleep',
+      icon: 'bedtime',
+      color: '#263746',
+    },
+  },
+  {
     key: 'core:multi',
     source: 'Stream32',
     category: 'Deck',

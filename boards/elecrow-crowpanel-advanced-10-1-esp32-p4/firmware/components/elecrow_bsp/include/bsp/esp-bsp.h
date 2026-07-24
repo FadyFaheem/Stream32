@@ -49,7 +49,7 @@ bool bsp_display_lock(uint32_t timeout_ms);
 void bsp_display_unlock(void);
 
 /**
- * @brief Enable or disable panel output and backlight without stopping touch.
+ * @brief Blank or restore the backlight without stopping touch or panel output.
  */
 esp_err_t bsp_display_set_awake(bool awake);
 

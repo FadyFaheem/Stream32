@@ -140,6 +140,15 @@ test('requires version bumps for board-specific and shared firmware changes', ()
       ),
     /waveshare, elecrow/,
   );
+  assert.throws(
+    () =>
+      selectFirmwareBuildProfiles(
+        profiles,
+        profiles,
+        ['boards/tools/build-firmware.sh'],
+      ),
+    /waveshare, elecrow/,
+  );
 
   const previousProfiles = profiles.map((profile) => ({
     ...profile,

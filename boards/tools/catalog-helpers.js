@@ -10,7 +10,13 @@ function normalizeChangedPath(filePath) {
 function selectAffectedProfiles(profiles, changedFiles) {
   const files = changedFiles.map(normalizeChangedPath).filter(Boolean);
 
-  if (files.some((filePath) => filePath.startsWith('boards/common/'))) {
+  if (
+    files.some(
+      (filePath) =>
+        filePath.startsWith('boards/common/') ||
+        filePath === 'boards/tools/build-firmware.sh',
+    )
+  ) {
     return profiles;
   }
 

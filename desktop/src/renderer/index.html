@@ -28,6 +28,9 @@
             >
               Deck
             </button>
+            <button class="nav-item" type="button" data-view="devices">
+              Devices
+            </button>
             <button class="nav-item" type="button" data-view="flash">
               Flash board
             </button>
@@ -850,6 +853,48 @@
               class="helper settings-tools-status"
               aria-live="polite"
             ></p>
+            </div>
+          </details>
+        </section>
+
+        <section
+          id="view-devices"
+          class="view"
+          aria-label="Device manager"
+          hidden
+        >
+          <details class="card settings-card" open>
+            <summary class="card-summary">
+              <h2>Device manager</h2>
+            </summary>
+            <div class="card-body">
+              <div class="device-manager-heading">
+                <div>
+                  <p class="field-label">Your Stream32 boards</p>
+                  <p class="helper">
+                    See connected boards, push firmware updates, rename them,
+                    and disconnect from one place.
+                  </p>
+                </div>
+                <button
+                  id="device-manager-scan"
+                  class="button button-secondary"
+                  type="button"
+                >
+                  Scan for devices
+                </button>
+              </div>
+              <p
+                id="device-manager-status"
+                class="plugin-catalog-status"
+                data-state="idle"
+                aria-live="polite"
+              ></p>
+              <div id="device-manager-list" class="device-manager-list"></div>
+              <p id="device-manager-empty" class="helper" hidden>
+                No Stream32 boards yet. Flash a board or plug one in, then
+                Scan for devices.
+              </p>
             </div>
           </details>
         </section>

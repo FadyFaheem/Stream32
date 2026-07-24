@@ -1,10 +1,11 @@
 const { DeckController } = require('./deck');
 const { DeviceController } = require('./device');
+const { DeviceManager } = require('./device-manager');
 const { catalogViewModel } = require('./plugin-catalog');
 
 const navItems = document.querySelectorAll('.nav-item');
 const views = new Map(
-  ['deck', 'flash', 'settings'].map((name) => [
+  ['deck', 'devices', 'flash', 'settings'].map((name) => [
     name,
     document.querySelector(`#view-${name}`),
   ]),
@@ -17,6 +18,10 @@ function showView(name) {
 
   for (const item of navItems) {
     item.dataset.active = String(item.dataset.view === name);
+  }
+
+  if (name === 'devices') {
+    deviceManager.render();
   }
 }
 
@@ -399,6 +404,15 @@ const deviceController = new DeviceController({
   document,
   serial: navigator.serial,
 });
+const deviceManager = new DeviceManager({
+  deck: deckController,
+  deviceController,
+  document,
+  showView,
+});
+// Mirror device and session changes into the Device Manager view live.
+deckController.onRender = () => deviceManager.render();
+deviceManager.initialize();
 
 window.stream32.onMachineLockState((locked) => {
   deviceController.setMachineLocked(locked).catch((error) => {

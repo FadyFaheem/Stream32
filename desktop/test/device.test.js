@@ -153,6 +153,55 @@ test('sector-erases by default and keeps explicit full erase available', async (
   assert.equal(transportInstances.length, 2);
 });
 
+test('prepares the guarded flash flow for a catalog board update', () => {
+  const controller = Object.create(DeviceController.prototype);
+  const calls = [];
+  controller.operation = null;
+  controller.boards = new Map([
+    [TEST_BOARD_ID, { id: TEST_BOARD_ID, compatible: true }],
+    ['legacy-board', { id: 'legacy-board', compatible: false }],
+  ]);
+  controller.boardSelect = { value: '' };
+  controller.confirmRevision = { checked: true };
+  controller.fullErase = { checked: true };
+  controller.clearUsbSelection = () => calls.push('clear');
+  controller.updateSelectedBoard = () => calls.push('update');
+
+  assert.equal(controller.prepareFirmwareUpdate(TEST_BOARD_ID), true);
+  assert.equal(controller.boardSelect.value, TEST_BOARD_ID);
+  assert.equal(controller.confirmRevision.checked, false);
+  assert.equal(controller.fullErase.checked, false);
+  assert.deepEqual(calls, ['clear', 'update']);
+
+  // Unknown, incompatible, or busy states never open the flash flow.
+  assert.equal(controller.prepareFirmwareUpdate('missing-board'), false);
+  assert.equal(controller.prepareFirmwareUpdate('legacy-board'), false);
+  controller.operation = 'flash';
+  assert.equal(controller.prepareFirmwareUpdate(TEST_BOARD_ID), false);
+});
+
+test('disconnects one connected board by its device id', async () => {
+  const controller = Object.create(DeviceController.prototype);
+  const closed = [];
+  const port = { id: 'port-1' };
+  const session = { port };
+  controller.operation = null;
+  controller.deckRuntime = {
+    sessionFor: (deviceId) => (deviceId === 'abc123' ? session : undefined),
+  };
+  controller.closeSessionForPort = async (target) => closed.push(target);
+  controller.updateDeviceStatusSummary = () => {};
+
+  assert.equal(await controller.disconnectDevice('abc123'), true);
+  assert.deepEqual(closed, [port]);
+
+  // Unknown devices and in-flight operations are left untouched.
+  assert.equal(await controller.disconnectDevice('missing'), false);
+  controller.operation = 'flash';
+  assert.equal(await controller.disconnectDevice('abc123'), false);
+  assert.equal(closed.length, 1);
+});
+
 test('manual post-flash reset skips RTS and uses one 90-second session', async () => {
   const controller = Object.create(DeviceController.prototype);
   const board = {

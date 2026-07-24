@@ -1266,6 +1266,39 @@ class DeviceController {
       await this.closeSessionForPort(port);
     }
   }
+
+  // Device Manager entry point: preselect a catalog board and open the guarded
+  // flash flow. The user still confirms the revision and picks the USB port,
+  // so chip checks and non-destructive defaults stay enforced.
+  prepareFirmwareUpdate(boardId) {
+    const board = this.boards.get(boardId);
+
+    if (this.operation || !board || !board.compatible) {
+      return false;
+    }
+
+    this.boardSelect.value = boardId;
+    this.confirmRevision.checked = false;
+    this.fullErase.checked = false;
+    this.clearUsbSelection();
+    this.updateSelectedBoard();
+    return true;
+  }
+
+  // Device Manager entry point: close one connected board's session by its
+  // logical device id. The runtime session shares the transport port object,
+  // so it maps straight back to closeSessionForPort.
+  async disconnectDevice(deviceId) {
+    const session = this.deckRuntime?.sessionFor(deviceId);
+
+    if (this.operation || !session) {
+      return false;
+    }
+
+    await this.closeSessionForPort(session.port);
+    this.updateDeviceStatusSummary();
+    return true;
+  }
 }
 
 module.exports = {

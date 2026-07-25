@@ -1,6 +1,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('stream32', {
+  addCompanionSurface: (surface) =>
+    ipcRenderer.invoke('companion:add-surface', surface),
   checkForUpdates: () => ipcRenderer.invoke('updater:check'),
   exportBackup: () => ipcRenderer.invoke('backup:export'),
   exportDeck: (deviceId) => ipcRenderer.invoke('deck:export', deviceId),
@@ -9,6 +11,7 @@ contextBridge.exposeInMainWorld('stream32', {
     ipcRenderer.invoke('boards:firmware', boardId),
   getAutoStart: () => ipcRenderer.invoke('autostart:get'),
   getActionCapabilities: () => ipcRenderer.invoke('action:capabilities'),
+  getCompanionSettings: () => ipcRenderer.invoke('companion:settings'),
   getDisplaySettings: () => ipcRenderer.invoke('display-settings:get'),
   getFocusSnapshot: () => ipcRenderer.invoke('focus:snapshot'),
   getFocusStatus: () => ipcRenderer.invoke('focus:status'),
@@ -24,6 +27,8 @@ contextBridge.exposeInMainWorld('stream32', {
   logDiagnosticLine: (kind, line) =>
     ipcRenderer.send('diagnostics:renderer-line', kind, line),
   openLogs: () => ipcRenderer.invoke('diagnostics:open-logs'),
+  removeCompanionSurface: (deviceId) =>
+    ipcRenderer.invoke('companion:remove-surface', deviceId),
   removePlugin: (pluginId) =>
     ipcRenderer.invoke('plugins:remove', pluginId),
   restoreBackup: () => ipcRenderer.invoke('backup:restore'),
@@ -40,6 +45,44 @@ contextBridge.exposeInMainWorld('stream32', {
     ipcRenderer.invoke('deck:save-profiles', deviceId, updates),
   selectSerialPort: (requestId, portId) =>
     ipcRenderer.invoke('serial:select-port', requestId, portId),
+  sendCompanionKeyPress: (deviceId, index, pressed) =>
+    ipcRenderer.send('companion:key-press', deviceId, index, pressed),
+  setCompanionSettings: (settings) =>
+    ipcRenderer.invoke('companion:set-settings', settings),
+  setDeckBrightness: (deviceId, brightness) =>
+    ipcRenderer.invoke('deck:set-brightness', deviceId, brightness),
+  setDeckCompanion: (deviceId, companion) =>
+    ipcRenderer.invoke('deck:set-companion', deviceId, companion),
+  onCompanionKeyState(callback) {
+    if (typeof callback !== 'function') {
+      throw new TypeError('Companion key listener must be a function.');
+    }
+
+    const listener = (_event, state) => callback(state);
+    ipcRenderer.on('companion:key-state', listener);
+
+    return () => ipcRenderer.removeListener('companion:key-state', listener);
+  },
+  onCompanionKeysClear(callback) {
+    if (typeof callback !== 'function') {
+      throw new TypeError('Companion clear listener must be a function.');
+    }
+
+    const listener = (_event, deviceId) => callback(deviceId);
+    ipcRenderer.on('companion:keys-clear', listener);
+
+    return () => ipcRenderer.removeListener('companion:keys-clear', listener);
+  },
+  onCompanionStatus(callback) {
+    if (typeof callback !== 'function') {
+      throw new TypeError('Companion status listener must be a function.');
+    }
+
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on('companion:status', listener);
+
+    return () => ipcRenderer.removeListener('companion:status', listener);
+  },
   onBoardDownloadProgress(callback) {
     if (typeof callback !== 'function') {
       throw new TypeError('Board download listener must be a function.');

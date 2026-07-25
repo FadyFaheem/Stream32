@@ -19,6 +19,7 @@ const {
   MAX_DECK_ROWS,
   MAX_KEY_LABEL_LENGTH,
   crc32,
+  toRgb565,
 } = require('./protocol');
 const {
   parseManualAppMatch,
@@ -106,22 +107,6 @@ async function loadImage(dataUrl) {
   image.src = dataUrl;
   await image.decode();
   return image;
-}
-
-function toRgb565(imageData) {
-  const { data } = imageData;
-  const pixels = new Uint8Array((data.length / 4) * 2);
-
-  for (let source = 0, target = 0; source < data.length; source += 4, target += 2) {
-    const value =
-      ((data[source] >> 3) << 11) |
-      ((data[source + 1] >> 2) << 5) |
-      (data[source + 2] >> 3);
-    pixels[target] = value & 0xff;
-    pixels[target + 1] = value >> 8;
-  }
-
-  return pixels;
 }
 
 class DeckController {
@@ -239,6 +224,7 @@ class DeckController {
     });
     this.runtime = new DeckRuntime({
       api,
+      document,
       getDevices: () => this.devices,
       getProfile: (deviceId, profileId) =>
         this.profileFor(deviceId, profileId),
@@ -292,7 +278,6 @@ class DeckController {
       this.renderFocusRules();
       this.runtime.refreshLiveStates();
     });
-
     try {
       await this.reloadPlugins(false);
     } catch (error) {
@@ -359,18 +344,16 @@ class DeckController {
   }
 
   populateStaticControls() {
-    for (let size = 1; size <= MAX_DECK_ROWS; size++) {
-      const option = this.document.createElement('option');
-      option.value = String(size);
-      option.textContent = String(size);
-      this.rowsSelect.append(option);
-    }
-
-    for (let size = 1; size <= MAX_DECK_COLS; size++) {
-      const option = this.document.createElement('option');
-      option.value = String(size);
-      option.textContent = String(size);
-      this.colsSelect.append(option);
+    for (const [limit, select] of [
+      [MAX_DECK_ROWS, this.rowsSelect],
+      [MAX_DECK_COLS, this.colsSelect],
+    ]) {
+      for (let size = 1; size <= limit; size++) {
+        const option = this.document.createElement('option');
+        option.value = String(size);
+        option.textContent = String(size);
+        select.append(option);
+      }
     }
   }
 
@@ -1646,6 +1629,10 @@ class DeckController {
         'Device offline — changes sync automatically on its next connection.',
         'idle',
       );
+      return;
+    }
+
+    if (this.runtime.companionEnabled(this.selectedDeviceId)) {
       return;
     }
 

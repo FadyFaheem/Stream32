@@ -87,6 +87,8 @@ live key state, and multi-step actions, see
   switching, key editing shortcuts, live key state, and Multi Actions.
 - [Action plugins](../desktop/PLUGINS.md) covers installing curated plugins and
   authoring your own declarative actions.
+- [Companion surfaces](../desktop/COMPANION.md) covers handing a deck over to
+  Bitfocus Companion as a Satellite surface.
 - [Board support](../boards/README.md) covers building firmware locally, the USB
   protocol, and flash recovery.
 

@@ -915,6 +915,14 @@ class DeviceController {
     return session.hello?.features?.includes('display-brightness') === true;
   }
 
+  // A board keeps its own brightness when one is saved; otherwise it follows
+  // the app-wide default from Settings.
+  brightnessFor(session) {
+    const deviceId = session.hello?.deviceId;
+    const saved = deviceId ? this.deck?.devices[deviceId]?.brightness : null;
+    return saved ?? this.displayPolicy.brightnessPercent;
+  }
+
   async applyDisplayPolicyToSession(session) {
     if (!session.handshakeComplete || !this.displayControlSupported(session)) {
       return;
@@ -925,10 +933,19 @@ class DeviceController {
         awake: !(this.displayPolicy.sleepWhenLocked && this.machineLocked),
         idleTimeoutSeconds: this.displayPolicy.idleTimeoutMinutes * 60,
         ...(this.displayBrightnessSupported(session)
-          ? { brightness: this.displayPolicy.brightnessPercent }
+          ? { brightness: this.brightnessFor(session) }
           : {}),
       }),
     );
+  }
+
+  // Device Manager entry point: push one board's saved brightness immediately.
+  async applyDisplayPolicyToDevice(deviceId) {
+    const session = this.deckRuntime?.sessionFor(deviceId);
+
+    if (session) {
+      await this.applyDisplayPolicyToSession(session);
+    }
   }
 
   async broadcastDisplayPolicy() {

@@ -617,14 +617,107 @@ test('sync resolves the active named profile for a device', async () => {
 
   await controller.syncDevice('aaaa11112222');
 
+  // The visible page leads so the deck answers presses while the rest loads.
   assert.deepEqual(synced, [
-    ['live', 'Live', 0],
     ['live', 'Live', 1],
+    ['live', 'Live', 0],
     ['live', 'reapply', 'aaaa11112222'],
   ]);
   assert.match(Buffer.from(sent.at(-1)).toString('utf8'), /"index":1/);
   assert.equal(session.committedProfileId, 'live');
   assert.equal(session.profileInputBlocked, false);
+});
+
+test('the visible page accepts input before the other pages finish', async () => {
+  const controller = createRuntime();
+  const order = [];
+  const session = { send: async () => {} };
+  controller.devices = {
+    aaaa11112222: {
+      name: 'Desk',
+      boardId: 'test-board',
+      activeProfileId: 'default',
+      defaultProfileId: 'default',
+      profiles: {
+        default: {
+          name: 'Default',
+          boardId: 'test-board',
+          activePage: 1,
+          keyPx: {},
+          pages: [
+            { name: 'One', rows: 1, cols: 1, keys: [] },
+            { name: 'Two', rows: 1, cols: 1, keys: [] },
+            { name: 'Three', rows: 1, cols: 1, keys: [] },
+          ],
+        },
+      },
+    },
+  };
+  controller.sessions = new Map([['aaaa11112222', session]]);
+  controller.syncRunning = new Map();
+  controller.liveRunning = new Set();
+  controller.pending = new Map();
+  controller.setSyncStatus = () => {};
+  controller.refreshLiveStates = () => {};
+  controller.syncPage = async (_deviceId, currentSession, _profileId, _profile, pageIndex) => {
+    order.push([pageIndex, currentSession.profileInputBlocked]);
+    return true;
+  };
+
+  await controller.syncDevice('aaaa11112222');
+
+  // Page 1 is visible, so it goes first and input opens straight after it.
+  // Page 2 is the highest index and still lands last, keeping the firmware's
+  // artwork collection at the end of the run.
+  assert.deepEqual(order, [[1, true], [0, false], [2, false]]);
+  assert.equal(session.profileInputBlocked, false);
+});
+
+test('a visible last page is repeated so artwork collection still runs last', async () => {
+  const controller = createRuntime();
+
+  async function run(streamedArtwork) {
+    const order = [];
+    const session = { send: async () => {} };
+    controller.devices = {
+      aaaa11112222: {
+        name: 'Desk',
+        boardId: 'test-board',
+        activeProfileId: 'default',
+        defaultProfileId: 'default',
+        profiles: {
+          default: {
+            name: 'Default',
+            boardId: 'test-board',
+            activePage: 1,
+            keyPx: {},
+            pages: [
+              { name: 'One', rows: 1, cols: 1, keys: [] },
+              { name: 'Two', rows: 1, cols: 1, keys: [] },
+            ],
+          },
+        },
+      },
+    };
+    controller.sessions = new Map([['aaaa11112222', session]]);
+    controller.syncRunning = new Map();
+    controller.liveRunning = new Set();
+    controller.pending = new Map();
+    controller.setSyncStatus = () => {};
+    controller.refreshLiveStates = () => {};
+    controller.syncPage = async (_d, _s, _p, _profile, pageIndex) => {
+      order.push(pageIndex);
+      return streamedArtwork;
+    };
+
+    await controller.syncDevice('aaaa11112222');
+    return order;
+  }
+
+  // New artwork means the pool changed, so the highest page is sent again.
+  assert.deepEqual(await run(true), [1, 0, 1]);
+  // An unchanged deck has nothing to collect, so the repeat is skipped.
+  assert.deepEqual(await run(false), [1, 0]);
 });
 
 test('manual page selection updates active but not default page', async () => {

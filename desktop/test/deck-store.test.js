@@ -25,6 +25,8 @@ const {
   renameDevice,
   saveDeviceProfile,
   saveDeviceProfiles,
+  setDeviceBrightness,
+  setDeviceCompanion,
 } = require('../src/deck-store');
 const { readSettings, writeSettings } = require('../src/settings');
 const {
@@ -806,6 +808,92 @@ test('imports a compatible file as a new selected profile', () => {
       () => addImportedProfile(DEVICE_ID, wrongBoard, decksPath),
       /different board/,
     );
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test('persists a bounded Companion surface and salvages a corrupt one', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'stream32-decks-'));
+  const decksPath = path.join(directory, 'decks.json');
+
+  try {
+    const registered = registerDevice(DEVICE_ID, BOARD_ID, 'Desk', decksPath);
+    assert.deepEqual(registered.companion, {
+      enabled: false,
+      rows: 3,
+      cols: 3,
+    });
+
+    const enabled = setDeviceCompanion(
+      DEVICE_ID,
+      { enabled: true, rows: 4, cols: 8 },
+      decksPath,
+    );
+    assert.deepEqual(enabled.companion, { enabled: true, rows: 4, cols: 8 });
+    assert.deepEqual(
+      readDecks(decksPath).devices[DEVICE_ID].companion,
+      { enabled: true, rows: 4, cols: 8 },
+    );
+
+    for (const invalid of [
+      { enabled: true, rows: 0, cols: 8 },
+      { enabled: true, rows: 8, cols: 8 },
+      { enabled: 'yes', rows: 4, cols: 8 },
+    ]) {
+      assert.throws(
+        () => setDeviceCompanion(DEVICE_ID, invalid, decksPath),
+        /Companion/,
+      );
+    }
+
+    const raw = readSettings(decksPath);
+    raw.devices[DEVICE_ID].companion = { enabled: true, rows: 99, cols: 99 };
+    writeSettings(raw, decksPath);
+
+    const salvaged = readDecks(decksPath);
+    assert.deepEqual(salvaged.devices[DEVICE_ID].companion, {
+      enabled: false,
+      rows: 3,
+      cols: 3,
+    });
+    assert.match(salvaged.errors[0].message, /Companion settings/);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test('persists a per-device brightness override that can fall back', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'stream32-decks-'));
+  const decksPath = path.join(directory, 'decks.json');
+
+  try {
+    assert.equal(
+      registerDevice(DEVICE_ID, BOARD_ID, 'Desk', decksPath).brightness,
+      null,
+    );
+    assert.equal(setDeviceBrightness(DEVICE_ID, 40, decksPath).brightness, 40);
+    assert.equal(readDecks(decksPath).devices[DEVICE_ID].brightness, 40);
+    assert.equal(setDeviceBrightness(DEVICE_ID, 0, decksPath).brightness, 0);
+    assert.equal(
+      setDeviceBrightness(DEVICE_ID, null, decksPath).brightness,
+      null,
+    );
+
+    for (const invalid of [101, -1, 50.5, '60']) {
+      assert.throws(
+        () => setDeviceBrightness(DEVICE_ID, invalid, decksPath),
+        /brightness/i,
+      );
+    }
+
+    const raw = readSettings(decksPath);
+    raw.devices[DEVICE_ID].brightness = 900;
+    writeSettings(raw, decksPath);
+
+    const salvaged = readDecks(decksPath);
+    assert.equal(salvaged.devices[DEVICE_ID].brightness, null);
+    assert.match(salvaged.errors[0].message, /brightness/);
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

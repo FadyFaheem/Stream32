@@ -166,9 +166,21 @@ select {
 }
 
 .view-deck:not([hidden]) {
+  /* flex: 1 would let the scroll container shrink this back to one viewport,
+     leaving the content to overflow past the padding below instead of
+     scrolling with it. Sizing from content keeps the tail room reachable. */
+  flex: 0 0 auto;
   min-height: 100%;
   /* Generous tail room so the page scrolls a little past the key editor. */
   padding-bottom: calc(30vh + env(safe-area-inset-bottom, 0px));
+}
+
+/* With no key editor open there is nothing to scroll past, so both the tail
+   room and the stretch that fills a tall window just read as dead space under
+   the grid. The empty state keeps min-height so its message stays centred. */
+.view-deck:not([hidden]):has(#deck-editor:not([hidden])):has(#deck-key-editor[hidden]) {
+  min-height: 0;
+  padding-bottom: calc(15vh + env(safe-area-inset-bottom, 0px));
 }
 
 #view-flash:not([hidden]),
@@ -382,7 +394,7 @@ summary:focus-visible {
 }
 
 .usb-port-field {
-  flex: 1;
+  flex: 1 1 18rem;
   min-width: 0;
 }
 
@@ -391,6 +403,10 @@ summary:focus-visible {
 }
 
 .usb-port-field select {
+  /* Long port labels must not stretch the row, and a long status message
+     below must not squeeze the picker down to its arrow. */
+  width: 100%;
+  max-width: 26rem;
   margin-bottom: 0.35rem;
 }
 
@@ -414,6 +430,7 @@ summary:focus-visible {
   justify-content: flex-end;
   gap: 0.75rem;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .confirmation {
@@ -517,7 +534,9 @@ input:disabled {
 }
 
 .deck-connect {
-  max-height: 10rem;
+  /* Only bounds the collapse animation, so it has to clear the tallest the
+     panel gets once the port list and a wrapped status line are showing. */
+  max-height: 22rem;
   margin: 0 0 1rem;
   overflow: hidden;
   opacity: 1;
@@ -1646,6 +1665,74 @@ progress::-webkit-progress-value {
   gap: 0.65rem;
 }
 
+.companion-link {
+  display: grid;
+  gap: 0.6rem 1rem;
+  align-items: end;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(10, 18, 23, 0.52);
+}
+
+.companion-link-intro .field-label,
+.companion-link-intro .helper {
+  margin: 0;
+}
+
+.companion-link-address {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.companion-field {
+  display: grid;
+  gap: 0.3rem;
+  width: 12rem;
+}
+
+.companion-field-port {
+  width: 6.5rem;
+}
+
+.companion-field label {
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.companion-field input {
+  width: 100%;
+  min-height: 2.4rem;
+  padding: 0 0.7rem;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(4, 10, 14, 0.6);
+}
+
+.companion-link-status {
+  grid-column: 1 / -1;
+  min-height: 1.1rem;
+  margin: 0;
+}
+
+.companion-link-status[data-state="ready"] {
+  color: var(--success);
+}
+
+.companion-link-status[data-state="error"] {
+  color: var(--error);
+}
+
+@media (max-width: 720px) {
+  .companion-link {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .device-card {
   display: grid;
   gap: 0.55rem;
@@ -1653,6 +1740,74 @@ progress::-webkit-progress-value {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(10, 18, 23, 0.52);
+}
+
+.device-brightness,
+.device-companion {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+}
+
+.device-brightness .field-label,
+.device-companion label {
+  margin: 0;
+  font-size: 0.8rem;
+}
+
+.device-brightness input {
+  width: 5rem;
+  min-height: 2.2rem;
+  padding: 0 0.5rem;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(4, 10, 14, 0.6);
+}
+
+.device-brightness .helper {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+.device-companion-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.device-companion-grid {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+}
+
+.device-companion-grid select {
+  min-height: 2.2rem;
+}
+
+.device-companion-status {
+  flex: 1 0 100%;
+  min-height: 1.1rem;
+  margin: 0;
+}
+
+.device-companion-status[data-state="ready"] {
+  color: var(--success);
+}
+
+.device-companion-status[data-state="working"] {
+  color: var(--accent-strong);
+}
+
+.device-companion-status[data-state="error"] {
+  color: var(--error);
 }
 
 .device-card-head {

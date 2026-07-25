@@ -2,6 +2,7 @@ const {
   ActionSequenceCancelledError,
   runActionSequence,
 } = require('./action-sequence');
+const { CompanionSurfaces } = require('./companion-surface');
 const {
   focusedAppTitle,
   formatClock,
@@ -31,9 +32,24 @@ function gridKey(page) {
   return `${page.rows}x${page.cols}`;
 }
 
+// Sync the visible page first so a cold deck becomes usable in seconds
+// instead of only after every page has streamed its artwork.
+function syncOrder(pageCount, activePage) {
+  const order = [activePage];
+
+  for (let index = 0; index < pageCount; index++) {
+    if (index !== activePage) {
+      order.push(index);
+    }
+  }
+
+  return order;
+}
+
 class DeckRuntime {
   constructor({
     api,
+    document,
     getDevices,
     getProfile,
     getSelectedProfileId,
@@ -81,6 +97,12 @@ class DeckRuntime {
     this.liveRunning = new Set();
     this.clockTimer = null;
     this.liveLeaseTimer = null;
+    this.companion = new CompanionSurfaces({
+      api,
+      document,
+      runtime: this,
+      onStatus,
+    });
     this.profileSwitcher = new ProfileSwitcher({
       api,
       getDevices,
@@ -100,6 +122,34 @@ class DeckRuntime {
 
   hasSession(deviceId) {
     return this.sessions.has(deviceId);
+  }
+
+  // While Companion drives a board it owns the whole surface: local profile
+  // sync, live state, focused-app switching, and key actions all stand down.
+  companionEnabled(deviceId) {
+    return this.getDevices()[deviceId]?.companion?.enabled === true;
+  }
+
+  async setCompanionSurface(deviceId, companion) {
+    const device = await this.api.setDeckCompanion(deviceId, companion);
+    this.setDevice(deviceId, device);
+    await this.companion.detach(deviceId);
+    const session = this.sessions.get(deviceId);
+
+    if (!session) {
+      this.onRenderAll();
+      return device;
+    }
+
+    if (device.companion.enabled) {
+      this.clearLiveRuntime(deviceId);
+      await this.companion.attach(deviceId, session);
+    } else {
+      this.scheduleSync(deviceId, 0);
+    }
+
+    this.onRenderAll();
+    return device;
   }
 
   sessionFor(deviceId) {
@@ -214,7 +264,11 @@ class DeckRuntime {
   }
 
   queueLiveUpdate(deviceId, update) {
-    if (!deviceId || !this.sessions.has(deviceId)) {
+    if (
+      !deviceId ||
+      !this.sessions.has(deviceId) ||
+      this.companionEnabled(deviceId)
+    ) {
       return;
     }
 
@@ -368,6 +422,7 @@ class DeckRuntime {
   }
 
   startLiveTimers() {
+    this.companion.start();
     this.scheduleClockTick();
     clearInterval(this.liveLeaseTimer);
     this.liveLeaseTimer = setInterval(
@@ -415,6 +470,12 @@ class DeckRuntime {
     }
 
     this.onRenderAll();
+
+    if (this.companionEnabled(deviceId)) {
+      await this.companion.attach(deviceId, session);
+      return;
+    }
+
     this.scheduleSync(deviceId, 0);
   }
 
@@ -423,6 +484,7 @@ class DeckRuntime {
 
     if (deviceId && this.sessions.get(deviceId) === session) {
       this.sessions.delete(deviceId);
+      this.companion.detach(deviceId);
       this.rejectPending(deviceId, new Error('The device disconnected.'));
       clearTimeout(this.syncTimers.get(deviceId));
       this.syncTimers.delete(deviceId);
@@ -531,6 +593,11 @@ class DeckRuntime {
 
   handlePress(deviceId, session, message) {
     const press = validatePressMessage(message);
+
+    if (this.companionEnabled(deviceId)) {
+      this.companion.handlePress(deviceId, press);
+      return;
+    }
 
     if (
       press.phase !== 'down' ||
@@ -775,7 +842,11 @@ class DeckRuntime {
   }
 
   scheduleSync(deviceId, delay = SYNC_DEBOUNCE_MS) {
-    if (!deviceId || !this.sessions.has(deviceId)) {
+    if (
+      !deviceId ||
+      !this.sessions.has(deviceId) ||
+      this.companionEnabled(deviceId)
+    ) {
       this.onRenderSyncStatus();
       return;
     }
@@ -814,31 +885,63 @@ class DeckRuntime {
     session.profileSyncInProgress = true;
     this.onStatus('Syncing the deck to the device…', 'working');
 
+    const leadPage = profile.activePage;
+    let streamedArtwork = false;
+
     try {
-      for (const [pageIndex, page] of profile.pages.entries()) {
-        await this.syncPage(
+      for (const pageIndex of syncOrder(profile.pages.length, leadPage)) {
+        streamedArtwork = await this.syncPage(
           deviceId,
           session,
           profileId,
           profile,
           pageIndex,
-          page,
+          profile.pages[pageIndex],
+        ) || streamedArtwork;
+
+        if (this.sessions.get(deviceId) !== session) {
+          throw new Error('The device disconnected during profile sync.');
+        }
+
+        if (this.getSelectedProfileId(deviceId) !== profileId) {
+          this.syncRunning.set(deviceId, 'again');
+          return;
+        }
+
+        // syncOrder leads with the visible page, so the deck can show it and
+        // answer presses while the remaining pages stream in behind it.
+        if (session.profileInputBlocked) {
+          await session.send(encodePageMessage(leadPage));
+          session.committedProfileId = profileId;
+          session.profileInputBlocked = false;
+
+          if (profile.pages.length > 1) {
+            this.onStatus(
+              `Page ${leadPage + 1} is ready. Loading the other pages…`,
+              'working',
+            );
+          }
+        }
+      }
+
+      // Firmware releases unreferenced artwork when the highest page index
+      // arrives, which leading with the visible page can move off the end of
+      // the run. Repeat that page only when this sync added artwork.
+      if (
+        streamedArtwork &&
+        profile.pages.length > 1 &&
+        leadPage === profile.pages.length - 1
+      ) {
+        await this.syncPage(
+          deviceId,
+          session,
+          profileId,
+          profile,
+          leadPage,
+          profile.pages[leadPage],
         );
       }
 
-      await session.send(encodePageMessage(profile.activePage));
-
-      if (this.sessions.get(deviceId) !== session) {
-        throw new Error('The device disconnected during profile sync.');
-      }
-
-      if (this.getSelectedProfileId(deviceId) !== profileId) {
-        this.syncRunning.set(deviceId, 'again');
-        return;
-      }
-
-      session.committedProfileId = profileId;
-      session.profileInputBlocked = false;
       this.refreshLiveStates(deviceId);
       if (
         profile.pages.some((page) =>
@@ -906,6 +1009,8 @@ class DeckRuntime {
       );
     }
 
+    let streamed = false;
+
     for (const index of ack.needImages) {
       const render = renders.get(index);
 
@@ -918,8 +1023,11 @@ class DeckRuntime {
           keyPx,
           render,
         );
+        streamed = true;
       }
     }
+
+    return streamed;
   }
 
   async sendLayout(deviceId, session, profile, pageIndex, page, renders) {

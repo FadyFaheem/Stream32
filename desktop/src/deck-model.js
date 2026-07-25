@@ -385,6 +385,39 @@ function createDefaultProfile(boardId) {
   });
 }
 
+// Per-device Companion (Bitfocus Satellite) surface mode. While enabled,
+// Companion owns the board's appearance and presses, so the grid is stored
+// here instead of coming from a local profile page.
+function validateCompanionSurface(companion) {
+  if (companion === undefined) {
+    return { enabled: false, rows: 3, cols: 3 };
+  }
+
+  if (
+    !companion ||
+    typeof companion !== 'object' ||
+    Array.isArray(companion) ||
+    typeof companion.enabled !== 'boolean'
+  ) {
+    throw new TypeError('Companion surface settings are invalid.');
+  }
+
+  const rows = requireInteger(companion.rows, 'Companion rows', 1, MAX_ROWS);
+  const cols = requireInteger(companion.cols, 'Companion cols', 1, MAX_COLS);
+  requireInteger(rows * cols, 'Companion keys', 1, MAX_KEYS_PER_PAGE);
+  return { enabled: companion.enabled, rows, cols };
+}
+
+// Per-device display brightness. null means the device follows the app-wide
+// default instead of overriding it.
+function validateDeviceBrightness(brightness) {
+  if (brightness === undefined || brightness === null) {
+    return null;
+  }
+
+  return requireInteger(brightness, 'Device brightness', 0, 100);
+}
+
 function validateDevice(device) {
   if (
     !device ||
@@ -441,6 +474,8 @@ function validateDevice(device) {
     boardId: device.boardId,
     activeProfileId: device.activeProfileId,
     defaultProfileId: device.defaultProfileId,
+    companion: validateCompanionSurface(device.companion),
+    brightness: validateDeviceBrightness(device.brightness),
     profiles,
   };
 }
@@ -544,17 +579,22 @@ module.exports = {
   DEVICE_ID_PATTERN,
   EXPORT_SCHEMA_VERSION,
   MAX_DEVICES,
+  MAX_COLS,
   MAX_IMPORT_BYTES,
+  MAX_LABEL_LENGTH,
   MAX_NAME_LENGTH,
   MAX_PROFILES,
+  MAX_ROWS,
   PROFILE_ID_PATTERN,
   createDefaultProfile,
   exportProfile,
   importProfile,
   optionalString,
   validateAction,
+  validateCompanionSurface,
   validateDeckRegistry,
   validateDevice,
+  validateDeviceBrightness,
   validateHostAction,
   validateProfile,
   validateProfileEnvelope,

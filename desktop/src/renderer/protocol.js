@@ -191,6 +191,23 @@ function crc32(bytes) {
   return ((crc ^ 0xffffffff) >>> 0).toString(16).padStart(8, '0');
 }
 
+// Little-endian RGB565, the only pixel format the boards accept.
+function toRgb565(imageData) {
+  const { data } = imageData;
+  const pixels = new Uint8Array((data.length / 4) * 2);
+
+  for (let source = 0, target = 0; source < data.length; source += 4, target += 2) {
+    const value =
+      ((data[source] >> 3) << 11) |
+      ((data[source + 1] >> 2) << 5) |
+      (data[source + 2] >> 3);
+    pixels[target] = value & 0xff;
+    pixels[target + 1] = value >> 8;
+  }
+
+  return pixels;
+}
+
 function requireProtocolInteger(value, field, minimum, maximum) {
   if (!Number.isInteger(value) || value < minimum || value > maximum) {
     throw new TypeError(`${field} is outside the supported range.`);
@@ -698,6 +715,7 @@ module.exports = {
   encodeRle565,
   isExpectedChip,
   normalizeChipName,
+  toRgb565,
   validateDeviceHello,
   validateImageAck,
   validateKeyUpdateAck,

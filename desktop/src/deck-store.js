@@ -15,8 +15,10 @@ const {
   importProfile,
   optionalString,
   validateAction,
+  validateCompanionSurface,
   validateDeckRegistry,
   validateDevice,
+  validateDeviceBrightness,
   validateHostAction,
   validateProfile,
 } = require('./deck-model');
@@ -163,11 +165,41 @@ function salvageDeckRegistry(raw) {
       });
     }
 
+    let companion = validateCompanionSurface(undefined);
+
+    try {
+      companion = validateCompanionSurface(rawDevice.companion);
+    } catch {
+      preservedFields.companion = structuredClone(rawDevice.companion);
+      registry.errors.push({
+        deviceId,
+        message:
+          `Device ${deviceId} has invalid Companion settings that were ` +
+          'preserved; Companion mode is off until storage is repaired.',
+      });
+    }
+
+    let brightness = null;
+
+    try {
+      brightness = validateDeviceBrightness(rawDevice.brightness);
+    } catch {
+      preservedFields.brightness = structuredClone(rawDevice.brightness);
+      registry.errors.push({
+        deviceId,
+        message:
+          `Device ${deviceId} has an invalid brightness that was preserved; ` +
+          'the app default is used until storage is repaired.',
+      });
+    }
+
     const device = {
       name,
       boardId: rawDevice.boardId,
       activeProfileId,
       defaultProfileId,
+      companion,
+      brightness,
       profiles,
     };
     defineHidden(device, PRESERVED_DEVICE_FIELDS, preservedFields);
@@ -421,6 +453,24 @@ function saveDeviceProfiles(deviceId, updates, decksPath) {
   Object.assign(device.profiles, validatedProfiles);
   writeRegistry(registry, decksPath);
   return validatedProfiles;
+}
+
+function setDeviceCompanion(deviceId, companion, decksPath) {
+  const registry = readDecks(decksPath);
+  const device = requireDevice(registry, deviceId);
+  device.companion = validateCompanionSurface(companion);
+  delete device[PRESERVED_DEVICE_FIELDS]?.companion;
+  writeRegistry(registry, decksPath);
+  return device;
+}
+
+function setDeviceBrightness(deviceId, brightness, decksPath) {
+  const registry = readDecks(decksPath);
+  const device = requireDevice(registry, deviceId);
+  device.brightness = validateDeviceBrightness(brightness);
+  delete device[PRESERVED_DEVICE_FIELDS]?.brightness;
+  writeRegistry(registry, decksPath);
+  return device;
 }
 
 function renameDevice(deviceId, name, decksPath) {
@@ -686,6 +736,8 @@ module.exports = {
   renameDevice,
   saveDeviceProfile,
   saveDeviceProfiles,
+  setDeviceBrightness,
+  setDeviceCompanion,
   validateAction,
   validateDeckRegistry,
   validateDevice,

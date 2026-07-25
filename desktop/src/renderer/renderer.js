@@ -257,6 +257,7 @@ async function loadDisplaySettings() {
     displayBrightnessControl.value = String(settings.brightnessPercent);
     displayIdleControl.value = String(settings.idleTimeoutMinutes);
     sleepWhenLockedControl.checked = settings.sleepWhenLocked;
+    deviceManager.setDefaultBrightness(settings.brightnessPercent);
     await deviceController.setMachineLocked(settings.machineLocked);
     await deviceController.setDisplayPolicy(settings);
   } catch (error) {
@@ -282,6 +283,7 @@ async function saveDisplaySettings() {
       idleTimeoutMinutes: Number(displayIdleControl.value),
       sleepWhenLocked: sleepWhenLockedControl.checked,
     });
+    deviceManager.setDefaultBrightness(settings.brightnessPercent);
     await deviceController.setDisplayPolicy(settings);
   } catch (error) {
     showUpdateStatus({
@@ -419,7 +421,12 @@ const deviceManager = new DeviceManager({
 });
 // Mirror device and session changes into the Device Manager view live.
 deckController.onRender = () => deviceManager.render();
-deviceManager.initialize();
+deviceManager.initialize().catch((error) => {
+  showUpdateStatus({
+    message: `Device manager setup failed: ${error.message}`,
+    state: 'error',
+  });
+});
 
 window.stream32.onMachineLockState((locked) => {
   deviceController.setMachineLocked(locked).catch((error) => {

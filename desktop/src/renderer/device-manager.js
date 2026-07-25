@@ -1,5 +1,29 @@
-const { MAX_NAME_LENGTH } = require('../deck-model');
+const { MAX_COLS, MAX_NAME_LENGTH, MAX_ROWS } = require('../deck-model');
 const { isVersionNewer } = require('../semver');
+
+// Companion surface state is per device; the address it dials is per app.
+function companionStatusText(row, link) {
+  if (!row.companion.enabled) {
+    return { text: 'Off. This deck runs from its own profiles.', state: 'idle' };
+  }
+
+  if (!row.connected) {
+    return {
+      text: 'On. Registers with Companion once this deck connects.',
+      state: 'idle',
+    };
+  }
+
+  return {
+    text: `${link?.message || 'Connecting to Companion…'} ` +
+      'Local profiles and actions are paused.',
+    state: link?.state === 'connected'
+      ? 'ready'
+      : link?.state === 'error'
+        ? 'error'
+        : 'working',
+  };
+}
 
 // Joins the persisted device registry, the live runtime sessions, and the
 // board catalog into one inventory. Pure so the view model is unit-testable
@@ -34,6 +58,16 @@ function deviceInventory({ devices = {}, sessions, boards } = {}) {
           isVersionNewer(latestVersion, installed),
       ),
       features: connected ? [...(session.hello?.features ?? [])] : [],
+      companion: device.companion ?? { enabled: false, rows: 3, cols: 3 },
+      brightness: device.brightness ?? null,
+      supportsBrightness: connected
+        ? (session.hello?.features ?? []).includes('display-brightness')
+        : false,
+      deckLimits: board?.deck ?? {
+        maxRows: MAX_ROWS,
+        maxCols: MAX_COLS,
+        maxKeys: 30,
+      },
     };
   });
 
@@ -120,10 +154,88 @@ class DeviceManager {
     this.empty = document.querySelector('#device-manager-empty');
     this.status = document.querySelector('#device-manager-status');
     this.scanButton = document.querySelector('#device-manager-scan');
+    this.companionHost = document.querySelector('#companion-host');
+    this.companionPort = document.querySelector('#companion-port');
+    this.companionLinkStatus = document.querySelector('#companion-link-status');
+    this.companionSettings = { host: '127.0.0.1', port: 16622 };
+    this.companionLink = null;
+    this.defaultBrightness = 100;
   }
 
-  initialize() {
+  async initialize() {
     this.scanButton?.addEventListener('click', () => this.scan());
+
+    for (const control of [this.companionHost, this.companionPort]) {
+      control.addEventListener('change', () => this.saveCompanionAddress());
+    }
+
+    this.deck.api.onCompanionStatus((status) => {
+      this.companionLink = status;
+      this.companionSettings = { host: status.host, port: status.port };
+      this.renderCompanionLink();
+      this.render();
+    });
+
+    try {
+      this.companionSettings = await this.deck.api.getCompanionSettings();
+      this.companionLink = this.companionSettings;
+    } catch (error) {
+      this.setCompanionLinkStatus(
+        `Could not read Companion settings: ${error.message}`,
+        'error',
+      );
+    }
+
+    this.renderCompanionLink();
+    this.render();
+  }
+
+  setCompanionLinkStatus(message, state) {
+    this.companionLinkStatus.textContent = message;
+    this.companionLinkStatus.dataset.state = state;
+  }
+
+  renderCompanionLink() {
+    if (this.document.activeElement !== this.companionHost) {
+      this.companionHost.value = this.companionSettings.host;
+    }
+
+    if (this.document.activeElement !== this.companionPort) {
+      this.companionPort.value = String(this.companionSettings.port);
+    }
+
+    const link = this.companionLink;
+    this.setCompanionLinkStatus(
+      link?.message || 'No deck is handed to Companion yet.',
+      link?.state === 'connected'
+        ? 'ready'
+        : link?.state === 'error'
+          ? 'error'
+          : 'idle',
+    );
+  }
+
+  async saveCompanionAddress() {
+    try {
+      this.companionSettings = await this.deck.api.setCompanionSettings({
+        host: this.companionHost.value.trim(),
+        port: Number(this.companionPort.value),
+      });
+      this.companionLink = this.companionSettings;
+      this.renderCompanionLink();
+    } catch (error) {
+      this.renderCompanionLink();
+      this.setCompanionLinkStatus(
+        `Could not save the Companion address: ${error.message}`,
+        'error',
+      );
+    }
+  }
+
+  // The app-wide brightness is the fallback shown as a placeholder on every
+  // board that has not been given its own value.
+  setDefaultBrightness(brightnessPercent) {
+    this.defaultBrightness = brightnessPercent;
     this.render();
   }
 
@@ -227,8 +339,150 @@ class DeviceManager {
     toggle.addEventListener('click', () => this.toggleConnection(row, toggle));
     actions.append(toggle);
 
-    card.append(head, meta, firmware, actions);
+    card.append(head, meta, firmware);
+
+    if (row.supportsBrightness) {
+      card.append(this.renderBrightness(row));
+    }
+
+    card.append(this.renderCompanion(row), actions);
     return card;
+  }
+
+  renderBrightness(row) {
+    const document = this.document;
+    const section = document.createElement('div');
+    section.className = 'device-brightness';
+
+    const label = document.createElement('label');
+    label.className = 'field-label';
+    label.htmlFor = `device-brightness-${row.deviceId}`;
+    label.textContent = 'Display brightness';
+
+    const input = document.createElement('input');
+    input.id = label.htmlFor;
+    input.type = 'number';
+    input.min = '0';
+    input.max = '100';
+    input.step = '1';
+    input.placeholder = String(this.defaultBrightness);
+    input.value = row.brightness === null ? '' : String(row.brightness);
+    input.addEventListener('change', () => this.saveBrightness(row, input));
+
+    const unit = document.createElement('span');
+    unit.textContent = '%';
+
+    const helper = document.createElement('p');
+    helper.className = 'helper';
+    helper.textContent = row.brightness === null
+      ? `Using the app default of ${this.defaultBrightness}%.`
+      : 'Clear the box to follow the app default again.';
+
+    section.append(label, input, unit, helper);
+    return section;
+  }
+
+  renderCompanion(row) {
+    const document = this.document;
+    const section = document.createElement('div');
+    section.className = 'device-companion';
+
+    const toggleLabel = document.createElement('label');
+    const toggleText = document.createElement('span');
+    toggleLabel.className = 'device-companion-toggle';
+    toggleText.textContent = 'Companion surface';
+
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.checked = row.companion.enabled;
+    toggleLabel.append(toggle, toggleText);
+
+    const grid = document.createElement('div');
+    grid.className = 'device-companion-grid';
+    const selects = {};
+
+    for (const [axis, caption, limit, maximum] of [
+      ['rows', 'Rows', 'maxRows', MAX_ROWS],
+      ['cols', 'Columns', 'maxCols', MAX_COLS],
+    ]) {
+      const captionLabel = document.createElement('label');
+      captionLabel.textContent = caption;
+      captionLabel.htmlFor = `device-companion-${axis}-${row.deviceId}`;
+
+      const select = document.createElement('select');
+      const options = [];
+      select.id = captionLabel.htmlFor;
+
+      for (let size = 1; size <= maximum; size++) {
+        const option = document.createElement('option');
+        option.value = String(size);
+        option.textContent = String(size);
+        options.push(option);
+        select.append(option);
+      }
+
+      select.value = String(row.companion[axis]);
+      select.addEventListener('change', () =>
+        this.saveCompanionSurface(row, toggle, selects));
+      selects[axis] = { select, options, limit };
+      grid.append(captionLabel, select);
+    }
+
+    // Each axis is bounded by the board's per-page key budget given the other.
+    for (const [axis, { options, limit }] of Object.entries(selects)) {
+      const other = Number(
+        selects[axis === 'rows' ? 'cols' : 'rows'].select.value,
+      );
+
+      for (const option of options) {
+        const size = Number(option.value);
+        option.disabled =
+          size > row.deckLimits[limit] ||
+          size * other > row.deckLimits.maxKeys;
+      }
+    }
+
+    toggle.addEventListener('change', () =>
+      this.saveCompanionSurface(row, toggle, selects));
+
+    const status = document.createElement('p');
+    const summary = companionStatusText(row, this.companionLink);
+    status.className = 'helper device-companion-status';
+    status.dataset.state = summary.state;
+    status.textContent = summary.text;
+
+    section.append(toggleLabel, grid, status);
+    return section;
+  }
+
+  async saveBrightness(row, input) {
+    const raw = input.value.trim();
+
+    try {
+      const device = await this.deck.api.setDeckBrightness(
+        row.deviceId,
+        raw === '' ? null : Number(raw),
+      );
+      this.deck.devices[row.deviceId] = device;
+      await this.deviceController.applyDisplayPolicyToDevice(row.deviceId);
+    } catch (error) {
+      this.setStatus(`Could not set brightness: ${error.message}`, 'error');
+    }
+
+    this.render();
+  }
+
+  async saveCompanionSurface(row, toggle, selects) {
+    try {
+      await this.deck.runtime.setCompanionSurface(row.deviceId, {
+        enabled: toggle.checked,
+        rows: Number(selects.rows.select.value),
+        cols: Number(selects.cols.select.value),
+      });
+    } catch (error) {
+      this.setStatus(`Could not change Companion mode: ${error.message}`, 'error');
+      this.render();
+    }
   }
 
   startUpdate(row) {

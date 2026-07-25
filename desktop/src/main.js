@@ -26,10 +26,15 @@ const {
   writeBackup,
 } = require('./backup');
 const { createDefaultBoardService } = require('./boards');
+const { MAX_BITMAP_PIXELS } = require('./companion-protocol');
+const { createCompanionSatellite } = require('./companion-satellite');
 const {
+  DEVICE_ID_PATTERN,
   MAX_IMPORT_BYTES,
+  MAX_NAME_LENGTH,
   exportProfile,
   importProfile,
+  validateCompanionSurface,
   validateHostAction,
 } = require('./deck-model');
 const {
@@ -41,6 +46,8 @@ const {
   renameDevice,
   saveDeviceProfile,
   saveDeviceProfiles,
+  setDeviceBrightness,
+  setDeviceCompanion,
 } = require('./deck-store');
 const { createDiagnosticLogger } = require('./diagnostic-log');
 const { createDiagnostics } = require('./diagnostics');
@@ -49,9 +56,11 @@ const { createPluginCatalogService } = require('./plugin-catalog');
 const { createPluginService } = require('./plugins');
 const { configureSerialAccess } = require('./serial');
 const {
+  getCompanionSettings,
   getDisplaySettings,
   getSettingsPath,
   readSettings,
+  setCompanionSettings,
   setDisplaySettings,
 } = require('./settings');
 const { createTray } = require('./tray');
@@ -67,6 +76,7 @@ const actionRunner = createActionRunner({
   },
 });
 let boardService = null;
+let companionSatellite = null;
 let curatedPluginService = null;
 let isQuitting = false;
 let mainWindow = null;
@@ -198,6 +208,12 @@ function sendFocusSnapshot(snapshot) {
 function sendFocusStatus(status) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('focus:status', status);
+  }
+}
+
+function sendToRenderer(channel, payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
   }
 }
 
@@ -516,6 +532,85 @@ function registerIpcHandlers() {
     requireMainSender(event, 'Profile operation request is invalid.');
     return applyProfileOperation(deviceId, operation, getDecksPath());
   });
+  ipcMain.handle('deck:set-companion', (event, deviceId, companion) => {
+    requireMainSender(event, 'Companion surface request is invalid.');
+    return setDeviceCompanion(deviceId, companion, getDecksPath());
+  });
+  ipcMain.handle('deck:set-brightness', (event, deviceId, brightness) => {
+    requireMainSender(event, 'Device brightness request is invalid.');
+    return setDeviceBrightness(deviceId, brightness, getDecksPath());
+  });
+  ipcMain.handle('companion:settings', (event) => {
+    requireMainSender(event, 'Companion settings request is invalid.');
+    return { ...getCompanionSettings(), ...companionSatellite.getStatus() };
+  });
+  ipcMain.handle('companion:set-settings', (event, settings) => {
+    requireMainSender(event, 'Companion settings request is invalid.');
+    const saved = setCompanionSettings(settings);
+    companionSatellite.setConfig(saved);
+    return { ...saved, ...companionSatellite.getStatus() };
+  });
+  ipcMain.handle('companion:add-surface', (event, surface) => {
+    requireMainSender(event, 'Companion surface request is invalid.');
+
+    if (
+      !surface ||
+      typeof surface !== 'object' ||
+      Array.isArray(surface) ||
+      !DEVICE_ID_PATTERN.test(surface.deviceId) ||
+      typeof surface.productName !== 'string' ||
+      surface.productName.length === 0 ||
+      surface.productName.length > MAX_NAME_LENGTH
+    ) {
+      throw new TypeError('Companion surface request is invalid.');
+    }
+
+    const { rows, cols } = validateCompanionSurface({
+      enabled: true,
+      rows: surface.rows,
+      cols: surface.cols,
+    });
+
+    if (
+      !Number.isSafeInteger(surface.bitmapSize) ||
+      surface.bitmapSize < 8 ||
+      surface.bitmapSize > MAX_BITMAP_PIXELS
+    ) {
+      throw new TypeError('Companion bitmap size is invalid.');
+    }
+
+    companionSatellite.addSurface({
+      deviceId: surface.deviceId,
+      productName: surface.productName,
+      rows,
+      cols,
+      bitmapSize: surface.bitmapSize,
+    });
+    return companionSatellite.getStatus();
+  });
+  ipcMain.handle('companion:remove-surface', (event, deviceId) => {
+    requireMainSender(event, 'Companion surface request is invalid.');
+
+    if (!DEVICE_ID_PATTERN.test(deviceId)) {
+      throw new TypeError('Companion surface request is invalid.');
+    }
+
+    companionSatellite.removeSurface(deviceId);
+    return companionSatellite.getStatus();
+  });
+  ipcMain.on('companion:key-press', (event, deviceId, index, pressed) => {
+    if (
+      event.sender !== mainWindow?.webContents ||
+      !DEVICE_ID_PATTERN.test(deviceId) ||
+      !Number.isSafeInteger(index) ||
+      index < 0 ||
+      typeof pressed !== 'boolean'
+    ) {
+      return;
+    }
+
+    companionSatellite.keyPress(deviceId, index, pressed);
+  });
   ipcMain.handle('focus:snapshot', (event) => {
     requireMainSender(event, 'Focused app snapshot request is invalid.');
     return focusWatcher?.getSnapshot() ?? null;
@@ -671,6 +766,15 @@ if (!hasSingleInstanceLock) {
       pluginService,
       userDataPath: paths.userDataDirectory,
     });
+    companionSatellite = createCompanionSatellite({
+      onEvent: (event, details) =>
+        logComponentEvent('companion', event, details),
+      onKeyState: (state) => sendToRenderer('companion:key-state', state),
+      onKeysClear: (deviceId) =>
+        sendToRenderer('companion:keys-clear', deviceId),
+      onStatus: (status) => sendToRenderer('companion:status', status),
+    });
+    companionSatellite.setConfig(getCompanionSettings());
     registerIpcHandlers();
     focusWatcher = createFocusWatcher({
       isOwnSnapshot: isStream32Focus,
@@ -726,6 +830,7 @@ if (!hasSingleInstanceLock) {
 app.on('before-quit', () => {
   isQuitting = true;
   clearInterval(lockStateTimer);
+  companionSatellite?.dispose();
   focusWatcher?.stop();
   actionRunner.dispose();
 });

@@ -83,6 +83,12 @@ class ProfileSwitcher {
       }
 
       const device = this.getDevices()[deviceId];
+
+      // Companion owns this board's pages; leave its saved profile alone.
+      if (device.companion?.enabled) {
+        continue;
+      }
+
       const profileId = this.resolveProfile(device, snapshot);
       const profile = this.getProfile(deviceId, profileId);
       const page = this.resolvePage(profile, snapshot);

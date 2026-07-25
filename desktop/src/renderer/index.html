@@ -792,8 +792,11 @@
 
             <div class="setting">
               <div>
-                <label for="display-brightness">Display brightness</label>
-                <p>Applied to decks that advertise brightness control.</p>
+                <label for="display-brightness">Default display brightness</label>
+                <p>
+                  Used by decks that advertise brightness control and have no
+                  value of their own. Override a single board in Devices.
+                </p>
               </div>
               <div class="setting-value">
                 <input
@@ -927,6 +930,46 @@
                 data-state="idle"
                 aria-live="polite"
               ></p>
+
+              <div class="companion-link">
+                <div class="companion-link-intro">
+                  <p class="field-label">Bitfocus Companion</p>
+                  <p class="helper">
+                    Hand a deck to Companion as a Satellite surface. Companion
+                    draws the buttons and receives the presses while Stream32
+                    keeps the USB connection.
+                  </p>
+                </div>
+                <div class="companion-link-address">
+                  <div class="companion-field">
+                    <label for="companion-host">Host</label>
+                    <input
+                      id="companion-host"
+                      type="text"
+                      maxlength="253"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="127.0.0.1"
+                    >
+                  </div>
+                  <div class="companion-field companion-field-port">
+                    <label for="companion-port">Port</label>
+                    <input
+                      id="companion-port"
+                      type="number"
+                      min="1"
+                      max="65535"
+                    >
+                  </div>
+                </div>
+                <p
+                  id="companion-link-status"
+                  class="helper companion-link-status"
+                  data-state="idle"
+                  aria-live="polite"
+                ></p>
+              </div>
+
               <div id="device-manager-list" class="device-manager-list"></div>
               <p id="device-manager-empty" class="helper" hidden>
                 No Stream32 boards yet. Flash a board or plug one in, then

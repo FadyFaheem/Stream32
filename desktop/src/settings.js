@@ -10,6 +10,12 @@ const DEFAULT_DISPLAY_SETTINGS = Object.freeze({
   sleepWhenLocked: true,
 });
 const DISPLAY_IDLE_TIMEOUTS = new Set([1, 5, 10, 15, 30, 60]);
+const DEFAULT_COMPANION_SETTINGS = Object.freeze({
+  host: '127.0.0.1',
+  port: 16622,
+});
+// Hostname or IPv4/IPv6 literal of the machine running Companion.
+const COMPANION_HOST_PATTERN = /^[A-Za-z0-9._:-]{1,253}$/;
 
 function getSettingsPath() {
   return path.join(app.getPath('userData'), SETTINGS_FILENAME);
@@ -91,11 +97,53 @@ function setDisplaySettings(value, settingsPath = getSettingsPath()) {
   return getDisplaySettings(settingsPath);
 }
 
+function getCompanionSettings(settingsPath = getSettingsPath()) {
+  const settings = readSettings(settingsPath);
+
+  return {
+    host:
+      typeof settings.companionHost === 'string' &&
+      COMPANION_HOST_PATTERN.test(settings.companionHost)
+        ? settings.companionHost
+        : DEFAULT_COMPANION_SETTINGS.host,
+    port:
+      Number.isSafeInteger(settings.companionPort) &&
+      settings.companionPort >= 1 &&
+      settings.companionPort <= 65535
+        ? settings.companionPort
+        : DEFAULT_COMPANION_SETTINGS.port,
+  };
+}
+
+function setCompanionSettings(value, settingsPath = getSettingsPath()) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    typeof value.host !== 'string' ||
+    !COMPANION_HOST_PATTERN.test(value.host) ||
+    !Number.isSafeInteger(value.port) ||
+    value.port < 1 ||
+    value.port > 65535
+  ) {
+    throw new TypeError('Companion settings are invalid.');
+  }
+
+  updateSettings(
+    { companionHost: value.host, companionPort: value.port },
+    settingsPath,
+  );
+  return getCompanionSettings(settingsPath);
+}
+
 module.exports = {
+  DEFAULT_COMPANION_SETTINGS,
   DEFAULT_DISPLAY_SETTINGS,
+  getCompanionSettings,
   getDisplaySettings,
   getSettingsPath,
   readSettings,
+  setCompanionSettings,
   setDisplaySettings,
   updateSettings,
   validateSettings,

@@ -17,7 +17,7 @@ before flashing, because look-alike products are not interchangeable.
 | Display | Confirm before you flash | Power and data |
 | --- | --- | --- |
 | Waveshare `ESP32-S3-Touch-LCD-4` | Silkscreen reads **Rev 3.0** (not Rev 4, and not the 4.3" board) | Single USB-C carries data and power |
-| Elecrow `CrowPanel Advanced 10.1"` ESP32-P4 | It is the **10.1" ESP32-P4** model, not a 5"/7"/9" or ESP32-S3 variant | **UART0** normally carries both power and data; **USB 2.0** is optional supplemental power |
+| Elecrow `CrowPanel Advanced 10.1"` ESP32-P4 | It is the **10.1" ESP32-P4** model, not a 5"/7"/9" or ESP32-S3 variant | **UART0** carries power and data and is the only port that can flash it; connecting **USB 2.0** as well adds power and a much faster sync link |
 
 See [Buying a display](../boards/BUYING.md) for exactly what to look for on each
 product page.
@@ -100,6 +100,10 @@ live key state, and multi-step actions, see
 - **The CrowPanel screen is dim or resets during flashing.** Try a shorter
   cable or a USB port that can provide more power. If needed, connect the
   USB 2.0 port as supplemental power while keeping data on UART0.
+- **CrowPanel deck syncs are slow.** Artwork over the UART0 bridge is limited
+  to 115200 baud. Connect the **USB 2.0** port to your computer as well, then
+  use **Connect COM port** and pick `Stream32 CrowPanel 10.1`. Flashing still
+  goes through UART0. This needs CrowPanel firmware `0.2.0` or later.
 - **Flashing fails repeatedly.** Enter BOOT mode manually: disconnect power,
   hold **BOOT** while reconnecting USB, release **BOOT**, then flash again. See
   [flash recovery](../boards/README.md#flash-recovery).

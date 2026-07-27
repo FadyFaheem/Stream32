@@ -240,6 +240,7 @@ test('manual post-flash reset skips RTS and uses one 90-second session', async (
   controller.setDeviceStatus = (...arguments_) => statuses.push(arguments_);
   controller.appendLog = (message) => logs.push(message);
   controller.closeSessionForPort = async () => {};
+  controller.sessions = new Map();
   controller.api = {
     getBoardFirmware: async () => ({
       board: { ...board, preferredFlashBaud: 921600 },
@@ -312,6 +313,74 @@ test('one open session accepts a delayed hello after retrying', async () => {
 
   await controller.closeSessionForPort(port);
   assert.equal(port.state.closes, 1);
+});
+
+// A CrowPanel on firmware 0.2.0 answers on both its CH340 bridge and its
+// native USB 2.0 port, and reconnect opens every authorized port.
+function boardAnsweringOn(transport) {
+  const hello = new TextEncoder().encode(
+    `${JSON.stringify({
+      boardId: TEST_BOARD_ID,
+      deviceId: '0123456789ab',
+      features: ['image-rle', transport],
+      firmwareVersion: TEST_FIRMWARE_VERSION,
+      protocol: 1,
+      type: 'hello',
+    })}\n`,
+  );
+
+  return fakeProtocolPort(({ readableController }) => {
+    readableController.enqueue(hello);
+  });
+}
+
+async function settle(predicate) {
+  for (let attempt = 0; attempt < 200 && !predicate(); attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+
+  assert.ok(predicate(), 'the losing session never closed');
+}
+
+test('a second port on the same board hands over to the USB link', async () => {
+  const controller = protocolController();
+  const bridge = boardAnsweringOn('transport-uart');
+  const usb = boardAnsweringOn('transport-usb');
+
+  await controller.openSession(bridge, TEST_BOARD_ID, TEST_FIRMWARE_VERSION, 2000);
+  await controller.openSession(usb, TEST_BOARD_ID, TEST_FIRMWARE_VERSION, 2000);
+  await settle(() => bridge.state.closes === 1);
+
+  assert.deepEqual([...controller.sessions.keys()], [usb]);
+});
+
+test('a slower bridge port cannot displace the open USB session', async () => {
+  const controller = protocolController();
+  const usb = boardAnsweringOn('transport-usb');
+  const bridge = boardAnsweringOn('transport-uart');
+
+  await controller.openSession(usb, TEST_BOARD_ID, TEST_FIRMWARE_VERSION, 2000);
+  await assert.rejects(
+    controller.openSession(bridge, TEST_BOARD_ID, TEST_FIRMWARE_VERSION, 2000),
+    /already connected on a faster port/,
+  );
+
+  assert.deepEqual([...controller.sessions.keys()], [usb]);
+  assert.equal(bridge.state.closes, 1);
+});
+
+test('flashing releases every port the board answers on', async () => {
+  const controller = protocolController();
+  const usb = boardAnsweringOn('transport-usb');
+  const flashPort = {};
+
+  await controller.openSession(usb, TEST_BOARD_ID, TEST_FIRMWARE_VERSION, 2000);
+  // The reset into the bootloader kills the USB link too, so a session left
+  // open there would outrank the post-flash handshake on UART0.
+  await controller.closeSessionsForBoard(TEST_BOARD_ID, flashPort);
+
+  assert.equal(controller.sessions.size, 0);
+  assert.equal(usb.state.closes, 1);
 });
 
 test('handshake timeout closes the port and releases stream locks', async () => {

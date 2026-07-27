@@ -15,8 +15,12 @@
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lvgl.h"
+#include "tinyusb.h"
+#include "tinyusb_cdc_acm.h"
+#include "tinyusb_default_config.h"
 
 #define STREAM32_BOARD_ID "elecrow-crowpanel-advanced-10-1-esp32-p4"
 #define STREAM32_PROTOCOL_VERSION 1
@@ -26,6 +30,16 @@
 #define STREAM32_UART_BAUD 115200
 #define STREAM32_UART_TX GPIO_NUM_37
 #define STREAM32_UART_RX GPIO_NUM_38
+/* The CrowPanel's second USB-C port wires D+/D- straight to the ESP32-P4's
+   USB 2.0 high-speed PHY (module pads 50/49), so CDC-ACM turns the port
+   Elecrow ships as power-only into a 480 Mbit/s protocol link. UART0 stays
+   live beside it: it is the only way to flash this board, and the desktop
+   holds it open across the manual post-flash reset. */
+#define STREAM32_USB_CDC TINYUSB_CDC_ACM_0
+#define STREAM32_USB_READ_CHUNK 512
+#define STREAM32_USB_WRITE_TIMEOUT_MS 100
+/* Safety net only: the CDC receive callback wakes the reader immediately. */
+#define STREAM32_USB_IDLE_POLL_MS 50
 /* This board advertises a 40-key page budget, so it accepts the extended
    8 KB layout line (the desktop's baseline for other messages is 4 KB). */
 #define STREAM32_LINE_CAPACITY 8192
@@ -33,17 +47,94 @@
 #define STREAM32_EVENT_LINE_CAPACITY 128
 #define STREAM32_REPLY_CAPACITY 384
 
+typedef enum {
+    STREAM32_LINK_UART = 0,
+    STREAM32_LINK_USB,
+} stream32_link_t;
+
+/* Per-transport assembler for newline-delimited JSON. */
+typedef struct {
+    stream32_link_t link;
+    char *buffer;
+    size_t capacity;
+    size_t length;
+    bool dropping_oversized_line;
+} line_reader_t;
+
 static const char *TAG = "stream32";
 static QueueHandle_t event_queue;
+/* Serializes dispatch and every physical write. deck_protocol keeps static
+   decode state and both transports share this file's reply buffer, so only
+   one link may be mid-message at a time. */
+static SemaphoreHandle_t protocol_mutex;
+/* The transport that delivered the last complete host line. Replies and
+   queued events follow it, so the desktop always hears back on the link it
+   is actually talking on. */
+static stream32_link_t active_link = STREAM32_LINK_UART;
 static lv_obj_t *connection_label;
 static lv_obj_t *touch_label;
 static lv_obj_t *touch_surface;
 static volatile bool system_ready;
+static TaskHandle_t usb_task;
+/* Filled from the efuse MAC before TinyUSB starts. */
+static char usb_serial_string[13];
+/* Index order is TinyUSB's default: language, manufacturer, product, serial,
+   CDC interface. Naming the device keeps the fast link tellable from the
+   CH340 bridge in the desktop's port list, and the per-board serial keeps two
+   panels on one host distinct. File scope: the language compound literal
+   needs static storage duration. */
+static const char *usb_strings[] = {
+    (const char[]){0x09, 0x04},
+    "Stream32",
+    "Stream32 CrowPanel 10.1",
+    usb_serial_string,
+    "Stream32 deck link",
+};
+
+static bool usb_flush(void)
+{
+    return tinyusb_cdcacm_write_flush(
+               STREAM32_USB_CDC,
+               pdMS_TO_TICKS(STREAM32_USB_WRITE_TIMEOUT_MS)
+           ) == ESP_OK;
+}
+
+/* Queues one span, flushing only when the TX FIFO fills so a whole line
+   normally costs a single USB transfer. Returns false once the host stops
+   draining, which abandons the line instead of stalling the protocol task. */
+static bool usb_queue_all(const char *data, size_t length)
+{
+    size_t written = 0;
+
+    while (written < length) {
+        written += tinyusb_cdcacm_write_queue(
+            STREAM32_USB_CDC,
+            (const uint8_t *)data + written,
+            length - written
+        );
+
+        if (written < length && !usb_flush()) {
+            return false;
+        }
+    }
+
+    return true;
+}
 
 static void serial_write_line(const char *json)
 {
+    const size_t length = strlen(json);
+
+    if (active_link == STREAM32_LINK_USB) {
+        if (usb_queue_all(json, length) && usb_queue_all("\n", 1)) {
+            (void)usb_flush();
+        }
+
+        return;
+    }
+
     /* uart_write_bytes blocks until the line fits the TX ring buffer. */
-    uart_write_bytes(STREAM32_UART, json, strlen(json));
+    uart_write_bytes(STREAM32_UART, json, length);
     uart_write_bytes(STREAM32_UART, "\n", 1);
 }
 
@@ -69,7 +160,7 @@ static void update_connection_label(const char *text)
 static void send_hello(void)
 {
     uint8_t mac[6];
-    char message[256];
+    char message[288];
     const esp_app_desc_t *app = esp_app_get_description();
 
     /* The ESP32-P4 has no radio; the efuse base MAC is its identity. */
@@ -80,7 +171,7 @@ static void send_hello(void)
         "{\"type\":\"hello\",\"protocol\":%d,\"boardId\":\"%s\","
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
         "\"features\":[\"display-control\",\"display-brightness\",\"display-blank\","
-        "\"key-update\",\"image-rle\"]}",
+        "\"key-update\",\"image-rle\",\"%s\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -89,7 +180,10 @@ static void send_hello(void)
         mac[2],
         mac[3],
         mac[4],
-        mac[5]
+        mac[5],
+        /* Both ports reach the same board, so the desktop needs to know
+           which link a session landed on to keep the faster one. */
+        active_link == STREAM32_LINK_USB ? "transport-usb" : "transport-uart"
     );
     serial_write_line(message);
 }
@@ -134,7 +228,11 @@ static void handle_host_message(const char *line, size_t length)
             send_error(bsp_display_status());
         } else {
             deck_protocol_clear_overlays();
-            update_connection_label("USB connected to Stream32");
+            update_connection_label(
+                active_link == STREAM32_LINK_USB
+                    ? "USB 2.0 connected to Stream32"
+                    : "UART0 connected to Stream32"
+            );
             send_hello();
         }
     } else if (strcmp(type->valuestring, "ping") == 0) {
@@ -175,6 +273,125 @@ static void handle_host_message(const char *line, size_t length)
     cJSON_Delete(message);
 }
 
+/* Feeds one transport's bytes into its assembler and dispatches whole lines
+   under the shared lock, so replies leave on the link they arrived from. */
+static void consume_bytes(
+    line_reader_t *reader,
+    const uint8_t *data,
+    size_t count
+)
+{
+    for (size_t index = 0; index < count; index++) {
+        const char byte = (char)data[index];
+
+        if (byte != '\n') {
+            if (byte != '\r' && !reader->dropping_oversized_line) {
+                if (reader->length < reader->capacity - 1) {
+                    reader->buffer[reader->length++] = byte;
+                } else {
+                    reader->dropping_oversized_line = true;
+                }
+            }
+
+            continue;
+        }
+
+        xSemaphoreTake(protocol_mutex, portMAX_DELAY);
+        active_link = reader->link;
+
+        if (reader->dropping_oversized_line) {
+            send_error("message-too-large");
+        } else if (reader->length > 0) {
+            handle_host_message(reader->buffer, reader->length);
+        }
+
+        xSemaphoreGive(protocol_mutex);
+        reader->length = 0;
+        reader->dropping_oversized_line = false;
+    }
+}
+
+static void usb_rx_event(int itf, cdcacm_event_t *event)
+{
+    (void)itf;
+    (void)event;
+
+    xTaskNotifyGive(usb_task);
+}
+
+static void usb_protocol_task(void *argument)
+{
+    /* TINYUSB_DEFAULT_CONFIG selects the high-speed port on the ESP32-P4,
+       which is the one the CrowPanel's USB 2.0 connector is wired to. */
+    tinyusb_config_t usb_config = TINYUSB_DEFAULT_CONFIG();
+    const tinyusb_config_cdcacm_t cdc_config = {
+        .cdc_port = STREAM32_USB_CDC,
+        .callback_rx = usb_rx_event,
+    };
+    uint8_t incoming[STREAM32_USB_READ_CHUNK];
+    uint8_t mac[6];
+    /* Static: an 8 KB line does not belong on the task stack. */
+    static char line[STREAM32_LINE_CAPACITY];
+    line_reader_t reader = {
+        .link = STREAM32_LINK_USB,
+        .buffer = line,
+        .capacity = sizeof(line),
+    };
+
+    (void)argument;
+    /* Published before the callback can fire so no notification is lost. */
+    usb_task = xTaskGetCurrentTaskHandle();
+    /* Same efuse base MAC the hello reports as deviceId. */
+    ESP_ERROR_CHECK(esp_read_mac(mac, ESP_MAC_BASE));
+    snprintf(
+        usb_serial_string,
+        sizeof(usb_serial_string),
+        "%02x%02x%02x%02x%02x%02x",
+        mac[0],
+        mac[1],
+        mac[2],
+        mac[3],
+        mac[4],
+        mac[5]
+    );
+    usb_config.descriptor.string = usb_strings;
+    usb_config.descriptor.string_count =
+        sizeof(usb_strings) / sizeof(usb_strings[0]);
+
+    esp_err_t status = tinyusb_driver_install(&usb_config);
+
+    if (status == ESP_OK) {
+        status = tinyusb_cdcacm_init(&cdc_config);
+    }
+
+    if (status != ESP_OK) {
+        /* UART0 still carries the protocol, so lose the fast link, not the
+           board. Nothing here may abort a panel that flashes over UART0.
+           A failed init registered no callback, so the handle stays set and
+           unused rather than becoming a NULL target for a stray notify. */
+        ESP_LOGW(TAG, "USB 2.0 link unavailable: %s", esp_err_to_name(status));
+        vTaskDelete(NULL);
+        return;
+    }
+
+    while (true) {
+        size_t received = 0;
+
+        if (tinyusb_cdcacm_read(
+                STREAM32_USB_CDC,
+                incoming,
+                sizeof(incoming),
+                &received
+            ) == ESP_OK &&
+            received > 0) {
+            consume_bytes(&reader, incoming, received);
+            continue;
+        }
+
+        (void)ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(STREAM32_USB_IDLE_POLL_MS));
+    }
+}
+
 static void serial_protocol_task(void *argument)
 {
     const uart_config_t config = {
@@ -186,10 +403,13 @@ static void serial_protocol_task(void *argument)
         .source_clk = UART_SCLK_DEFAULT,
     };
     uint8_t incoming[256];
-    /* Static: a 4 KB line does not belong on the task stack. */
+    /* Static: an 8 KB line does not belong on the task stack. */
     static char line[STREAM32_LINE_CAPACITY];
-    size_t line_length = 0;
-    bool dropping_oversized_line = false;
+    line_reader_t reader = {
+        .link = STREAM32_LINK_UART,
+        .buffer = line,
+        .capacity = sizeof(line),
+    };
 
     (void)argument;
     ESP_ERROR_CHECK(uart_driver_install(
@@ -219,25 +439,8 @@ static void serial_protocol_task(void *argument)
             pdMS_TO_TICKS(20)
         );
 
-        for (int index = 0; index < received; index++) {
-            const char byte = (char)incoming[index];
-
-            if (byte == '\n') {
-                if (dropping_oversized_line) {
-                    send_error("message-too-large");
-                } else if (line_length > 0) {
-                    handle_host_message(line, line_length);
-                }
-
-                line_length = 0;
-                dropping_oversized_line = false;
-            } else if (byte != '\r' && !dropping_oversized_line) {
-                if (line_length < sizeof(line) - 1) {
-                    line[line_length++] = byte;
-                } else {
-                    dropping_oversized_line = true;
-                }
-            }
+        if (received > 0) {
+            consume_bytes(&reader, incoming, (size_t)received);
         }
 
         deck_ui_poll();
@@ -245,7 +448,11 @@ static void serial_protocol_task(void *argument)
         char event_line[STREAM32_EVENT_LINE_CAPACITY];
 
         while (xQueueReceive(event_queue, event_line, 0) == pdTRUE) {
+            /* Touch and press events are the one writer outside dispatch, so
+               they take the same lock to stay off a half-written reply. */
+            xSemaphoreTake(protocol_mutex, portMAX_DELAY);
             serial_write_line(event_line);
+            xSemaphoreGive(protocol_mutex);
         }
     }
 }
@@ -365,9 +572,10 @@ static void create_self_test_ui(void)
 void app_main(void)
 {
     event_queue = xQueueCreate(24, STREAM32_EVENT_LINE_CAPACITY);
+    protocol_mutex = xSemaphoreCreateMutex();
 
-    if (event_queue == NULL) {
-        ESP_LOGE(TAG, "Could not allocate the event queue");
+    if (event_queue == NULL || protocol_mutex == NULL) {
+        ESP_LOGE(TAG, "Could not allocate the protocol primitives");
         return;
     }
 
@@ -386,6 +594,13 @@ void app_main(void)
     if (task_created != pdPASS) {
         ESP_LOGE(TAG, "Could not create the serial protocol task");
         return;
+    }
+
+    /* The fast link is optional: a board with nothing in its USB 2.0 port
+       keeps working over UART0, so a failure here is only logged. */
+    if (xTaskCreate(usb_protocol_task, "stream32_usb", 8192, NULL, 5, NULL) !=
+        pdPASS) {
+        ESP_LOGW(TAG, "Could not create the USB 2.0 protocol task");
     }
 
     lv_display_t *display = bsp_display_start();

@@ -37,13 +37,18 @@ Elecrow `CrowPanel Advanced 10.1"` (profile
   this firmware never touches)
 - ESP32-P4NRW32 (16 MB flash, 32 MB PSRAM), EK79007 1024×600 MIPI-DSI IPS
   panel, GT911 touch
-- Flashing and the Stream32 protocol both run through the on-board CH340K
-  USB-UART bridge on the port labeled `UART0`. Shipping hardware has been
-  observed as `USB-SERIAL CH340K` (`1a86:7522`, for example COM6); the profile
-  also retains `1a86:7523` for earlier documented CH340 variants. One UART0
-  connection normally supplies both power and data. The USB 2.0 port can
-  provide supplemental power when needed. The pre-installed ESP32-C6 radio
-  module is not used.
+- Flashing always runs through the on-board CH340K USB-UART bridge on the port
+  labeled `UART0`. Shipping hardware has been observed as `USB-SERIAL CH340K`
+  (`1a86:7522`, for example COM6); the profile also retains `1a86:7523` for
+  earlier documented CH340 variants. One UART0 connection normally supplies
+  both power and data. The pre-installed ESP32-C6 radio module is not used.
+- The port labeled `USB 2.0` is wired straight to the ESP32-P4's high-speed USB
+  PHY, and Elecrow's stock firmware leaves it unused. From firmware `0.2.0`
+  Stream32 enables it as a CDC-ACM link, so the same JSON protocol can run at
+  USB 2.0 speed instead of 115200 baud. It enumerates as
+  `Stream32 CrowPanel 10.1`, and its serial number is the board's device ID.
+  Connect both cables and pick that port for the deck; artwork sync is roughly
+  two orders of magnitude faster than over the bridge.
 
 The Espressif ROM reports the chip family, which the desktop verifies
 before erasing. The ROM cannot identify the attached display or PCB
@@ -78,12 +83,20 @@ saved layouts and artwork.
 For the CrowPanel, connect UART0 with a known-good USB data cable. Close serial
 monitors, install the current WCH CH340 driver if Windows does not expose the
 COM port reliably, and try a shorter cable or different direct USB port if the
-automatic 460800 fallback also fails. USB 2.0 can be connected as supplemental
-power if the display is unstable.
+automatic 460800 fallback also fails. Flashing never uses the USB 2.0 port: the
+P4's USB Serial/JTAG pins are taken by other functions on this board, so the
+bootloader is only reachable over UART0. Leaving USB 2.0 connected during a
+flash is fine and steadies a power-limited panel.
 
 ### Deck sync performance
 
-The runtime protocol stays at 115200 baud for compatibility. The previous slow
+Over a UART bridge the runtime protocol stays at 115200 baud for
+compatibility, which is the dominant cost of a cold sync: one 2688-byte image
+chunk needs about 320 ms of wire time, so a single 150 px key runs into
+seconds. A CrowPanel synced over its USB 2.0 port instead spends microseconds
+per chunk, and the remaining cost is the round trip for each `image-ack`.
+
+The previous slow
 path sent every rendered key as raw RGB565, base64-expanded and
 stop-and-wait, so a fully decorated 40-key CrowPanel page was dominated by
 image wire bytes. Firmware now advertises the additive `image-rle` feature.
@@ -125,10 +138,15 @@ New protocols, chips, or transports require corresponding desktop support.
 ## USB protocol v1
 
 Firmware and desktop exchange bounded newline-delimited JSON over the
-board's serial link (the ESP32-S3's native USB Serial/JTAG port, or the
-CrowPanel's CH340 UART0 bridge at a fixed 115200 baud). Image lines remain
-below 4096 bytes; the 40-key CrowPanel accepts up to 8192 bytes for its larger
-single-line layouts.
+board's serial link: the ESP32-S3's native USB Serial/JTAG port, or on the
+CrowPanel either its CH340 UART0 bridge at a fixed 115200 baud or its native
+USB 2.0 CDC link. Image lines remain below 4096 bytes; the 40-key CrowPanel
+accepts up to 8192 bytes for its larger single-line layouts.
+
+The framing is identical on every link, so a board that answers on two ports
+reports the same `deviceId` on both. Such firmware names its link in the hello
+`features` as `transport-usb` or `transport-uart`, and the desktop keeps one
+session per device on the highest-ranked link.
 
 Desktop messages:
 
@@ -243,8 +261,8 @@ storage decisions, and live-overlay pixel ownership in `deck_ui.c`.
 ## Flash recovery
 
 Use a USB data cable and close other serial monitors before flashing. Connect
-the CrowPanel through UART0; USB 2.0 is only needed as supplemental power if
-the display is unstable. If automatic bootloader entry fails:
+the CrowPanel through UART0; the USB 2.0 port cannot reach the bootloader.
+If automatic bootloader entry fails:
 
 1. Disconnect power.
 2. Hold **BOOT** while reconnecting USB, then release **BOOT**.

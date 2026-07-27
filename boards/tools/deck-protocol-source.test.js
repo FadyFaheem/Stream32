@@ -105,6 +105,48 @@ test('both board transports dispatch through the shared protocol module', () => 
   );
 });
 
+test('the CrowPanel serves both links without risking the flashing one', () => {
+  const main = read(
+    path.join(
+      ROOT,
+      'boards',
+      'elecrow-crowpanel-advanced-10-1-esp32-p4',
+      'firmware',
+      'main',
+      'main.c',
+    ),
+  );
+  const usbTask = main.slice(
+    main.indexOf('static void usb_protocol_task('),
+    main.indexOf('static void serial_protocol_task('),
+  );
+  const uartTask = main.slice(
+    main.indexOf('static void serial_protocol_task('),
+    main.indexOf('static void touch_event_handler('),
+  );
+
+  // One assembler for both links: line limits and the oversized-line reply
+  // cannot drift apart per transport.
+  assert.match(usbTask, /consume_bytes\(&reader/);
+  assert.match(uartTask, /consume_bytes\(&reader/);
+  assert.doesNotMatch(usbTask, /handle_host_message\(/);
+  assert.doesNotMatch(uartTask, /handle_host_message\(/);
+  assert.match(
+    main,
+    /xSemaphoreTake\(protocol_mutex[\s\S]*handle_host_message\([\s\S]*xSemaphoreGive\(protocol_mutex\)/,
+  );
+
+  // UART0 is the only way to flash this board and the link the desktop holds
+  // across a manual post-flash reset, so USB bring-up may never abort.
+  assert.doesNotMatch(usbTask, /ESP_ERROR_CHECK\(\s*tinyusb/);
+  assert.match(usbTask, /vTaskDelete\(NULL\)/);
+  assert.match(uartTask, /ESP_ERROR_CHECK\(uart_driver_install\(/);
+
+  // The desktop keeps one session per board by ranking the reported link.
+  assert.match(main, /"transport-usb" : "transport-uart"/);
+  assert.ok(main.split(/\r?\n/).length < 1000);
+});
+
 test('Sleep blanks through the idle wake path without changing lock state', () => {
   const blankDisplay = ui.slice(
     ui.indexOf('const char *deck_ui_blank_display('),

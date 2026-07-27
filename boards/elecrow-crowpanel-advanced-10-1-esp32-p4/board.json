@@ -26,20 +26,21 @@
     "maxPages": 8
   },
   "firmware": {
-    "version": "0.1.9",
+    "version": "0.2.0",
     "projectPath": "firmware",
-    "imageName": "elecrow-crowpanel-advanced-10-1-esp32-p4-0.1.9.bin",
+    "imageName": "elecrow-crowpanel-advanced-10-1-esp32-p4-0.2.0.bin",
     "offset": 0
   },
   "capabilities": [
     "display",
     "brightness",
     "touch",
-    "usb-uart-bridge"
+    "usb-uart-bridge",
+    "usb-cdc"
   ],
   "recoveryInstructions": [
-    "Use the USB port labeled UART0, slide POWER to ON, and close other serial monitors.",
-    "UART0 normally supplies both power and data; connect USB 2.0 only as supplemental power if the display is unstable.",
+    "Flashing always runs over the USB port labeled UART0: slide POWER to ON and close other serial monitors.",
+    "Firmware 0.2.0 and later also serve the deck over the USB 2.0 port. Connect both cables, then pick the 'Stream32 CrowPanel 10.1' port to sync far faster than the UART0 bridge.",
     "Hold BOOT, press and release RST, then release BOOT to enter download mode.",
     "If 921600 baud is unstable, the desktop automatically restarts the complete write once at 460800 baud.",
     "Leave Full erase off to preserve saved decks; enable it only for slow, destructive troubleshooting.",

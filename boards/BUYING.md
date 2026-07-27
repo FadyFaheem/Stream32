@@ -47,16 +47,20 @@ sizes and chip variants, so choose carefully.
     "10.1" ESP32-P4 Display"). The 5", 7", 9", and ESP32-S3 variants are
     different devices.
   - Hardware revisions **1.0 to 1.2** are supported.
-- **Use the UART0 port.** One USB data cable connected to **UART0** normally
-  provides both power and data. The separate **USB 2.0** port can provide
-  supplemental power if the display is unstable on a power-limited USB port.
+- **Flash over the UART0 port.** One USB data cable connected to **UART0**
+  normally provides both power and data, and it is the only port that can
+  flash the board.
+- **Two cables are better.** The separate **USB 2.0** port steadies a panel on
+  a power-limited USB port, and Stream32 firmware also uses it as a native
+  USB link that syncs artwork far faster than the UART0 bridge.
 
 The on-board ESP32-C6 wireless module is not used by Stream32.
 
 ## What else you need
 
 - A **USB data cable** (not a charge-only cable). The Waveshare uses its USB-C
-  port; the CrowPanel uses the port labeled **UART0**.
+  port; the CrowPanel uses the port labeled **UART0**. A second data cable for
+  the CrowPanel's **USB 2.0** port is optional but recommended.
 - Nothing else is required to get started. Enclosures and stands are optional and
   up to you.
 

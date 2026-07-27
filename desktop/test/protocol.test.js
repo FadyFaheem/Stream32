@@ -15,6 +15,7 @@ const {
   encodeRle565,
   isExpectedChip,
   layoutLineLimitFor,
+  transportRank,
   validateDeviceHello,
   validateImageAck,
   validateKeyUpdateAck,
@@ -658,4 +659,16 @@ test('validates touch bounds and chip names', () => {
   );
   assert.equal(isExpectedChip('ESP32-P4', 'ESP32-P4'), true);
   assert.equal(isExpectedChip('ESP32-C3', 'ESP32-S3'), false);
+});
+
+test('ranks a native USB link above a UART bridge', () => {
+  const rank = (features) => transportRank({ features });
+
+  assert.ok(rank(['image-rle', 'transport-usb']) > rank(['transport-uart']));
+  // Boards that name no transport must not outrank one that does, so a
+  // single-port board never displaces an established session.
+  assert.ok(rank(['transport-uart']) > rank(['image-rle']));
+  assert.equal(rank([]), 0);
+  assert.equal(transportRank(undefined), 0);
+  assert.equal(transportRank({}), 0);
 });

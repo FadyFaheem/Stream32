@@ -141,6 +141,24 @@ function validateDeviceHello(
   };
 }
 
+// A board can expose more than one port to the same host: the CrowPanel
+// answers on its CH340 UART0 bridge and, from firmware 0.2.0, on its native
+// USB 2.0 link. Both report the same deviceId, so sessions are ranked and
+// only the fastest is kept. Firmware that names no transport ranks lowest,
+// which leaves single-port boards on their existing link.
+const TRANSPORT_RANKS = new Map([
+  ['transport-usb', 2],
+  ['transport-uart', 1],
+]);
+
+function transportRank(hello) {
+  const ranks = (hello?.features || []).map(
+    (feature) => TRANSPORT_RANKS.get(feature) || 0,
+  );
+
+  return Math.max(0, ...ranks);
+}
+
 function validateTouchMessage(message) {
   if (
     !message ||
@@ -716,6 +734,7 @@ module.exports = {
   isExpectedChip,
   normalizeChipName,
   toRgb565,
+  transportRank,
   validateDeviceHello,
   validateImageAck,
   validateKeyUpdateAck,

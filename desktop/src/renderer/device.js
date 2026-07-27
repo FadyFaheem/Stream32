@@ -5,6 +5,7 @@ const {
   encodeDisplayMessage,
   encodeHostHello,
   isExpectedChip,
+  transportRank,
   validateDeviceHello,
   validateTouchMessage,
 } = require('./protocol');
@@ -759,7 +760,9 @@ class DeviceController {
     let firmwareWritten = false;
 
     try {
-      await this.closeSessionForPort(port);
+      // A board can answer on more than one port, and the reset into the
+      // bootloader invalidates every session it holds.
+      await this.closeSessionsForBoard(board.id, port);
       await sleep(500);
       const firmware = await this.api.getBoardFirmware(board.id);
       const fullErase = this.fullErase.checked;
@@ -1130,6 +1133,23 @@ class DeviceController {
               );
             }
 
+            // A board with both a UART bridge and a native USB link answers
+            // on two ports. Keep one session per device, on the faster link,
+            // so sync never lands on the slow bridge by enumeration order.
+            const rival = this.sessionForDeviceId(hello.deviceId, session);
+
+            if (rival && transportRank(rival.hello) >= transportRank(hello)) {
+              throw new Error(
+                'This device is already connected on a faster port.',
+              );
+            }
+
+            if (rival) {
+              this.closeSessionForPort(rival.port).catch((error) => {
+                this.appendLog(`Protocol: ${errorMessage(error)}`);
+              });
+            }
+
             session.hello = hello;
             session.handshakeComplete = true;
             this.updateDeviceStatusSummary();
@@ -1244,6 +1264,18 @@ class DeviceController {
     }
   }
 
+  // Finds an established session for the same physical board, ignoring the
+  // caller's own session so a handshake never matches itself.
+  sessionForDeviceId(deviceId, exclude = null) {
+    for (const session of this.sessions.values()) {
+      if (session !== exclude && session.hello?.deviceId === deviceId) {
+        return session;
+      }
+    }
+
+    return null;
+  }
+
   async closeSessionForPort(port) {
     const session = this.sessions.get(port);
 
@@ -1281,6 +1313,16 @@ class DeviceController {
   async closeAllSessions() {
     for (const port of [...this.sessions.keys()]) {
       await this.closeSessionForPort(port);
+    }
+  }
+
+  async closeSessionsForBoard(boardId, flashPort) {
+    await this.closeSessionForPort(flashPort);
+
+    for (const [port, session] of [...this.sessions]) {
+      if (session.hello?.boardId === boardId) {
+        await this.closeSessionForPort(port);
+      }
     }
   }
 

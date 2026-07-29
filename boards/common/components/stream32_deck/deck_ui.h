@@ -33,6 +33,13 @@ bool deck_ui_clear_overlays(void);
 // first touch wakes an idle display; host-forced sleep consumes every touch.
 bool deck_ui_handle_touch(bool pressed);
 
+// Screen-cleaning lock. While it is on, a wipe cannot reach the deck: every
+// touch is swallowed, including the local goPage switches. Only a five second
+// hold on the centred target, or the host, releases it. The hold is reported
+// through deck_ui_poll as a clean notification.
+const char *deck_ui_set_clean(bool active);
+bool deck_ui_clean_active(void);
+
 // Narrow typed operations used by deck_protocol after JSON validation.
 const char *deck_ui_apply_layout(
     const deck_protocol_layout_t *layout,

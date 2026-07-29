@@ -89,7 +89,7 @@ static void send_hello(void)
         "{\"type\":\"hello\",\"protocol\":%d,\"boardId\":\"%s\","
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
         "\"features\":[\"display-control\",\"display-blank\",\"key-update\","
-        "\"image-rle\"]}",
+        "\"image-rle\",\"clean-mode\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -143,6 +143,12 @@ static void handle_host_message(const char *line, size_t length)
             deck_protocol_clear_overlays();
             update_connection_label("USB connected to Stream32");
             send_hello();
+
+            /* A cleaning lock outlives the USB link, so a desktop that
+               reconnects mid-wipe learns the panel is still locked. */
+            if (deck_ui_clean_active()) {
+                usb_write_line("{\"type\":\"clean\",\"active\":true}");
+            }
         }
     } else if (strcmp(type->valuestring, "ping") == 0) {
         const cJSON *id = cJSON_GetObjectItemCaseSensitive(message, "id");

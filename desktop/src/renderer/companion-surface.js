@@ -83,10 +83,6 @@ class CompanionSurfaces {
     this.leaseTimer = null;
   }
 
-  isEnabled(deviceId) {
-    return this.runtime.getDevices()[deviceId]?.companion?.enabled === true;
-  }
-
   surfaceFor(deviceId) {
     return this.surfaces.get(deviceId) || null;
   }

@@ -11,6 +11,7 @@ const DEFAULT_DISPLAY_SETTINGS = Object.freeze({
 });
 const DISPLAY_IDLE_TIMEOUTS = new Set([1, 5, 10, 15, 30, 60]);
 const DEFAULT_COMPANION_SETTINGS = Object.freeze({
+  enabled: false,
   host: '127.0.0.1',
   port: 16622,
 });
@@ -101,6 +102,7 @@ function getCompanionSettings(settingsPath = getSettingsPath()) {
   const settings = readSettings(settingsPath);
 
   return {
+    enabled: settings.companionEnabled === true,
     host:
       typeof settings.companionHost === 'string' &&
       COMPANION_HOST_PATTERN.test(settings.companionHost)
@@ -120,6 +122,7 @@ function setCompanionSettings(value, settingsPath = getSettingsPath()) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
+    typeof value.enabled !== 'boolean' ||
     typeof value.host !== 'string' ||
     !COMPANION_HOST_PATTERN.test(value.host) ||
     !Number.isSafeInteger(value.port) ||
@@ -130,7 +133,11 @@ function setCompanionSettings(value, settingsPath = getSettingsPath()) {
   }
 
   updateSettings(
-    { companionHost: value.host, companionPort: value.port },
+    {
+      companionEnabled: value.enabled,
+      companionHost: value.host,
+      companionPort: value.port,
+    },
     settingsPath,
   );
   return getCompanionSettings(settingsPath);

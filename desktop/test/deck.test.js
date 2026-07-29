@@ -1679,6 +1679,34 @@ test('session attach and detach own runtime state and cleanup', async () => {
   assert.equal(renders, 2);
 });
 
+test('a saved Companion surface stays inert until the setting turns it on', async () => {
+  const runtime = createRuntime();
+  const reapplied = [];
+
+  runtime.devices = {
+    aaaa11112222: { companion: { enabled: true, rows: 3, cols: 3 } },
+    bbbb33334444: { companion: { enabled: false, rows: 3, cols: 3 } },
+  };
+  runtime.api = {
+    setDeckCompanion: async (deviceId, companion) => {
+      reapplied.push(deviceId);
+      return { ...runtime.devices[deviceId], companion };
+    },
+  };
+
+  assert.equal(runtime.companionEnabled('aaaa11112222'), false);
+
+  await runtime.setCompanionAvailable(true);
+
+  assert.equal(runtime.companionEnabled('aaaa11112222'), true);
+  assert.equal(runtime.companionEnabled('bbbb33334444'), false);
+  assert.deepEqual(reapplied, ['aaaa11112222']);
+
+  await runtime.setCompanionAvailable(false);
+
+  assert.equal(runtime.companionEnabled('aaaa11112222'), false);
+});
+
 test('presses are gated until the first profile sync commits', async () => {
   const controller = createRuntime();
   let releaseSync;

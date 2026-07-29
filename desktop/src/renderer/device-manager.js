@@ -159,10 +159,12 @@ class DeviceManager {
     this.status = document.querySelector('#device-manager-status');
     this.scanButton = document.querySelector('#device-manager-scan');
     this.cleanAllButton = document.querySelector('#device-manager-clean-all');
+    this.companionEnabledControl = document.querySelector('#companion-enabled');
+    this.companionSection = document.querySelector('#companion-link');
     this.companionHost = document.querySelector('#companion-host');
     this.companionPort = document.querySelector('#companion-port');
     this.companionLinkStatus = document.querySelector('#companion-link-status');
-    this.companionSettings = { host: '127.0.0.1', port: 16622 };
+    this.companionSettings = { enabled: false, host: '127.0.0.1', port: 16622 };
     this.companionLink = null;
     this.defaultBrightness = 100;
   }
@@ -171,13 +173,21 @@ class DeviceManager {
     this.scanButton?.addEventListener('click', () => this.scan());
     this.cleanAllButton?.addEventListener('click', () => this.cleanAll());
 
-    for (const control of [this.companionHost, this.companionPort]) {
-      control.addEventListener('change', () => this.saveCompanionAddress());
+    for (const control of [
+      this.companionEnabledControl,
+      this.companionHost,
+      this.companionPort,
+    ]) {
+      control.addEventListener('change', () => this.saveCompanionSettings());
     }
 
     this.deck.api.onCompanionStatus((status) => {
       this.companionLink = status;
-      this.companionSettings = { host: status.host, port: status.port };
+      this.companionSettings = {
+        ...this.companionSettings,
+        host: status.host,
+        port: status.port,
+      };
       this.renderCompanionLink();
       this.render();
     });
@@ -185,6 +195,9 @@ class DeviceManager {
     try {
       this.companionSettings = await this.deck.api.getCompanionSettings();
       this.companionLink = this.companionSettings;
+      await this.deck.runtime.setCompanionAvailable(
+        this.companionSettings.enabled,
+      );
     } catch (error) {
       this.setCompanionLinkStatus(
         `Could not read Companion settings: ${error.message}`,
@@ -202,6 +215,10 @@ class DeviceManager {
   }
 
   renderCompanionLink() {
+    this.companionEnabledControl.checked = this.companionSettings.enabled;
+    this.companionEnabledControl.disabled = false;
+    this.companionSection.hidden = !this.companionSettings.enabled;
+
     if (this.document.activeElement !== this.companionHost) {
       this.companionHost.value = this.companionSettings.host;
     }
@@ -221,18 +238,23 @@ class DeviceManager {
     );
   }
 
-  async saveCompanionAddress() {
+  async saveCompanionSettings() {
     try {
       this.companionSettings = await this.deck.api.setCompanionSettings({
+        enabled: this.companionEnabledControl.checked,
         host: this.companionHost.value.trim(),
         port: Number(this.companionPort.value),
       });
       this.companionLink = this.companionSettings;
       this.renderCompanionLink();
+      await this.deck.runtime.setCompanionAvailable(
+        this.companionSettings.enabled,
+      );
+      this.render();
     } catch (error) {
       this.renderCompanionLink();
       this.setCompanionLinkStatus(
-        `Could not save the Companion address: ${error.message}`,
+        `Could not save the Companion settings: ${error.message}`,
         'error',
       );
     }
@@ -373,7 +395,11 @@ class DeviceManager {
       card.append(this.renderBrightness(row));
     }
 
-    card.append(this.renderCompanion(row), actions);
+    if (this.companionSettings.enabled) {
+      card.append(this.renderCompanion(row));
+    }
+
+    card.append(actions);
     return card;
   }
 

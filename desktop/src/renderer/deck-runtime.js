@@ -100,6 +100,7 @@ class DeckRuntime {
     this.liveRunning = new Set();
     this.clockTimer = null;
     this.liveLeaseTimer = null;
+    this.companionAvailable = false;
     this.companion = new CompanionSurfaces({
       api,
       document,
@@ -108,6 +109,7 @@ class DeckRuntime {
     });
     this.profileSwitcher = new ProfileSwitcher({
       api,
+      companionEnabled: (deviceId) => this.companionEnabled(deviceId),
       getDevices,
       getProfile,
       resolveProfile: resolveProfileForSnapshot,
@@ -130,7 +132,27 @@ class DeckRuntime {
   // While Companion drives a board it owns the whole surface: local profile
   // sync, live state, focused-app switching, and key actions all stand down.
   companionEnabled(deviceId) {
-    return this.getDevices()[deviceId]?.companion?.enabled === true;
+    return (
+      this.companionAvailable &&
+      this.getDevices()[deviceId]?.companion?.enabled === true
+    );
+  }
+
+  // Companion is hidden until Settings turns it on, so a surface saved by an
+  // earlier session stays inert and its board keeps running local profiles.
+  async setCompanionAvailable(available) {
+    if (available === this.companionAvailable) {
+      return;
+    }
+
+    this.companionAvailable = available;
+
+    for (const [deviceId, device] of Object.entries(this.getDevices())) {
+      if (device.companion?.enabled) {
+        // Re-saving the unchanged surface is what attaches or detaches it.
+        await this.setCompanionSurface(deviceId, device.companion);
+      }
+    }
   }
 
   async setCompanionSurface(deviceId, companion) {
@@ -144,7 +166,7 @@ class DeckRuntime {
       return device;
     }
 
-    if (device.companion.enabled) {
+    if (this.companionEnabled(deviceId)) {
       this.clearLiveRuntime(deviceId);
       await this.companion.attach(deviceId, session);
     } else {

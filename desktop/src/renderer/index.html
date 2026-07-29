@@ -843,6 +843,23 @@
               >
             </div>
 
+            <div class="setting">
+              <div>
+                <label for="companion-enabled">Bitfocus Companion</label>
+                <p>
+                  Adds the Satellite surface controls to Devices, so a deck can
+                  be handed to Companion.
+                </p>
+              </div>
+              <input
+                id="companion-enabled"
+                class="switch"
+                type="checkbox"
+                role="switch"
+                disabled
+              >
+            </div>
+
             <div class="update-row" aria-live="polite">
               <span class="status-dot" aria-hidden="true"></span>
               <p id="update-status">Preparing Stream32…</p>
@@ -941,7 +958,7 @@
                 aria-live="polite"
               ></p>
 
-              <div class="companion-link">
+              <div id="companion-link" class="companion-link" hidden>
                 <div class="companion-link-intro">
                   <p class="field-label">Bitfocus Companion</p>
                   <p class="helper">

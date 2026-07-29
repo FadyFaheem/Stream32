@@ -1,6 +1,7 @@
 class ProfileSwitcher {
   constructor({
     api,
+    companionEnabled,
     getDevices,
     getProfile,
     resolveProfile,
@@ -14,6 +15,7 @@ class ProfileSwitcher {
     onStatus,
   }) {
     this.api = api;
+    this.companionEnabled = companionEnabled;
     this.getDevices = getDevices;
     this.getProfile = getProfile;
     this.resolveProfile = resolveProfile;
@@ -85,7 +87,7 @@ class ProfileSwitcher {
       const device = this.getDevices()[deviceId];
 
       // Companion owns this board's pages; leave its saved profile alone.
-      if (device.companion?.enabled) {
+      if (this.companionEnabled(deviceId)) {
         continue;
       }
 

@@ -5,8 +5,10 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+  getCompanionSettings,
   getDisplaySettings,
   readSettings,
+  setCompanionSettings,
   setDisplaySettings,
   updateSettings,
   writeSettings,
@@ -95,6 +97,34 @@ test('display settings have safe defaults and persist validated changes', () => 
           },
           settingsPath,
         ),
+      /invalid/,
+    );
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test('Companion stays off until it is turned on in settings', () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'stream32-settings-'));
+  const settingsPath = path.join(directory, 'settings.json');
+
+  try {
+    // An address saved before the feature existed must not turn it on.
+    writeSettings({ companionHost: '10.0.0.4', companionPort: 16622 }, settingsPath);
+    assert.deepEqual(getCompanionSettings(settingsPath), {
+      enabled: false,
+      host: '10.0.0.4',
+      port: 16622,
+    });
+    assert.deepEqual(
+      setCompanionSettings(
+        { enabled: true, host: '10.0.0.4', port: 16700 },
+        settingsPath,
+      ),
+      { enabled: true, host: '10.0.0.4', port: 16700 },
+    );
+    assert.throws(
+      () => setCompanionSettings({ host: '10.0.0.4', port: 16700 }, settingsPath),
       /invalid/,
     );
   } finally {

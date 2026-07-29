@@ -166,6 +166,7 @@ function managerFixture() {
   const cleaning = new Set();
 
   manager.document = document;
+  manager.companionSettings = { enabled: false, host: '127.0.0.1', port: 16622 };
   manager.list = makeElement('div');
   manager.empty = makeElement('p');
   manager.status = makeElement('p');
@@ -320,6 +321,19 @@ test('cleaning locks capable boards and keeps going when one refuses', async () 
   assert.match(manager.status.textContent, /Studio: The device did not/);
 });
 
+test('Companion controls appear only once the setting turns them on', () => {
+  const { manager } = managerFixture();
+  manager.render();
+  assert.equal(findByText(manager.list, 'Companion surface'), null);
+
+  manager.companionSettings.enabled = true;
+  manager.render();
+  assert.ok(
+    findByText(manager.list, 'Companion surface'),
+    'each card offers the surface toggle while Companion is on',
+  );
+});
+
 test('device manager view and nav are wired accessibly', () => {
   const html = readFileSync(
     path.join(__dirname, '..', 'src', 'renderer', 'index.html'),
@@ -341,6 +355,10 @@ test('device manager view and nav are wired accessibly', () => {
   );
   assert.match(html, /id="device-manager-list"/);
   assert.match(html, /id="device-manager-clean-all"/);
+  assert.match(html, /id="companion-enabled"/);
+  // Hidden in the markup so the Companion block never flashes before the
+  // setting is read.
+  assert.match(html, /id="companion-link"[^>]*hidden/);
   assert.match(renderer, /\['deck', 'devices', 'flash', 'settings'\]/);
   assert.match(renderer, /new DeviceManager\(/);
 });

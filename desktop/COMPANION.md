@@ -17,14 +17,20 @@ Companion  <-- TCP 16622 -->  Stream32 desktop  <-- USB serial -->  board
 
 1. Install and start Companion, then enable **Satellite API** in its settings.
    Note the address of the machine running it; the default port is `16622`.
-2. In Stream32, open the **Devices** view.
-3. Under **Bitfocus Companion**, set **Host** and **Port** to the Companion
+2. In Stream32, open **Settings** and turn on **Bitfocus Companion**. Every
+   control below is hidden until you do.
+3. Open the **Devices** view.
+4. Under **Bitfocus Companion**, set **Host** and **Port** to the Companion
    machine. Both are application-wide: every Companion-mode deck uses the same
    instance.
-4. On the board's card, choose the **Rows** and **Columns** of the surface you
+5. On the board's card, choose the **Rows** and **Columns** of the surface you
    want Companion to see. The board's key budget bounds these the same way deck
    pages are bounded, so a 40-key board accepts up to 8x5.
-5. Tick **Companion surface** on that card.
+6. Tick **Companion surface** on that card.
+
+Turning the setting back off hides the controls again and hands every board
+back to its own profiles. Each surface is remembered, so turning it on later
+restores the decks that were in Companion mode.
 
 The deck appears in Companion's **Surfaces** table as `Stream32 <nickname>`,
 with the serial `stream32:<device id>`, and follows Companion's page model.

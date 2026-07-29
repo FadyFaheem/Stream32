@@ -315,6 +315,51 @@ test('one open session accepts a delayed hello after retrying', async () => {
   assert.equal(port.state.closes, 1);
 });
 
+test('a booting board reads as progress while real refusals stay errors', async () => {
+  const controller = protocolController();
+  const logs = [];
+  const line = (json) => new TextEncoder().encode(`${json}\n`);
+  // The CrowPanel answers hellos before app_main sets system_ready, so an
+  // early one comes back carrying the display stage it has reached so far.
+  const port = fakeProtocolPort(({ readableController, writeCount }) => {
+    if (writeCount === 1) {
+      readableController.enqueue(
+        line('{"type":"error","code":"display-panel-init"}'),
+      );
+      return;
+    }
+
+    readableController.enqueue(line('{"type":"error","code":"invalid-json"}'));
+    readableController.enqueue(
+      line(JSON.stringify({
+        boardId: TEST_BOARD_ID,
+        deviceId: '0123456789ab',
+        features: [],
+        firmwareVersion: TEST_FIRMWARE_VERSION,
+        protocol: 1,
+        type: 'hello',
+      })),
+    );
+  });
+
+  controller.appendLog = (message) => logs.push(message);
+
+  const result = await controller.openSession(
+    port,
+    TEST_BOARD_ID,
+    TEST_FIRMWARE_VERSION,
+    2000,
+  );
+
+  assert.equal(result.boardId, TEST_BOARD_ID);
+  assert.deepEqual(logs, [
+    'Protocol: board is still starting up (display-panel-init); retrying',
+    'Device error: invalid-json',
+  ]);
+
+  await controller.closeSessionForPort(port);
+});
+
 // A CrowPanel on firmware 0.2.0 answers on both its CH340 bridge and its
 // native USB 2.0 port, and reconnect opens every authorized port.
 function boardAnsweringOn(transport) {

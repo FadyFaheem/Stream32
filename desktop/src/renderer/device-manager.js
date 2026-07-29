@@ -28,7 +28,7 @@ function companionStatusText(row, link) {
 // Joins the persisted device registry, the live runtime sessions, and the
 // board catalog into one inventory. Pure so the view model is unit-testable
 // without a DOM.
-function deviceInventory({ devices = {}, sessions, boards } = {}) {
+function deviceInventory({ devices = {}, sessions, boards, cleaning } = {}) {
   const sessionFor = (id) => (sessions && sessions.get ? sessions.get(id) : undefined);
   const boardFor = (id) => (boards && boards.get ? boards.get(id) : undefined);
 
@@ -63,6 +63,10 @@ function deviceInventory({ devices = {}, sessions, boards } = {}) {
       supportsBrightness: connected
         ? (session.hello?.features ?? []).includes('display-brightness')
         : false,
+      supportsClean: connected
+        ? (session.hello?.features ?? []).includes('clean-mode')
+        : false,
+      cleaning: connected && cleaning ? cleaning.has(deviceId) : false,
       deckLimits: board?.deck ?? {
         maxRows: MAX_ROWS,
         maxCols: MAX_COLS,
@@ -154,6 +158,7 @@ class DeviceManager {
     this.empty = document.querySelector('#device-manager-empty');
     this.status = document.querySelector('#device-manager-status');
     this.scanButton = document.querySelector('#device-manager-scan');
+    this.cleanAllButton = document.querySelector('#device-manager-clean-all');
     this.companionHost = document.querySelector('#companion-host');
     this.companionPort = document.querySelector('#companion-port');
     this.companionLinkStatus = document.querySelector('#companion-link-status');
@@ -164,6 +169,7 @@ class DeviceManager {
 
   async initialize() {
     this.scanButton?.addEventListener('click', () => this.scan());
+    this.cleanAllButton?.addEventListener('click', () => this.cleanAll());
 
     for (const control of [this.companionHost, this.companionPort]) {
       control.addEventListener('change', () => this.saveCompanionAddress());
@@ -248,12 +254,17 @@ class DeviceManager {
     this.status.dataset.state = state;
   }
 
-  render() {
-    const rows = deviceInventory({
+  inventory() {
+    return deviceInventory({
       devices: this.deck.devices,
       sessions: this.deck.runtime.sessions,
       boards: this.deviceController.boards,
+      cleaning: this.deck.runtime.cleaning,
     });
+  }
+
+  render() {
+    const rows = this.inventory();
 
     this.list.replaceChildren();
 
@@ -263,6 +274,14 @@ class DeviceManager {
 
     if (this.empty) {
       this.empty.hidden = rows.length > 0;
+    }
+
+    if (this.cleanAllButton) {
+      const capable = rows.filter((row) => row.supportsClean);
+      this.cleanAllButton.hidden = capable.length < 2;
+      this.cleanAllButton.textContent = capable.every((row) => row.cleaning)
+        ? 'Unlock all screens'
+        : 'Clean all screens';
     }
 
     const summary = summarizeInventory(rows);
@@ -330,6 +349,15 @@ class DeviceManager {
       );
       update.addEventListener('click', () => this.startUpdate(row));
       actions.append(update);
+    }
+
+    if (row.supportsClean) {
+      const clean = this.createButton(
+        row.cleaning ? 'Stop cleaning' : 'Clean screen',
+        row.cleaning ? 'button button-primary' : 'button button-quiet',
+      );
+      clean.addEventListener('click', () => this.toggleCleaning(row, clean));
+      actions.append(clean);
     }
 
     const toggle = this.createButton(
@@ -508,6 +536,57 @@ class DeviceManager {
     } catch (error) {
       this.setStatus(`Could not rename the device: ${error.message}`, 'error');
     }
+  }
+
+  async toggleCleaning(row, control) {
+    control.disabled = true;
+    let status;
+
+    try {
+      await this.deck.runtime.setCleanMode(row.deviceId, !row.cleaning);
+      status = row.cleaning
+        ? [`${row.name} is unlocked.`, 'idle']
+        : [
+          `${row.name} is locked for cleaning. Hold the circle on the deck ` +
+            'for five seconds, or switch it off here.',
+          'ready',
+        ];
+    } catch (error) {
+      status = [`Could not change cleaning mode: ${error.message}`, 'error'];
+    }
+
+    // render() rewrites the status line, so the outcome has to follow it.
+    this.render();
+    this.setStatus(...status);
+  }
+
+  // Each board acknowledges on its own link, so a board that refuses must not
+  // leave the rest of them unlocked.
+  async cleanAll() {
+    const rows = this.inventory().filter((row) => row.supportsClean);
+    const active = !rows.every((row) => row.cleaning);
+
+    this.cleanAllButton.disabled = true;
+
+    const results = await Promise.allSettled(
+      rows.map((row) => this.deck.runtime.setCleanMode(row.deviceId, active)),
+    );
+    const failures = results.flatMap((result, index) =>
+      result.status === 'rejected'
+        ? [`${rows[index].name}: ${result.reason.message}`]
+        : []);
+
+    this.cleanAllButton.disabled = false;
+    this.render();
+    this.setStatus(
+      failures.length > 0
+        ? `Could not change cleaning mode — ${failures.join('; ')}`
+        : active
+          ? `${rows.length} screens locked for cleaning. Hold the circle on ` +
+            'a deck for five seconds to unlock it.'
+          : `${rows.length} screens unlocked.`,
+      failures.length > 0 ? 'error' : active ? 'ready' : 'idle',
+    );
   }
 
   async toggleConnection(row, control) {

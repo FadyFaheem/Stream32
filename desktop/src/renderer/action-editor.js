@@ -126,6 +126,24 @@ const CORE_ACTIONS = [
     },
   },
   {
+    key: 'core:clean',
+    source: 'Stream32',
+    category: 'Deck',
+    name: 'Clean screen',
+    description:
+      'Lock this deck for wiping. Hold the circle on the deck for five ' +
+      'seconds, or switch it off in Devices, to unlock it.',
+    icon: 'cleaning_services',
+    keywords: ['clean', 'wipe', 'lock', 'screen', 'smudge'],
+    available: true,
+    coreType: 'clean',
+    appearance: {
+      label: 'Clean',
+      icon: 'cleaning_services',
+      color: '#1f3a3a',
+    },
+  },
+  {
     key: 'core:multi',
     source: 'Stream32',
     category: 'Deck',

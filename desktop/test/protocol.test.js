@@ -5,6 +5,7 @@ const {
   MAX_PROTOCOL_LINE_LENGTH,
   crc32,
   createLineDecoder,
+  encodeCleanMessage,
   encodeDisplayBlankMessage,
   encodeDisplayMessage,
   encodeHostHello,
@@ -16,6 +17,7 @@ const {
   isExpectedChip,
   layoutLineLimitFor,
   transportRank,
+  validateCleanMessage,
   validateDeviceHello,
   validateImageAck,
   validateKeyUpdateAck,
@@ -576,6 +578,34 @@ test('validates deck acknowledgements and events', () => {
   assert.throws(
     () => validatePressMessage({ page: 0, index: 0, phase: 'held' }),
     /invalid/,
+  );
+});
+
+test('encodes the cleaning lock and reads the board state back', () => {
+  assert.equal(
+    new TextDecoder().decode(encodeCleanMessage(true)),
+    '{"type":"clean","active":true}\n',
+  );
+  assert.equal(
+    new TextDecoder().decode(encodeCleanMessage(false)),
+    '{"type":"clean","active":false}\n',
+  );
+  assert.throws(() => encodeCleanMessage('yes'), /boolean/);
+  assert.throws(() => encodeCleanMessage(1), /boolean/);
+
+  // Same shape for the ack and for the hold the board reports on its own.
+  assert.deepEqual(
+    validateCleanMessage({ type: 'clean-ack', active: true }),
+    { active: true },
+  );
+  assert.deepEqual(
+    validateCleanMessage({ type: 'clean', active: false }),
+    { active: false },
+  );
+  assert.throws(() => validateCleanMessage({ type: 'clean' }), /boolean/);
+  assert.throws(
+    () => validateCleanMessage({ type: 'clean', active: 'true' }),
+    /boolean/,
   );
 });
 

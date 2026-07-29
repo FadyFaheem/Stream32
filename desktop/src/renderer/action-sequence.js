@@ -16,6 +16,7 @@ async function runActionSequence(
     switchPage,
     switchProfile,
     blankDisplay,
+    cleanDisplay,
     sleep = defaultSleep,
     isCancelled = () => false,
   },
@@ -36,6 +37,8 @@ async function runActionSequence(
         await switchProfile(step.profileId);
       } else if (step.type === 'sleep') {
         await blankDisplay();
+      } else if (step.type === 'clean') {
+        await cleanDisplay();
       } else {
         await runLeaf(step);
       }

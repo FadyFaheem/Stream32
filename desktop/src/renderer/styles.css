@@ -1660,6 +1660,13 @@ progress::-webkit-progress-value {
   flex-wrap: wrap;
 }
 
+.device-manager-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .device-manager-list {
   display: grid;
   gap: 0.65rem;

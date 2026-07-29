@@ -10,12 +10,14 @@ const {
 } = require('../dynamic-state');
 const { ProfileSwitcher } = require('./profile-switcher');
 const {
+  encodeCleanMessage,
   encodeDisplayBlankMessage,
   encodeImageChunks,
   encodeKeyUpdateMessage,
   encodeLayoutMessage,
   encodePageMessage,
   layoutLineLimitFor,
+  validateCleanMessage,
   validateImageAck,
   validateKeyUpdateAck,
   validateLayoutAck,
@@ -91,6 +93,7 @@ class DeckRuntime {
     this.syncTimers = new Map();
     this.syncRunning = new Map();
     this.multiRuns = new Set();
+    this.cleaning = new Set();
     this.liveValues = new Map();
     this.liveQueues = new Map();
     this.liveTimers = new Map();
@@ -488,6 +491,7 @@ class DeckRuntime {
       this.rejectPending(deviceId, new Error('The device disconnected.'));
       clearTimeout(this.syncTimers.get(deviceId));
       this.syncTimers.delete(deviceId);
+      this.cleaning.delete(deviceId);
       this.clearLiveRuntime(deviceId);
       this.onRenderAll();
     }
@@ -525,6 +529,8 @@ class DeckRuntime {
       this.handlePress(deviceId, session, message);
     } else if (message.type === 'page') {
       this.handleDevicePage(deviceId, session, message);
+    } else if (message.type === 'clean') {
+      this.applyCleanState(deviceId, validateCleanMessage(message).active);
     }
   }
 
@@ -742,6 +748,42 @@ class DeckRuntime {
     await session.send(encodeDisplayBlankMessage());
   }
 
+  // The board is the source of truth: it also reports the five second hold
+  // that releases the lock without the desktop.
+  applyCleanState(deviceId, active) {
+    if (active) {
+      this.cleaning.add(deviceId);
+    } else {
+      this.cleaning.delete(deviceId);
+    }
+
+    this.onRenderAll();
+  }
+
+  async setCleanMode(deviceId, active) {
+    const session = this.sessions.get(deviceId);
+
+    if (!session) {
+      throw new Error('The deck is not connected.');
+    }
+
+    if (!session.hello?.features?.includes('clean-mode')) {
+      throw new Error('Screen cleaning requires updated board firmware.');
+    }
+
+    const ack = validateCleanMessage(await this.sendWithReply(
+      deviceId,
+      session,
+      encodeCleanMessage(active),
+      {
+        type: 'clean-ack',
+        identity: { active },
+        errorCodes: ['clean-invalid', 'display-busy', 'unknown-type'],
+      },
+    ));
+    this.applyCleanState(deviceId, ack.active);
+  }
+
   async runKeyAction(deviceId, action, origin = {}) {
     try {
       if (action.type === 'page') {
@@ -762,6 +804,11 @@ class DeckRuntime {
       if (action.type === 'sleep') {
         await this.blankDeviceDisplay(deviceId);
         this.flipToggleAfterSuccess(deviceId, origin);
+        return true;
+      }
+
+      if (action.type === 'clean') {
+        await this.setCleanMode(deviceId, true);
         return true;
       }
 
@@ -791,6 +838,7 @@ class DeckRuntime {
           switchProfile: (targetProfileId) =>
             this.switchDeviceProfile(deviceId, targetProfileId),
           blankDisplay: () => this.blankDeviceDisplay(deviceId),
+          cleanDisplay: () => this.setCleanMode(deviceId, true),
           isCancelled: () =>
             this.getSelectedProfileId(deviceId) !== profileId ||
             Boolean(

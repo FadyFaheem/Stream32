@@ -880,6 +880,54 @@ test('Sleep blanks capable firmware and rejects stale firmware', async () => {
   assert.match(statuses.at(-1)[0], /updated board firmware/);
 });
 
+test('Screen cleaning locks on acknowledgement and unlocks on the deck hold', async () => {
+  const controller = createRuntime();
+  const messages = [];
+  const statuses = [];
+  const session = {
+    hello: { deviceId: 'aaaa11112222', features: ['clean-mode'] },
+    send: async (bytes) => {
+      messages.push(JSON.parse(new TextDecoder().decode(bytes)));
+      controller.handleDeviceMessage(session, {
+        type: 'clean-ack',
+        active: messages.at(-1).active,
+      });
+    },
+  };
+  controller.sessions = new Map([['aaaa11112222', session]]);
+  controller.api = {
+    runAction: async () => {
+      throw new Error('Screen cleaning reached privileged execution.');
+    },
+  };
+  controller.setSyncStatus = (...status) => statuses.push(status);
+
+  assert.equal(
+    await controller.runKeyAction('aaaa11112222', { type: 'clean' }),
+    true,
+  );
+  assert.deepEqual(messages, [{ type: 'clean', active: true }]);
+  assert.equal(controller.cleaning.has('aaaa11112222'), true);
+
+  // The five second hold happens on the board, which reports it unprompted.
+  controller.handleDeviceMessage(session, { type: 'clean', active: false });
+  assert.equal(controller.cleaning.has('aaaa11112222'), false);
+
+  // A disconnect cannot leave the desktop showing a lock that is gone.
+  await controller.setCleanMode('aaaa11112222', true);
+  assert.equal(controller.cleaning.has('aaaa11112222'), true);
+  controller.detachSession(session);
+  assert.equal(controller.cleaning.has('aaaa11112222'), false);
+
+  controller.sessions = new Map([['aaaa11112222', session]]);
+  session.hello.features = ['display-blank'];
+  assert.equal(
+    await controller.runKeyAction('aaaa11112222', { type: 'clean' }),
+    false,
+  );
+  assert.match(statuses.at(-1)[0], /updated board firmware/);
+});
+
 test('Multi profile switch cancels every later step', async () => {
   const controller = createRuntime();
   const hostActions = [];

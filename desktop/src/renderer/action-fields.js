@@ -77,6 +77,8 @@ function newActionForDefinition(definition, profiles = []) {
       return { type: 'profile', profileId: profiles[0]?.id || '' };
     case 'sleep':
       return { type: 'sleep' };
+    case 'clean':
+      return { type: 'clean' };
     case 'multi':
       return { type: 'multi', steps: [] };
     default:
@@ -159,6 +161,9 @@ function buildLeafAction(draft, definition, pageCount) {
       break;
     case 'sleep':
       candidate = { type: 'sleep' };
+      break;
+    case 'clean':
+      candidate = { type: 'clean' };
       break;
     default:
       throw new TypeError(`Expected a leaf action, received ${definition.coreType}.`);
@@ -499,6 +504,7 @@ function renderReady({ container, document }) {
 }
 
 const FIELD_BUILDERS = Object.freeze({
+  clean: renderReady,
   hotkey: renderHotkey,
   launch: renderString,
   media: renderMedia,

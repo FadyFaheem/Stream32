@@ -1,10 +1,16 @@
-const { app } = require('electron');
+const { app, net } = require('electron');
 const { autoUpdater } = require('electron-updater');
+
+const { getUpdateSettings } = require('./settings');
+const { listPullRequestChannels, resolveChannel } = require('./update-channel');
 
 const DEVELOPMENT_STATUS = {
   message: 'Updates are checked in packaged builds.',
   state: 'development',
 };
+const RELEASES_URL =
+  'https://api.github.com/repos/FadyFaheem/Stream32/releases?per_page=30';
+const RELEASES_TIMEOUT_MS = 15_000;
 
 function createUpdater({ onDownloaded, onEvent = () => {}, sendStatus }) {
   let downloaded = false;
@@ -52,6 +58,21 @@ function createUpdater({ onDownloaded, onEvent = () => {}, sendStatus }) {
       return null;
     }
 
+    const { allowDowngrade, allowPrerelease, channel } = resolveChannel(
+      getUpdateSettings().updateChannel,
+      app.getVersion(),
+    );
+
+    autoUpdater.allowPrerelease = allowPrerelease;
+    autoUpdater.channel = channel;
+    // Assigning `channel` force-enables downgrades, so apply the decision
+    // resolveChannel made afterwards rather than before.
+    autoUpdater.allowDowngrade = allowDowngrade;
+
+    // ponytail: a build already downloaded from the previous channel stays
+    // installable until this check replaces it. Retracting it early means
+    // threading a "no longer ready" signal through the tray and the renderer's
+    // one-way updateReady flag.
     return autoUpdater.checkForUpdatesAndNotify({
       title: 'Stream32 update ready',
       body: 'Choose Restart to update in Stream32 or from the tray menu.',
@@ -64,9 +85,25 @@ function createUpdater({ onDownloaded, onEvent = () => {}, sendStatus }) {
     }
   }
 
+  async function listPullRequestBuilds() {
+    const response = await net.fetch(RELEASES_URL, {
+      headers: { accept: 'application/vnd.github+json' },
+      signal: AbortSignal.timeout(RELEASES_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `GitHub returned ${response.status} while listing preview builds.`,
+      );
+    }
+
+    return listPullRequestChannels(await response.json());
+  }
+
   return {
     checkForUpdates,
     installUpdate,
+    listPullRequestBuilds,
   };
 }
 

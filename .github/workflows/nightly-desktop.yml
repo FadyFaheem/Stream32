@@ -1,0 +1,81 @@
+name: Nightly Desktop
+
+on:
+  schedule:
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-desktop
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    name: Check for new commits
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+      build-id: ${{ steps.check.outputs.build-id }}
+      sha: ${{ steps.check.outputs.sha }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Compare main against the newest nightly
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head="$(git rev-parse HEAD)"
+          previous="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq '[.[] | select(.tag_name | test("-nightly\\."))][0].target_commitish // ""')"
+
+          if [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ] && [ "$previous" = "$head" ]; then
+            echo "Newest nightly already covers ${head}." >> "$GITHUB_STEP_SUMMARY"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "build-id=$(date -u +%Y%m%d).${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "sha=${head}" >> "$GITHUB_OUTPUT"
+
+  nightly:
+    name: Nightly
+    needs: changes
+    if: needs.changes.outputs.build == 'true'
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-desktop-prerelease.yml
+    with:
+      build: ${{ needs.changes.outputs.build-id }}
+      channel: nightly
+      ref: ${{ needs.changes.outputs.sha }}
+      release-body: >-
+        Automated build of `main`. Nightly builds ship unreleased changes and
+        are not signed or notarized. Switch the update channel in Settings to
+        follow or leave this channel.
+      release-name: Stream32 nightly
+
+  prune:
+    name: Prune superseded nightlies
+    needs: nightly
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete all but the newest three nightly releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # electron-updater resolves a channel by scanning only the ten newest
+          # entries of the releases feed, so nightlies must not accumulate and
+          # push the other channels out of that window.
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq '[.[] | select(.tag_name | test("-nightly\\."))] | .[3:] | .[].tag_name' |
+            while read -r tag; do
+              gh release delete "$tag" --repo "${GITHUB_REPOSITORY}" --cleanup-tag --yes
+            done

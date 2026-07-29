@@ -1,0 +1,162 @@
+name: Build Desktop Prerelease
+
+# Shared by the nightly and pull request preview workflows. For the GitHub
+# provider, electron-updater picks a release by the SemVer prerelease
+# identifier of its tag and then reads latest.yml from that release, so
+# publishing v1.2.1-nightly.20260729.4 is what makes "nightly" a real channel.
+
+on:
+  workflow_call:
+    inputs:
+      build:
+        description: Dot-separated numeric build identifier, unique and increasing per channel.
+        required: true
+        type: string
+      channel:
+        description: Update channel name, used as the SemVer prerelease identifier.
+        required: true
+        type: string
+      ref:
+        description: Commit to build, tag, and publish.
+        required: true
+        type: string
+      release-body:
+        required: true
+        type: string
+      release-name:
+        required: true
+        type: string
+    outputs:
+      version:
+        description: Full SemVer version that was published.
+        value: ${{ jobs.version.outputs.version }}
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    name: Compute prerelease version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.compute.outputs.version }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Compute prerelease version
+        id: compute
+        working-directory: desktop
+        env:
+          BUILD: ${{ inputs.build }}
+          CHANNEL: ${{ inputs.channel }}
+        run: |
+          node -e 'const { parseVersion } = require("./src/semver.js"); const channel = process.env.CHANNEL; const build = process.env.BUILD; if (!/^(?:nightly|pr[1-9][0-9]{0,6})$/.test(channel)) { console.error("Unsupported channel " + channel); process.exit(1); } if (!/^[1-9][0-9]{0,8}(?:\.[1-9][0-9]{0,8})*$/.test(build)) { console.error("Build identifier must be dot-separated numbers without leading zeros, got " + build); process.exit(1); } const [major, minor, patch] = parseVersion(require("./package.json").version).core; console.log("version=" + major + "." + minor + "." + (patch + 1) + "-" + channel + "." + build);' >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build (${{ matrix.platform }})
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: Windows
+            os: windows-latest
+            target: win
+            suffix: ""
+          - platform: macOS
+            os: macos-latest
+            target: mac
+            suffix: "-mac"
+          - platform: Linux
+            os: ubuntu-latest
+            target: linux
+            suffix: "-linux"
+
+    defaults:
+      run:
+        working-directory: desktop
+
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Apply prerelease version
+        run: npm version ${{ needs.version.outputs.version }} --no-git-tag-version
+
+      - name: Run checks
+        run: npm run check
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build release artifacts
+        run: npm run dist -- --${{ matrix.target }} --x64 --publish never
+
+      - name: Verify updater metadata
+        # Windows runners default to pwsh, which rewrites the quoting.
+        shell: bash
+        env:
+          SUFFIX: ${{ matrix.suffix }}
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          node -e 'const fs = require("node:fs"); const file = "dist/latest" + (process.env.SUFFIX ?? "") + ".yml"; const expected = "version: " + process.env.VERSION + "\n"; if (!fs.existsSync(file) || !fs.readFileSync(file, "utf8").includes(expected)) { console.error(file + " is missing or does not describe " + process.env.VERSION + ", so this channel would not update."); process.exit(1); }'
+
+      - name: Stage release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.target }}
+          compression-level: 0
+          if-no-files-found: error
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.dmg
+            desktop/dist/*.zip
+            desktop/dist/*.AppImage
+            desktop/dist/*.deb
+            desktop/dist/latest*.yml
+            desktop/dist/*.blockmap
+
+  publish:
+    name: Publish prerelease
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: desktop-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create GitHub prerelease
+        uses: softprops/action-gh-release@v3
+        with:
+          body: ${{ inputs.release-body }}
+          fail_on_unmatched_files: true
+          files: release-assets/*
+          make_latest: false
+          name: ${{ inputs.release-name }}
+          prerelease: true
+          tag_name: v${{ needs.version.outputs.version }}
+          target_commitish: ${{ inputs.ref }}

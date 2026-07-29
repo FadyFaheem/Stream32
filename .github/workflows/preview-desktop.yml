@@ -1,0 +1,69 @@
+name: Preview Desktop
+
+# Label a pull request "preview" to publish installable builds of it. The app
+# exposes each one as a pr<number> update channel while developer mode is on.
+
+on:
+  pull_request:
+    types: [labeled, unlabeled, synchronize, closed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-desktop-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Preview
+    if: >-
+      github.event.action != 'closed'
+      && github.event.action != 'unlabeled'
+      && contains(github.event.pull_request.labels.*.name, 'preview')
+      && github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: write
+    uses: ./.github/workflows/build-desktop-prerelease.yml
+    with:
+      build: ${{ github.run_number }}
+      channel: pr${{ github.event.pull_request.number }}
+      ref: ${{ github.event.pull_request.head.sha }}
+      release-body: >-
+        Preview build of #${{ github.event.pull_request.number }}. Enable
+        developer mode in Settings to follow the pr${{ github.event.pull_request.number }}
+        update channel. Deleted when the pull request closes.
+      release-name: "Stream32 preview: PR #${{ github.event.pull_request.number }}"
+
+  unsupported-fork:
+    name: Preview unavailable
+    if: >-
+      github.event.action != 'closed'
+      && github.event.action != 'unlabeled'
+      && contains(github.event.pull_request.labels.*.name, 'preview')
+      && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Explain why nothing was published
+        run: |
+          echo "::warning::Preview builds publish releases, which fork pull requests cannot do. Push the branch to this repository to build a preview of it."
+
+  cleanup:
+    name: Remove preview releases
+    if: >-
+      github.event.action == 'closed'
+      || (github.event.action == 'unlabeled' && github.event.label.name == 'preview')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Delete this pull request's preview releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq '.[] | select(.tag_name | test("-pr" + env.PR_NUMBER + "\\.")) | .tag_name' |
+            while read -r tag; do
+              gh release delete "$tag" --repo "${GITHUB_REPOSITORY}" --cleanup-tag --yes
+            done

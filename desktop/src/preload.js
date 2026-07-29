@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('stream32', {
   getDisplaySettings: () => ipcRenderer.invoke('display-settings:get'),
   getFocusSnapshot: () => ipcRenderer.invoke('focus:snapshot'),
   getFocusStatus: () => ipcRenderer.invoke('focus:status'),
+  getUpdateSettings: () => ipcRenderer.invoke('updater:get-settings'),
   importDeck: (deviceId) => ipcRenderer.invoke('deck:import', deviceId),
   installPlugin: (pluginId) =>
     ipcRenderer.invoke('plugins:install', pluginId),
@@ -24,6 +25,8 @@ contextBridge.exposeInMainWorld('stream32', {
   listPluginCatalog: (force = false) =>
     ipcRenderer.invoke('plugins:catalog', force),
   listPlugins: (force = false) => ipcRenderer.invoke('plugins:list', force),
+  listPullRequestBuilds: () =>
+    ipcRenderer.invoke('updater:list-pull-requests'),
   logDiagnosticLine: (kind, line) =>
     ipcRenderer.send('diagnostics:renderer-line', kind, line),
   openLogs: () => ipcRenderer.invoke('diagnostics:open-logs'),
@@ -147,6 +150,8 @@ contextBridge.exposeInMainWorld('stream32', {
   setAutoStart: (enabled) => ipcRenderer.invoke('autostart:set', enabled),
   setDisplaySettings: (settings) =>
     ipcRenderer.invoke('display-settings:set', settings),
+  setUpdateSettings: (settings) =>
+    ipcRenderer.invoke('updater:set-settings', settings),
   updatePlugin: (pluginId) =>
     ipcRenderer.invoke('plugins:update', pluginId),
 });

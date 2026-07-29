@@ -2,6 +2,7 @@ const { app } = require('electron');
 const path = require('node:path');
 
 const { readJsonRecovering, writeJsonAtomic } = require('./atomic-json');
+const { normalizeChannel } = require('./update-channel');
 
 const SETTINGS_FILENAME = 'settings.json';
 const DEFAULT_DISPLAY_SETTINGS = Object.freeze({
@@ -143,15 +144,53 @@ function setCompanionSettings(value, settingsPath = getSettingsPath()) {
   return getCompanionSettings(settingsPath);
 }
 
+function getUpdateSettings(settingsPath = getSettingsPath()) {
+  const settings = readSettings(settingsPath);
+  const developerMode = settings.developerMode === true;
+
+  return {
+    developerMode,
+    updateChannel: normalizeChannel(settings.updateChannel, developerMode),
+  };
+}
+
+function setUpdateSettings(value, settingsPath = getSettingsPath()) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    typeof value.developerMode !== 'boolean' ||
+    typeof value.updateChannel !== 'string'
+  ) {
+    throw new TypeError('Update settings are invalid.');
+  }
+
+  updateSettings(
+    {
+      developerMode: value.developerMode,
+      // Clamped rather than rejected so that leaving developer mode drops a
+      // pull request channel instead of failing the write.
+      updateChannel: normalizeChannel(
+        value.updateChannel,
+        value.developerMode,
+      ),
+    },
+    settingsPath,
+  );
+  return getUpdateSettings(settingsPath);
+}
+
 module.exports = {
   DEFAULT_COMPANION_SETTINGS,
   DEFAULT_DISPLAY_SETTINGS,
   getCompanionSettings,
   getDisplaySettings,
   getSettingsPath,
+  getUpdateSettings,
   readSettings,
   setCompanionSettings,
   setDisplaySettings,
+  setUpdateSettings,
   updateSettings,
   validateSettings,
   writeSettings,

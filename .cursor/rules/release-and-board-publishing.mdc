@@ -1,5 +1,5 @@
 ---
-description: Project-specific workflow for publishing Stream32 desktop releases and board support
+description: Project-specific workflow for publishing Stream32 desktop releases, nightly and pull request update channels, and board support
 alwaysApply: true
 ---
 
@@ -25,6 +25,37 @@ Follow the repository automation; do not manually attach build outputs or commit
 The workflow runs checks and packages x64 builds on all three operating
 systems. macOS artifacts are unsigned unless signing/notarization is configured,
 so do not claim that automatic macOS installation works for unsigned builds.
+
+## Publish nightly and pull request preview builds
+
+`Nightly Desktop` and `Preview Desktop` automate both channels through the
+reusable `build-desktop-prerelease.yml`. Never hand-tag a prerelease, commit a
+prerelease version, or upload channel assets manually.
+
+1. `electron-updater` resolves a channel from the SemVer prerelease identifier
+   of the release tag, so tags read `v<next patch>-nightly.<date>.<run>` or
+   `v<next patch>-pr<number>.<run>`. The workflow derives that version from
+   `desktop/package.json` at build time with `npm version --no-git-tag-version`
+   and leaves the committed manifests untouched.
+2. With the GitHub provider, electron-builder writes `latest.yml` for every
+   channel. Do not expect `nightly.yml`, and keep artifact globs at
+   `latest*.yml` so `builder-debug.yml` never reaches a release.
+3. Publish with `prerelease: true` and `make_latest: false`. Stable installs
+   resolve through `/releases/latest`, which skips prereleases.
+4. Nightlies run on a schedule, skip when `main` has not moved since the newest
+   nightly, and keep only the three most recent. A `preview` label publishes a
+   pull request's head commit; closing it or removing the label deletes those
+   releases. Fork pull requests cannot publish and are skipped deliberately.
+5. Keep the number of live prereleases small. `electron-updater` scans only the
+   ten newest releases when resolving a channel.
+6. Channel names are validated in `desktop/src/update-channel.js`. Pull request
+   channels require developer mode; keep that pattern and the workflow's
+   channel regex in agreement.
+7. Windows runners default to PowerShell, which rewrites quoting, so give any
+   `node -e` step `shell: bash`.
+
+A manually tagged prerelease such as `v1.3.0-beta.1` creates a `beta` channel
+that no Settings option selects, so no installed build would ever see it.
 
 ## Add, update, and publish board support
 

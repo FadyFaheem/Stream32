@@ -59,9 +59,11 @@ const {
   getCompanionSettings,
   getDisplaySettings,
   getSettingsPath,
+  getUpdateSettings,
   readSettings,
   setCompanionSettings,
   setDisplaySettings,
+  setUpdateSettings,
 } = require('./settings');
 const { createTray } = require('./tray');
 const { createUpdater } = require('./updater');
@@ -337,6 +339,17 @@ function registerIpcHandlers() {
   });
   ipcMain.handle('updater:check', () => updaterController?.checkForUpdates());
   ipcMain.handle('updater:install', installUpdate);
+  ipcMain.handle('updater:get-settings', () => ({
+    ...getUpdateSettings(),
+    version: app.getVersion(),
+  }));
+  ipcMain.handle('updater:set-settings', (_event, settings) =>
+    setUpdateSettings(settings),
+  );
+  ipcMain.handle(
+    'updater:list-pull-requests',
+    () => updaterController?.listPullRequestBuilds() ?? [],
+  );
   ipcMain.handle('boards:list', (_event, force = false) => {
     if (typeof force !== 'boolean') {
       throw new TypeError('Board refresh flag must be a boolean.');

@@ -7,9 +7,11 @@ const test = require('node:test');
 const {
   getCompanionSettings,
   getDisplaySettings,
+  getUpdateSettings,
   readSettings,
   setCompanionSettings,
   setDisplaySettings,
+  setUpdateSettings,
   updateSettings,
   writeSettings,
 } = require('../src/settings');
@@ -125,6 +127,38 @@ test('Companion stays off until it is turned on in settings', () => {
     );
     assert.throws(
       () => setCompanionSettings({ host: '10.0.0.4', port: 16700 }, settingsPath),
+      /invalid/,
+    );
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test('leaving developer mode drops a pull request update channel', () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'stream32-settings-'));
+  const settingsPath = path.join(directory, 'settings.json');
+
+  try {
+    assert.deepEqual(getUpdateSettings(settingsPath), {
+      developerMode: false,
+      updateChannel: 'stable',
+    });
+    assert.deepEqual(
+      setUpdateSettings(
+        { developerMode: true, updateChannel: 'pr123' },
+        settingsPath,
+      ),
+      { developerMode: true, updateChannel: 'pr123' },
+    );
+    assert.deepEqual(
+      setUpdateSettings(
+        { developerMode: false, updateChannel: 'pr123' },
+        settingsPath,
+      ),
+      { developerMode: false, updateChannel: 'stable' },
+    );
+    assert.throws(
+      () => setUpdateSettings({ developerMode: 'yes' }, settingsPath),
       /invalid/,
     );
   } finally {

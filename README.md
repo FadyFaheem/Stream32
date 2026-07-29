@@ -106,6 +106,26 @@ Linux builds and publishes a GitHub Release. macOS automatic installation
 requires a signed build, so the unsigned CI artifacts must be signed and
 notarized before macOS auto-update can complete.
 
+### Update channels
+
+Settings offers a **Stable** and a **Nightly** channel. Nightly builds are
+published from `main` by the `Nightly Desktop` workflow when it has new commits
+to package, as prereleases tagged `v<next patch>-nightly.<date>.<run>`. Only the
+three most recent nightlies are kept. Stable installs never see them, because
+electron-updater resolves the stable channel through the latest non-prerelease
+GitHub Release.
+
+Turning on **Developer mode** adds a channel for every pull request labelled
+`preview`. Labelling one publishes installable builds of its head commit as
+`v<next patch>-pr<number>.<run>` prereleases, and closing the pull request or
+removing the label deletes them. Because those builds are published as
+releases, only pull requests from branches in this repository can produce them.
+
+Switching channels installs whichever build that channel offers, including an
+older one when moving back to Stable. The channel a build belongs to is the
+SemVer prerelease identifier of its tag, so keep the tag, the version in
+`desktop/package.json`, and the published `latest.yml` in agreement.
+
 ## Contributing
 
 Ideas, hardware suggestions, and early contributions are welcome. Start a

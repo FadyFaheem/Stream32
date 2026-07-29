@@ -860,6 +860,36 @@
               >
             </div>
 
+            <div class="setting">
+              <div>
+                <label for="update-channel">Update channel</label>
+                <p id="update-channel-help">
+                  Nightly builds carry unreleased changes from main and can be
+                  unstable.
+                </p>
+              </div>
+              <select id="update-channel" disabled>
+                <option value="stable" selected>Stable</option>
+                <option value="nightly">Nightly</option>
+              </select>
+            </div>
+
+            <div class="setting">
+              <div>
+                <label for="developer-mode">Developer mode</label>
+                <p>
+                  Adds builds of labelled pull requests to the channel list.
+                </p>
+              </div>
+              <input
+                id="developer-mode"
+                class="switch"
+                type="checkbox"
+                role="switch"
+                disabled
+              >
+            </div>
+
             <div class="update-row" aria-live="polite">
               <span class="status-dot" aria-hidden="true"></span>
               <p id="update-status">Preparing Stream32…</p>

@@ -38,6 +38,7 @@ const backupExportButton = document.querySelector('#backup-export');
 const backupRestoreButton = document.querySelector('#backup-restore');
 const checkUpdatesButton = document.querySelector('#check-updates');
 const dataToolsStatus = document.querySelector('#data-tools-status');
+const developerModeControl = document.querySelector('#developer-mode');
 const diagnosticsExportButton = document.querySelector('#diagnostics-export');
 const displayBrightnessControl = document.querySelector('#display-brightness');
 const displayIdleControl = document.querySelector('#display-idle-timeout');
@@ -50,11 +51,14 @@ const pluginManualInstructions =
   document.querySelector('#plugin-manual-instructions');
 const pluginManualReload = document.querySelector('#plugin-manual-reload');
 const sleepWhenLockedControl = document.querySelector('#sleep-when-locked');
+const updateChannelHelp = document.querySelector('#update-channel-help');
+const updateChannelSelect = document.querySelector('#update-channel');
 const updateRow = document.querySelector('.update-row');
 const updateStatus = document.querySelector('#update-status');
 
 const UPDATE_BUSY_STATES = new Set(['available', 'checking', 'downloading']);
 let updateReady = false;
+let updateSettings = { developerMode: false, updateChannel: 'stable' };
 
 function pluginSummary(plugin, source) {
   const summary = document.createElement('div');
@@ -219,6 +223,120 @@ function showUpdateStatus({ message, state }) {
     : 'Check now';
   checkUpdatesButton.disabled = UPDATE_BUSY_STATES.has(state);
 }
+
+function renderUpdateChannels(pullRequestBuilds) {
+  for (const option of [...updateChannelSelect.options]) {
+    if (option.value.startsWith('pr')) {
+      option.remove();
+    }
+  }
+
+  const channels = updateSettings.developerMode ? [...pullRequestBuilds] : [];
+
+  // A pull request channel outlives its builds once the pull request closes,
+  // so keep the selection visible rather than letting the list go blank.
+  if (
+    updateSettings.updateChannel.startsWith('pr') &&
+    !channels.some(({ channel }) => channel === updateSettings.updateChannel)
+  ) {
+    channels.push({
+      channel: updateSettings.updateChannel,
+      label: `${updateSettings.updateChannel} · no longer published`,
+    });
+  }
+
+  for (const { channel, label } of channels) {
+    const option = document.createElement('option');
+    option.value = channel;
+    option.textContent = label;
+    updateChannelSelect.append(option);
+  }
+
+  updateChannelSelect.value = updateSettings.updateChannel;
+  updateChannelSelect.disabled = false;
+}
+
+async function refreshPullRequestChannels() {
+  let builds = [];
+
+  if (updateSettings.developerMode) {
+    try {
+      builds = await window.stream32.listPullRequestBuilds();
+    } catch (error) {
+      showUpdateStatus({
+        message: `Could not list pull request builds: ${error.message}`,
+        state: 'error',
+      });
+    }
+  }
+
+  renderUpdateChannels(builds);
+}
+
+async function saveUpdateSettings(next) {
+  const previousChannel = updateSettings.updateChannel;
+  developerModeControl.disabled = true;
+  updateChannelSelect.disabled = true;
+
+  try {
+    updateSettings = await window.stream32.setUpdateSettings(next);
+  } catch (error) {
+    showUpdateStatus({
+      message: `Could not change update settings: ${error.message}`,
+      state: 'error',
+    });
+  }
+
+  developerModeControl.checked = updateSettings.developerMode;
+  await refreshPullRequestChannels();
+  developerModeControl.disabled = false;
+
+  if (updateSettings.updateChannel !== previousChannel) {
+    try {
+      await window.stream32.checkForUpdates();
+    } catch (error) {
+      showUpdateStatus({
+        message: `Update check failed: ${error.message}`,
+        state: 'error',
+      });
+    }
+  }
+}
+
+async function loadUpdateSettings() {
+  try {
+    const { developerMode, updateChannel, version } =
+      await window.stream32.getUpdateSettings();
+
+    updateSettings = { developerMode, updateChannel };
+    developerModeControl.checked = developerMode;
+    updateChannelHelp.textContent =
+      `Running ${version}. Nightly builds carry unreleased changes from ` +
+      'main and can be unstable.';
+    await refreshPullRequestChannels();
+  } catch (error) {
+    showUpdateStatus({
+      message: `Could not read update settings: ${error.message}`,
+      state: 'error',
+    });
+  } finally {
+    developerModeControl.disabled = false;
+  }
+}
+
+developerModeControl.addEventListener('change', () =>
+  saveUpdateSettings({
+    developerMode: developerModeControl.checked,
+    updateChannel: updateSettings.updateChannel,
+  }),
+);
+
+updateChannelSelect.addEventListener('change', () =>
+  saveUpdateSettings({
+    developerMode: updateSettings.developerMode,
+    updateChannel: updateChannelSelect.value,
+  }),
+);
 
 async function loadAutoStartState() {
   try {
@@ -401,6 +519,7 @@ checkUpdatesButton.addEventListener('click', async () => {
 
 window.stream32.onUpdateStatus(showUpdateStatus);
 loadAutoStartState();
+loadUpdateSettings();
 
 const deckController = new DeckController({
   api: window.stream32,

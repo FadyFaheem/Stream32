@@ -171,7 +171,7 @@ static void send_hello(void)
         "{\"type\":\"hello\",\"protocol\":%d,\"boardId\":\"%s\","
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
         "\"features\":[\"display-control\",\"display-brightness\",\"display-blank\","
-        "\"key-update\",\"image-rle\",\"%s\"]}",
+        "\"key-update\",\"image-rle\",\"clean-mode\",\"%s\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -234,6 +234,12 @@ static void handle_host_message(const char *line, size_t length)
                     : "UART0 connected to Stream32"
             );
             send_hello();
+
+            /* A cleaning lock outlives the link, so a desktop that reconnects
+               mid-wipe learns the panel is still locked. */
+            if (deck_ui_clean_active()) {
+                serial_write_line("{\"type\":\"clean\",\"active\":true}");
+            }
         }
     } else if (strcmp(type->valuestring, "ping") == 0) {
         const cJSON *id = cJSON_GetObjectItemCaseSensitive(message, "id");

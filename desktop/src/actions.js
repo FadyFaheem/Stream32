@@ -823,6 +823,9 @@ function createActionRunner({
       case 'sleep':
         // Display blanking is resolved renderer-side against the device session.
         throw new TypeError('Sleep actions never reach the main process.');
+      case 'clean':
+        // The cleaning lock is resolved renderer-side against the device session.
+        throw new TypeError('Clean actions never reach the main process.');
       default:
         throw new TypeError(`Unknown action type: ${action?.type}`);
     }

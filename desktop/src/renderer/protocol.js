@@ -567,6 +567,24 @@ function encodeDisplayBlankMessage() {
   return encodeLine({ type: 'display', blankNow: true });
 }
 
+function encodeCleanMessage(active) {
+  if (typeof active !== 'boolean') {
+    throw new TypeError('Clean mode state must be a boolean.');
+  }
+
+  return encodeLine({ type: 'clean', active });
+}
+
+// Shared by the clean-ack and by the unsolicited state the board sends when a
+// five second hold releases the lock, or when it reconnects still locked.
+function validateCleanMessage(message) {
+  if (typeof message.active !== 'boolean') {
+    throw new TypeError('Clean mode state must be a boolean.');
+  }
+
+  return { active: message.active };
+}
+
 function validateLayoutAck(message) {
   const page = requireProtocolInteger(
     message.page,
@@ -723,6 +741,7 @@ module.exports = {
   crc32,
   layoutLineLimitFor,
   createLineDecoder,
+  encodeCleanMessage,
   encodeDisplayBlankMessage,
   encodeDisplayMessage,
   encodeHostHello,
@@ -735,6 +754,7 @@ module.exports = {
   normalizeChipName,
   toRgb565,
   transportRank,
+  validateCleanMessage,
   validateDeviceHello,
   validateImageAck,
   validateKeyUpdateAck,

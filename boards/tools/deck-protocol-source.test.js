@@ -16,6 +16,7 @@ const componentPath = (...parts) =>
 const read = (file) => readFileSync(file, 'utf8');
 const protocol = read(componentPath('deck_protocol.c'));
 const ui = read(componentPath('deck_ui.c'));
+const clean = read(componentPath('deck_clean.c'));
 
 test('protocol decoding and image sequencing stay outside the LVGL UI', () => {
   assert.match(protocol, /static bool valid_utf8\(/);
@@ -101,7 +102,7 @@ test('both board transports dispatch through the shared protocol module', () => 
 
   assert.match(
     read(componentPath('CMakeLists.txt')),
-    /SRCS "deck_protocol\.c" "deck_storage\.c" "deck_ui\.c"/,
+    /SRCS "deck_clean\.c" "deck_protocol\.c" "deck_storage\.c" "deck_ui\.c"/,
   );
 });
 
@@ -156,6 +157,58 @@ test('Sleep blanks through the idle wake path without changing lock state', () =
   assert.match(protocol, /"blankNow"[\s\S]*deck_ui_blank_display\(\)/);
   assert.match(blankDisplay, /set_panel_awake\(false\)/);
   assert.doesNotMatch(blankDisplay, /s_forced_asleep\s*=/);
+});
+
+test('the cleaning lock swallows the wipe and only a held exit lifts it', () => {
+  const handleTouch = ui.slice(
+    ui.indexOf('bool deck_ui_handle_touch('),
+    ui.indexOf('static void copy_layout('),
+  );
+  const poll = ui.slice(
+    ui.indexOf('void deck_ui_poll('),
+    ui.indexOf('bool deck_ui_handle_touch('),
+  );
+  const buildPage = ui.slice(
+    ui.lastIndexOf('static void build_page_locked('),
+    ui.indexOf('static void build_page(', ui.lastIndexOf('static void build_page_locked(')),
+  );
+
+  // Consumed before anything routes a press to the host or a local goPage.
+  assert.match(handleTouch, /^\s*if \(s_clean_active \|\| s_forced_asleep\) \{\s*return true;/m);
+
+  // A sync arriving mid-wipe stages the grid behind the lock, never over it.
+  assert.match(buildPage, /if \(!s_clean_active\) \{\s*lv_screen_load\(s_deck_screen\);/);
+
+  // Releasing needs the display lock, which the LVGL press callback holds, so
+  // the hold is settled from the protocol task and retried while it is busy.
+  assert.match(
+    poll,
+    /s_clean_active && deck_clean_held\(now_ms\(\)\) &&\s*deck_ui_set_clean\(false\) == NULL[\s\S]*notify_line\([^)]*clean[^)]*active[^)]*false/,
+  );
+  assert.match(poll, /!s_clean_active && !s_forced_asleep[\s\S]*set_panel_awake\(false\)/);
+
+  // The overlay owns only its own screen: no deck grid or storage reaches it.
+  assert.match(clean, /#define DECK_CLEAN_HOLD_MS 5000/);
+  assert.doesNotMatch(clean, /deck_storage_|s_pages|deck_protocol_/);
+  assert.ok(clean.split(/\r?\n/).length < 1000);
+  assert.match(protocol, /"clean-invalid"[\s\S]*deck_ui_set_clean\(wanted\)/);
+  assert.match(protocol, /clean-ack/);
+
+  for (const board of [
+    'waveshare-esp32-s3-touch-lcd-4-v3',
+    'elecrow-crowpanel-advanced-10-1-esp32-p4',
+  ]) {
+    const main = read(
+      path.join(ROOT, 'boards', board, 'firmware', 'main', 'main.c'),
+    );
+
+    assert.match(main, /clean-mode/);
+    // A lock outlives the link, so a reconnecting desktop is told about it.
+    assert.match(
+      main,
+      /send_hello\(\);[\s\S]{0,400}deck_ui_clean_active\(\)[\s\S]{0,200}write_line\([^)]*clean[^)]*active[^)]*true/,
+    );
+  }
 });
 
 test('key labels stay on one ellipsized line above artwork', () => {

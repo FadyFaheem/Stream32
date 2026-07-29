@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "deck_clean.h"
 #include "deck_storage.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -77,8 +78,10 @@ static bool s_forced_asleep;
 static bool s_consume_touch;
 static bool s_overlay_active;
 static int64_t s_overlay_activity_ms;
+static bool s_clean_active;
 
 static lv_obj_t *s_deck_screen;
+static lv_obj_t *s_clean_return_screen;
 static uint8_t *s_key_buffers[DECK_MAX_KEYS];
 static lv_image_dsc_t s_key_dsc[DECK_MAX_KEYS];
 
@@ -438,7 +441,11 @@ static void build_page_locked(uint8_t page_index)
         }
     }
 
-    lv_screen_load(s_deck_screen);
+    /* A sync that lands mid-wipe stages the grid without lifting the lock. */
+    if (!s_clean_active) {
+        lv_screen_load(s_deck_screen);
+    }
+
     s_active = true;
 }
 
@@ -510,9 +517,20 @@ bool deck_ui_active(void)
 
 void deck_ui_poll(void)
 {
-    if (s_panel_awake && !s_forced_asleep && s_idle_timeout_ms > 0 &&
+    /* Wiping never touches the idle timer, so the exit target would otherwise
+       blank out from under the person holding it. */
+    if (s_panel_awake && !s_clean_active && !s_forced_asleep &&
+        s_idle_timeout_ms > 0 &&
         now_ms() - s_last_activity_ms >= s_idle_timeout_ms) {
         set_panel_awake(false);
+    }
+
+    /* Released here rather than in the press handler, which already holds the
+       display lock that deck_ui_set_clean needs. A busy lock leaves the hold
+       standing, so the next poll retries. */
+    if (s_clean_active && deck_clean_held(now_ms()) &&
+        deck_ui_set_clean(false) == NULL) {
+        notify_line("{\"type\":\"clean\",\"active\":false}");
     }
 
     if (s_overlay_active &&
@@ -542,7 +560,9 @@ void deck_ui_poll(void)
 
 bool deck_ui_handle_touch(bool pressed)
 {
-    if (s_forced_asleep) {
+    /* A wipe reaches neither the host nor a local goPage switch. The hold
+       target lives on its own screen and never routes through here. */
+    if (s_clean_active || s_forced_asleep) {
         return true;
     }
 
@@ -811,6 +831,47 @@ const char *deck_ui_select_page(uint8_t page)
        the whole sync in one render instead of exposing each incoming key. */
     build_page(page);
     deck_storage_set_active_page(page);
+    return NULL;
+}
+
+bool deck_ui_clean_active(void)
+{
+    return s_clean_active;
+}
+
+const char *deck_ui_set_clean(bool active)
+{
+    if (active == s_clean_active) {
+        return NULL;
+    }
+
+    if (!bsp_display_lock(1000)) {
+        return "display-busy";
+    }
+
+    deck_clean_reset();
+
+    if (active) {
+        s_clean_return_screen = lv_screen_active();
+        s_clean_active = true;
+        lv_screen_load(deck_clean_screen());
+    } else {
+        s_clean_active = false;
+        /* A sync during the wipe may have built the deck behind the lock. */
+        lv_screen_load(
+            s_active && s_deck_screen != NULL
+                ? s_deck_screen
+                : s_clean_return_screen
+        );
+    }
+
+    bsp_display_unlock();
+    s_last_activity_ms = now_ms();
+
+    if (active && !s_forced_asleep) {
+        set_panel_awake(true);
+    }
+
     return NULL;
 }
 

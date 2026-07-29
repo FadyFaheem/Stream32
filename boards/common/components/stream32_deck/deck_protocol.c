@@ -778,6 +778,37 @@ static const char *handle_page(const cJSON *message)
     return deck_ui_select_page((uint8_t)page);
 }
 
+static const char *handle_clean(
+    const cJSON *message,
+    char *reply,
+    size_t reply_capacity
+)
+{
+    const cJSON *active = cJSON_GetObjectItemCaseSensitive(message, "active");
+
+    if (!cJSON_IsBool(active)) {
+        return "clean-invalid";
+    }
+
+    const bool wanted = cJSON_IsTrue(active);
+    const char *error = deck_ui_set_clean(wanted);
+
+    if (error != NULL) {
+        return error;
+    }
+
+    const int written = snprintf(
+        reply,
+        reply_capacity,
+        "{\"type\":\"clean-ack\",\"active\":%s}",
+        wanted ? "true" : "false"
+    );
+
+    return written >= 0 && (size_t)written < reply_capacity
+        ? NULL
+        : "reply-too-small";
+}
+
 static const char *handle_display(const cJSON *message)
 {
     const cJSON *blank_now =
@@ -858,6 +889,9 @@ bool deck_protocol_dispatch(
         has_reply = true;
     } else if (strcmp(type->valuestring, "key-update") == 0) {
         *error_out = handle_key_update(message, reply, reply_capacity);
+        has_reply = true;
+    } else if (strcmp(type->valuestring, "clean") == 0) {
+        *error_out = handle_clean(message, reply, reply_capacity);
         has_reply = true;
     } else if (strcmp(type->valuestring, "page") == 0) {
         *error_out = handle_page(message);

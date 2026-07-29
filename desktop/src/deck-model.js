@@ -135,6 +135,8 @@ function validateLeafAction(action, pageCount) {
     }
     case 'sleep':
       return { type: 'sleep' };
+    case 'clean':
+      return { type: 'clean' };
     case 'plugin':
       return validatePluginReference(action);
     default:
@@ -207,17 +209,23 @@ function validateAction(action, pageCount) {
   return { type: 'multi', steps };
 }
 
+// Deck-scoped actions resolve renderer-side against the live device session,
+// so reaching privileged execution means the renderer expanded nothing.
+const RENDERER_ONLY_ACTIONS = new Map([
+  ['page', 'Page'],
+  ['profile', 'Profile'],
+  ['sleep', 'Sleep'],
+  ['clean', 'Screen cleaning'],
+  ['multi', 'Multi and delay'],
+  ['delay', 'Multi and delay'],
+]);
+
 function validateHostAction(action) {
-  if (['page', 'profile', 'sleep', 'multi', 'delay'].includes(action?.type)) {
+  const name = RENDERER_ONLY_ACTIONS.get(action?.type);
+
+  if (name) {
     throw new TypeError(
-      `${action?.type === 'page'
-        ? 'Page'
-        : action?.type === 'profile'
-          ? 'Profile'
-          : action?.type === 'sleep'
-            ? 'Sleep'
-            : 'Multi and delay'} actions ` +
-      'never reach the main process unexpanded.',
+      `${name} actions never reach the main process unexpanded.`,
     );
   }
 

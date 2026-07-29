@@ -159,18 +159,33 @@ function managerFixture() {
     shown: [],
     reconnects: 0,
     renamed: [],
+    cleaned: [],
   };
   const manager = Object.create(DeviceManager.prototype);
   const document = { createElement: (tag) => makeElement(tag) };
+  const cleaning = new Set();
 
   manager.document = document;
   manager.list = makeElement('div');
   manager.empty = makeElement('p');
   manager.status = makeElement('p');
+  manager.cleanAllButton = makeElement('button');
   manager.showView = (name) => calls.shown.push(name);
   manager.deck = {
     devices,
-    runtime: { sessions },
+    runtime: {
+      sessions,
+      cleaning,
+      setCleanMode: async (deviceId, active) => {
+        calls.cleaned.push([deviceId, active]);
+
+        if (devices[deviceId].refusesCleaning) {
+          throw new Error('The device did not acknowledge in time.');
+        }
+
+        cleaning[active ? 'add' : 'delete'](deviceId);
+      },
+    },
     api: {
       renameDeck: async (deviceId, name) => {
         calls.renamed.push([deviceId, name]);
@@ -265,6 +280,46 @@ test('offline boards reconnect and renaming persists the new name', async () => 
   assert.equal(manager.deck.devices[calls.renamed[0][0]].name, 'Renamed booth');
 });
 
+test('cleaning locks capable boards and keeps going when one refuses', async () => {
+  const { manager, calls } = managerFixture();
+  const sessions = manager.deck.runtime.sessions;
+
+  manager.render();
+  assert.equal(findByText(manager.list, 'Clean screen'), null);
+  assert.equal(manager.cleanAllButton.hidden, true);
+
+  sessions.get('aaaaaaaaaaaa').hello.features = ['clean-mode'];
+  sessions.get('bbbbbbbbbbbb').hello.features = ['clean-mode'];
+  manager.render();
+  assert.equal(manager.cleanAllButton.hidden, false);
+  assert.equal(manager.cleanAllButton.textContent, 'Clean all screens');
+
+  // Connected boards sort by name, so the first card is Booth.
+  await fire(findByText(manager.list, 'Clean screen'), 'click');
+  assert.deepEqual(calls.cleaned, [['bbbbbbbbbbbb', true]]);
+  assert.ok(findByText(manager.list, 'Stop cleaning'));
+  assert.match(manager.status.textContent, /Booth is locked for cleaning/);
+
+  await manager.cleanAll();
+  assert.deepEqual(calls.cleaned.slice(1), [
+    ['bbbbbbbbbbbb', true],
+    ['aaaaaaaaaaaa', true],
+  ]);
+  assert.equal(manager.cleanAllButton.textContent, 'Unlock all screens');
+  assert.equal(manager.cleanAllButton.disabled, false);
+
+  // A board that will not answer must not strand the others still locked.
+  manager.deck.devices.aaaaaaaaaaaa.refusesCleaning = true;
+  await manager.cleanAll();
+  assert.deepEqual(calls.cleaned.slice(3), [
+    ['bbbbbbbbbbbb', false],
+    ['aaaaaaaaaaaa', false],
+  ]);
+  assert.equal(manager.deck.runtime.cleaning.has('bbbbbbbbbbbb'), false);
+  assert.equal(manager.status.dataset.state, 'error');
+  assert.match(manager.status.textContent, /Studio: The device did not/);
+});
+
 test('device manager view and nav are wired accessibly', () => {
   const html = readFileSync(
     path.join(__dirname, '..', 'src', 'renderer', 'index.html'),
@@ -285,6 +340,7 @@ test('device manager view and nav are wired accessibly', () => {
     /id="device-manager-status"[\s\S]*aria-live="polite"/,
   );
   assert.match(html, /id="device-manager-list"/);
+  assert.match(html, /id="device-manager-clean-all"/);
   assert.match(renderer, /\['deck', 'devices', 'flash', 'settings'\]/);
   assert.match(renderer, /new DeviceManager\(/);
 });

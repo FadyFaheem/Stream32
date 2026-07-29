@@ -62,7 +62,8 @@ The on-board ESP32-C6 wireless module is not used by Stream32.
   port; the CrowPanel uses the port labeled **UART0**. A second data cable for
   the CrowPanel's **USB 2.0** port is optional but recommended.
 - Nothing else is required to get started. Enclosures and stands are optional and
-  up to you.
+  up to you. A printable stand for the CrowPanel 10.1" is in
+  [`hardware/`](../hardware/Stream32-ElecrowPanel10_1.3mf).
 
 Prices and availability change often and are intentionally not listed here.
 Check the product page for current details.

@@ -1172,7 +1172,16 @@ class DeviceController {
             // to the deck sync engine after the handshake.
             this.deckRuntime.handleDeviceMessage(session, message);
           } else if (message.type === 'error') {
-            this.appendLog(`Device error: ${message.code || 'unknown'}`);
+            // A board that is still booting refuses the hello with the
+            // startup stage it has reached, and bsp_display_status is the
+            // only pre-handshake source of a display-* code. The retry timer
+            // is already going to try again, so this is progress, not failure.
+            this.appendLog(
+              /^display-/.test(message.code)
+                ? `Protocol: board is still starting up (${message.code}); ` +
+                  'retrying'
+                : `Device error: ${message.code || 'unknown'}`,
+            );
           }
         } catch (error) {
           if (!session.handshakeComplete) {

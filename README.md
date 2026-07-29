@@ -8,6 +8,15 @@
   <a href="./LICENSE">
     <img src="https://img.shields.io/badge/license-MIT-F5A623.svg" alt="MIT License">
   </a>
+
+  <br>
+  <br>
+
+  <img
+    src="./assets/crowpanel-10.1-deck.jpg"
+    alt="A CrowPanel 10.1-inch panel in a printed stand, running a Stream32 deck of 40 keys"
+    width="640"
+  >
 </div>
 
 ## Why Stream32?

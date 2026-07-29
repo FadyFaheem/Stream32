@@ -42,6 +42,9 @@ const developerModeControl = document.querySelector('#developer-mode');
 const diagnosticsExportButton = document.querySelector('#diagnostics-export');
 const displayBrightnessControl = document.querySelector('#display-brightness');
 const displayIdleControl = document.querySelector('#display-idle-timeout');
+const displayIdleCustomControl = document.querySelector('#display-idle-custom');
+const displayIdleCustomField =
+  document.querySelector('#display-idle-custom-field');
 const logsOpenButton = document.querySelector('#logs-open');
 const pluginBuiltInList = document.querySelector('#plugin-built-in-list');
 const pluginCatalogList = document.querySelector('#plugin-catalog-list');
@@ -369,11 +372,39 @@ autoStartControl.addEventListener('change', async () => {
   }
 });
 
+const displayControls = [
+  displayBrightnessControl,
+  displayIdleControl,
+  displayIdleCustomControl,
+  sleepWhenLockedControl,
+];
+const displayIdlePresets = new Set(
+  [...displayIdleControl.options].map((option) => option.value),
+);
+
+function setDisplayControlsDisabled(disabled) {
+  for (const control of displayControls) {
+    control.disabled = disabled;
+  }
+}
+
+// Saved minutes that no preset offers are shown as the custom entry.
+function showIdleTimeout(minutes) {
+  const custom = !displayIdlePresets.has(String(minutes));
+  displayIdleControl.value = custom ? 'custom' : String(minutes);
+  displayIdleCustomField.hidden = !custom;
+
+  // Seeded from a preset too, so switching to Custom keeps the current wait.
+  if (minutes >= 1) {
+    displayIdleCustomControl.value = String(minutes);
+  }
+}
+
 async function loadDisplaySettings() {
   try {
     const settings = await window.stream32.getDisplaySettings();
     displayBrightnessControl.value = String(settings.brightnessPercent);
-    displayIdleControl.value = String(settings.idleTimeoutMinutes);
+    showIdleTimeout(settings.idleTimeoutMinutes);
     sleepWhenLockedControl.checked = settings.sleepWhenLocked;
     deviceManager.setDefaultBrightness(settings.brightnessPercent);
     await deviceController.setMachineLocked(settings.machineLocked);
@@ -384,21 +415,25 @@ async function loadDisplaySettings() {
       state: 'error',
     });
   } finally {
-    displayBrightnessControl.disabled = false;
-    displayIdleControl.disabled = false;
-    sleepWhenLockedControl.disabled = false;
+    setDisplayControlsDisabled(false);
   }
 }
 
 async function saveDisplaySettings() {
-  displayBrightnessControl.disabled = true;
-  displayIdleControl.disabled = true;
-  sleepWhenLockedControl.disabled = true;
+  const custom = displayIdleControl.value === 'custom';
+
+  if (custom && !displayIdleCustomControl.reportValidity()) {
+    return;
+  }
+
+  setDisplayControlsDisabled(true);
 
   try {
     const settings = await window.stream32.setDisplaySettings({
       brightnessPercent: displayBrightnessControl.valueAsNumber,
-      idleTimeoutMinutes: Number(displayIdleControl.value),
+      idleTimeoutMinutes: custom
+        ? displayIdleCustomControl.valueAsNumber
+        : Number(displayIdleControl.value),
       sleepWhenLocked: sleepWhenLockedControl.checked,
     });
     deviceManager.setDefaultBrightness(settings.brightnessPercent);
@@ -409,14 +444,16 @@ async function saveDisplaySettings() {
       state: 'error',
     });
   } finally {
-    displayBrightnessControl.disabled = false;
-    displayIdleControl.disabled = false;
-    sleepWhenLockedControl.disabled = false;
+    setDisplayControlsDisabled(false);
   }
 }
 
 displayBrightnessControl.addEventListener('change', saveDisplaySettings);
-displayIdleControl.addEventListener('change', saveDisplaySettings);
+displayIdleControl.addEventListener('change', () => {
+  displayIdleCustomField.hidden = displayIdleControl.value !== 'custom';
+  return saveDisplaySettings();
+});
+displayIdleCustomControl.addEventListener('change', saveDisplaySettings);
 sleepWhenLockedControl.addEventListener('change', saveDisplaySettings);
 
 async function runSettingsTool(button, pendingText, operation, successText) {

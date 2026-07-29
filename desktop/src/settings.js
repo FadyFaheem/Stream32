@@ -10,7 +10,9 @@ const DEFAULT_DISPLAY_SETTINGS = Object.freeze({
   idleTimeoutMinutes: 10,
   sleepWhenLocked: true,
 });
-const DISPLAY_IDLE_TIMEOUTS = new Set([1, 5, 10, 15, 30, 60]);
+// Zero keeps displays lit; the ceiling is the firmware's idle timeout cap
+// (DECK_MAX_IDLE_SECONDS) expressed in minutes.
+const DISPLAY_IDLE_TIMEOUT_MAX_MINUTES = 1440;
 const DEFAULT_COMPANION_SETTINGS = Object.freeze({
   enabled: false,
   host: '127.0.0.1',
@@ -52,12 +54,21 @@ function updateSettings(patch, settingsPath = getSettingsPath()) {
   return settings;
 }
 
+function isValidIdleTimeout(minutes) {
+  return (
+    Number.isSafeInteger(minutes) &&
+    minutes >= 0 &&
+    minutes <= DISPLAY_IDLE_TIMEOUT_MAX_MINUTES
+  );
+}
+
 function getDisplaySettings(settingsPath = getSettingsPath()) {
   const settings = readSettings(settingsPath);
-  const idleTimeoutMinutes =
-    DISPLAY_IDLE_TIMEOUTS.has(settings.displayIdleTimeoutMinutes)
-      ? settings.displayIdleTimeoutMinutes
-      : DEFAULT_DISPLAY_SETTINGS.idleTimeoutMinutes;
+  const idleTimeoutMinutes = isValidIdleTimeout(
+    settings.displayIdleTimeoutMinutes,
+  )
+    ? settings.displayIdleTimeoutMinutes
+    : DEFAULT_DISPLAY_SETTINGS.idleTimeoutMinutes;
 
   return {
     brightnessPercent:
@@ -82,7 +93,7 @@ function setDisplaySettings(value, settingsPath = getSettingsPath()) {
     !Number.isSafeInteger(value.brightnessPercent) ||
     value.brightnessPercent < 0 ||
     value.brightnessPercent > 100 ||
-    !DISPLAY_IDLE_TIMEOUTS.has(value.idleTimeoutMinutes) ||
+    !isValidIdleTimeout(value.idleTimeoutMinutes) ||
     typeof value.sleepWhenLocked !== 'boolean'
   ) {
     throw new TypeError('Display settings are invalid.');

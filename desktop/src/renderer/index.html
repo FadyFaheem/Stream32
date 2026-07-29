@@ -816,16 +816,38 @@
             <div class="setting">
               <div>
                 <label for="display-idle-timeout">Display idle timeout</label>
-                <p>Turn deck displays off after no touch activity.</p>
+                <p>
+                  Turn deck displays off after no touch activity. Always on
+                  keeps them lit.
+                </p>
               </div>
-              <select id="display-idle-timeout" disabled>
-                <option value="1">1 minute</option>
-                <option value="5">5 minutes</option>
-                <option value="10" selected>10 minutes</option>
-                <option value="15">15 minutes</option>
-                <option value="30">30 minutes</option>
-                <option value="60">1 hour</option>
-              </select>
+              <div class="setting-value">
+                <select id="display-idle-timeout" disabled>
+                  <option value="0">Always on</option>
+                  <option value="1">1 minute</option>
+                  <option value="5">5 minutes</option>
+                  <option value="10" selected>10 minutes</option>
+                  <option value="15">15 minutes</option>
+                  <option value="30">30 minutes</option>
+                  <option value="60">1 hour</option>
+                  <option value="custom">Custom…</option>
+                </select>
+                <span id="display-idle-custom-field" class="setting-value" hidden>
+                  <input
+                    id="display-idle-custom"
+                    type="number"
+                    min="1"
+                    max="1440"
+                    step="1"
+                    value="10"
+                    required
+                    aria-label="Custom display idle timeout"
+                    aria-describedby="display-idle-custom-unit"
+                    disabled
+                  >
+                  <span id="display-idle-custom-unit" aria-hidden="true">min</span>
+                </span>
+              </div>
             </div>
 
             <div class="setting">

@@ -89,12 +89,37 @@ test('display settings have safe defaults and persist validated changes', () => 
       displayIdleTimeoutMinutes: 30,
       sleepDisplaysWhenLocked: false,
     });
+    // Always on and custom waits are stored as plain minutes, zero meaning
+    // the deck never blanks itself.
+    for (const idleTimeoutMinutes of [0, 7, 1440]) {
+      assert.equal(
+        setDisplaySettings(
+          { brightnessPercent: 42, idleTimeoutMinutes, sleepWhenLocked: false },
+          settingsPath,
+        ).idleTimeoutMinutes,
+        idleTimeoutMinutes,
+      );
+    }
+
     assert.throws(
       () =>
         setDisplaySettings(
           {
             brightnessPercent: 101,
             idleTimeoutMinutes: 30,
+            sleepWhenLocked: true,
+          },
+          settingsPath,
+        ),
+      /invalid/,
+    );
+    // Past the firmware's idle timeout cap.
+    assert.throws(
+      () =>
+        setDisplaySettings(
+          {
+            brightnessPercent: 42,
+            idleTimeoutMinutes: 1441,
             sleepWhenLocked: true,
           },
           settingsPath,

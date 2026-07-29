@@ -5,11 +5,16 @@
 
   <p>An open-source stream deck powered by ESP32.</p>
 
-  <a href="./LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-F5A623.svg" alt="MIT License">
-  </a>
+  <p>
+    <a href="https://github.com/FadyFaheem/Stream32/actions/workflows/ci-desktop.yml"><img src="https://img.shields.io/github/actions/workflow/status/FadyFaheem/Stream32/ci-desktop.yml?branch=main&label=desktop%20CI" alt="Desktop CI status"></a>
+    <a href="https://github.com/FadyFaheem/Stream32/actions/workflows/ci-boards.yml"><img src="https://img.shields.io/github/actions/workflow/status/FadyFaheem/Stream32/ci-boards.yml?branch=main&label=board%20CI" alt="Board CI status"></a>
+    <a href="https://github.com/FadyFaheem/Stream32/releases/latest"><img src="https://img.shields.io/github/v/release/FadyFaheem/Stream32?color=F5A623&label=release" alt="Latest release"></a>
+    <a href="https://github.com/FadyFaheem/Stream32/releases"><img src="https://img.shields.io/github/downloads/FadyFaheem/Stream32/total?color=4C9A2A&label=downloads" alt="Total downloads"></a>
+    <a href="https://github.com/FadyFaheem/Stream32/stargazers"><img src="https://img.shields.io/github/stars/FadyFaheem/Stream32?style=flat&color=F5A623" alt="GitHub stars"></a>
+    <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-F5A623.svg" alt="MIT License"></a>
+  </p>
 
-  <img src="./assets/crowpanel-10.1-deck.jpg" alt="A CrowPanel 10.1-inch panel in a printed stand running a Stream32 deck" width="640">
+  <img src="./assets/crowpanel-10.1-deck.webp" alt="A CrowPanel 10.1-inch panel in a printed stand running a Stream32 deck" width="640">
 </div>
 
 ## Why Stream32?

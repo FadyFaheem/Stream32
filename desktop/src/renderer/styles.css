@@ -1750,6 +1750,7 @@ progress::-webkit-progress-value {
 }
 
 .device-brightness,
+.device-invert,
 .device-companion {
   display: flex;
   align-items: center;
@@ -1775,7 +1776,8 @@ progress::-webkit-progress-value {
   background: rgba(4, 10, 14, 0.6);
 }
 
-.device-brightness .helper {
+.device-brightness .helper,
+.device-invert .helper {
   flex: 1 1 12rem;
   margin: 0;
 }

@@ -10,6 +10,7 @@ const {
 } = require('../dynamic-state');
 const { ProfileSwitcher } = require('./profile-switcher');
 const {
+  encodeCalibrateMessage,
   encodeCleanMessage,
   encodeDisplayBlankMessage,
   encodeImageChunks,
@@ -17,7 +18,10 @@ const {
   encodeLayoutMessage,
   encodePageMessage,
   layoutLineLimitFor,
+  validateCalibrateAck,
+  validateCalibrateMessage,
   validateCleanMessage,
+  validateDisplayInvertMessage,
   validateImageAck,
   validateKeyUpdateAck,
   validateLayoutAck,
@@ -94,6 +98,9 @@ class DeckRuntime {
     this.syncRunning = new Map();
     this.multiRuns = new Set();
     this.cleaning = new Set();
+    this.calibrating = new Set();
+    // Reported by the board after every hello, since it stores the setting.
+    this.inverted = new Map();
     this.liveValues = new Map();
     this.liveQueues = new Map();
     this.liveTimers = new Map();
@@ -514,6 +521,8 @@ class DeckRuntime {
       clearTimeout(this.syncTimers.get(deviceId));
       this.syncTimers.delete(deviceId);
       this.cleaning.delete(deviceId);
+      this.calibrating.delete(deviceId);
+      this.inverted.delete(deviceId);
       this.clearLiveRuntime(deviceId);
       this.onRenderAll();
     }
@@ -553,6 +562,18 @@ class DeckRuntime {
       this.handleDevicePage(deviceId, session, message);
     } else if (message.type === 'clean') {
       this.applyCleanState(deviceId, validateCleanMessage(message).active);
+    } else if (message.type === 'calibrate') {
+      // Only ever an outcome: the ack answers the start and cancel requests.
+      this.applyCalibrateState(
+        deviceId,
+        false,
+        validateCalibrateMessage(message).state,
+      );
+    } else if (message.type === 'display') {
+      this.applyInvertState(
+        deviceId,
+        validateDisplayInvertMessage(message).invert,
+      );
     }
   }
 
@@ -804,6 +825,66 @@ class DeckRuntime {
       },
     ));
     this.applyCleanState(deviceId, ack.active);
+  }
+
+  // The outcome carries why the wizard ended so the Devices page can say so;
+  // an abandoned wizard times out on the board and reports "cancelled".
+  applyCalibrateState(deviceId, active, outcome = null) {
+    if (active) {
+      this.calibrating.add(deviceId);
+    } else {
+      this.calibrating.delete(deviceId);
+    }
+
+    // Rendering rewrites the Devices status line, so the outcome follows it.
+    this.onRenderAll();
+    this.onCalibrateOutcome?.(deviceId, outcome);
+  }
+
+  async setCalibrating(deviceId, active) {
+    const session = this.requireCapableSession(
+      deviceId,
+      'touch-calibration',
+      'Touch calibration requires updated board firmware.',
+    );
+    const action = active ? 'start' : 'cancel';
+    const ack = validateCalibrateAck(await this.sendWithReply(
+      deviceId,
+      session,
+      encodeCalibrateMessage(action),
+      {
+        type: 'calibrate-ack',
+        identity: { action },
+        errorCodes: [
+          'calibrate-invalid',
+          'calibrate-unsupported',
+          'display-busy',
+          'unknown-type',
+        ],
+      },
+    ));
+    this.applyCalibrateState(deviceId, ack.action === 'start');
+  }
+
+  // The board persists inversion and re-announces it after the next hello,
+  // so this only records what it last told us.
+  applyInvertState(deviceId, invert) {
+    this.inverted.set(deviceId, invert);
+    this.onRenderAll();
+  }
+
+  requireCapableSession(deviceId, feature, message) {
+    const session = this.sessions.get(deviceId);
+
+    if (!session) {
+      throw new Error('The deck is not connected.');
+    }
+
+    if (!session.hello?.features?.includes(feature)) {
+      throw new Error(message);
+    }
+
+    return session;
   }
 
   async runKeyAction(deviceId, action, origin = {}) {

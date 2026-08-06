@@ -26,9 +26,9 @@
     "maxPages": 8
   },
   "firmware": {
-    "version": "0.3.0",
+    "version": "0.3.2",
     "projectPath": "firmware",
-    "imageName": "elecrow-crowpanel-advanced-10-1-esp32-p4-0.3.0.bin",
+    "imageName": "elecrow-crowpanel-advanced-10-1-esp32-p4-0.3.2.bin",
     "offset": 0
   },
   "capabilities": [

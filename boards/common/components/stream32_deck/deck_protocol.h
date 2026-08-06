@@ -48,6 +48,8 @@ typedef struct {
 typedef struct {
     bool awake;
     bool has_brightness;
+    bool has_invert;
+    bool invert;
     uint32_t idle_timeout_seconds;
     uint8_t brightness_percent;
 } deck_protocol_display_t;

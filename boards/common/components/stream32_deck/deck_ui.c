@@ -4,7 +4,9 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "deck_calibrate.h"
 #include "deck_clean.h"
+#include "deck_settings.h"
 #include "deck_storage.h"
 #include "esp_heap_caps.h"
 #include "esp_log.h"
@@ -13,11 +15,18 @@
 #include "sdkconfig.h"
 
 /* The LVGL lock comes from whichever board BSP the application links; the
-   BSP component name differs per board, so the header is not included. */
+   BSP component name differs per board, so the header is not included.
+   Boards without the underlying hardware still define these and answer
+   ESP_ERR_NOT_SUPPORTED. */
 extern bool bsp_display_lock(uint32_t timeout_ms);
 extern void bsp_display_unlock(void);
 extern esp_err_t bsp_display_set_awake(bool awake);
 extern esp_err_t bsp_display_set_brightness(uint32_t brightness_percent);
+extern esp_err_t bsp_display_set_invert(bool invert);
+extern bool bsp_display_invert(void);
+extern esp_err_t bsp_touch_set_calibration(
+    const float coefficients[DECK_CALIBRATION_COEFFICIENTS]
+);
 
 /* Panel and grid limits are per-board Kconfig values (see this component's
    Kconfig for the protocol line-budget ceiling behind the ranges). */
@@ -26,8 +35,7 @@ extern esp_err_t bsp_display_set_brightness(uint32_t brightness_percent);
 #define DECK_MAX_ROWS CONFIG_STREAM32_DECK_MAX_ROWS
 #define DECK_MAX_COLS CONFIG_STREAM32_DECK_MAX_COLS
 #define DECK_KEY_GAP 8
-/* 180 px keys are the largest that fit a 64 KB flash slot in RGB565. */
-#define DECK_KEY_MAX_PX 180
+#define DECK_KEY_MAX_PX CONFIG_STREAM32_DECK_KEY_MAX_PX
 #define DECK_LINE_CAPACITY 128
 #define DECK_DEFAULT_IDLE_SECONDS 600
 #define DECK_OVERLAY_LEASE_MS 30000
@@ -79,9 +87,11 @@ static bool s_consume_touch;
 static bool s_overlay_active;
 static int64_t s_overlay_activity_ms;
 static bool s_clean_active;
+static bool s_calibrate_active;
 
 static lv_obj_t *s_deck_screen;
-static lv_obj_t *s_clean_return_screen;
+/* Shared by both modal overlays; only one can be up at a time. */
+static lv_obj_t *s_modal_return_screen;
 static uint8_t *s_key_buffers[DECK_MAX_KEYS];
 static lv_image_dsc_t s_key_dsc[DECK_MAX_KEYS];
 
@@ -239,8 +249,10 @@ static void attach_key_image(lv_obj_t *parent, int index)
     lv_obj_move_to_index(image, 0);
 }
 
-/* Loads the artwork for every key on the page into PSRAM. Runs before the
-   grid is (re)built so image descriptors point at valid pixels. */
+/* Loads the artwork for every key on the page into RAM. Runs before the
+   grid is (re)built so image descriptors point at valid pixels. Boards
+   without PSRAM hold the whole visible page in internal DRAM, so their
+   key budget is bounded by heap rather than by the grid. */
 static void load_key_buffers(const deck_page_t *page, int key_px)
 {
     const uint32_t size = (uint32_t)key_px * key_px * 2;
@@ -255,10 +267,15 @@ static void load_key_buffers(const deck_page_t *page, int key_px)
             continue;
         }
 
-        s_key_buffers[index] = heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
+        s_key_buffers[index] = heap_caps_malloc_prefer(
+            size,
+            2,
+            MALLOC_CAP_SPIRAM,
+            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT
+        );
 
         if (s_key_buffers[index] == NULL) {
-            ESP_LOGW(TAG, "Out of PSRAM for key %d artwork", index);
+            ESP_LOGW(TAG, "Out of memory for key %d artwork", index);
             continue;
         }
 
@@ -471,6 +488,12 @@ esp_err_t deck_ui_init(deck_notify_fn notify)
     s_notify = notify;
     s_last_activity_ms = now_ms();
 
+    /* Device settings apply before any host connects, so a standalone board
+       boots with the touch and colours it was last given. */
+    if (deck_settings_init() == ESP_OK) {
+        deck_settings_apply();
+    }
+
     const esp_err_t error = deck_storage_init();
 
     if (error != ESP_OK) {
@@ -533,6 +556,16 @@ void deck_ui_poll(void)
         notify_line("{\"type\":\"clean\",\"active\":false}");
     }
 
+    /* The overlay reports its own outcome; releasing the screen stays here
+       because only deck_ui knows what to put back. */
+    if (s_calibrate_active) {
+        const char *outcome = deck_calibrate_poll();
+
+        if (outcome != NULL && deck_ui_set_calibrate(false) == NULL) {
+            notify_line(outcome);
+        }
+    }
+
     if (s_overlay_active &&
         now_ms() - s_overlay_activity_ms >= DECK_OVERLAY_LEASE_MS) {
         deck_ui_clear_overlays();
@@ -561,8 +594,9 @@ void deck_ui_poll(void)
 bool deck_ui_handle_touch(bool pressed)
 {
     /* A wipe reaches neither the host nor a local goPage switch. The hold
-       target lives on its own screen and never routes through here. */
-    if (s_clean_active || s_forced_asleep) {
+       target lives on its own screen and never routes through here, and the
+       calibration taps are sampled raw rather than through LVGL. */
+    if (s_clean_active || s_calibrate_active || s_forced_asleep) {
         return true;
     }
 
@@ -785,7 +819,12 @@ const char *deck_ui_commit_image(
             : "storage-failed";
     }
 
-    uint8_t *owned_pixels = heap_caps_malloc(size, MALLOC_CAP_SPIRAM);
+    uint8_t *owned_pixels = heap_caps_malloc_prefer(
+        size,
+        2,
+        MALLOC_CAP_SPIRAM,
+        MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT
+    );
 
     if (owned_pixels == NULL) {
         return "image-no-memory";
@@ -839,9 +878,17 @@ bool deck_ui_clean_active(void)
     return s_clean_active;
 }
 
-const char *deck_ui_set_clean(bool active)
+/* Both overlays take and give back the screen identically. The screen and
+   reset calls need the display lock, so they arrive as callbacks rather than
+   as an already-built screen. */
+static const char *set_modal(
+    bool *active_flag,
+    bool active,
+    lv_obj_t *(*build)(void),
+    void (*reset)(void)
+)
 {
-    if (active == s_clean_active) {
+    if (active == *active_flag) {
         return NULL;
     }
 
@@ -849,19 +896,18 @@ const char *deck_ui_set_clean(bool active)
         return "display-busy";
     }
 
-    deck_clean_reset();
+    reset();
+    *active_flag = active;
 
     if (active) {
-        s_clean_return_screen = lv_screen_active();
-        s_clean_active = true;
-        lv_screen_load(deck_clean_screen());
+        s_modal_return_screen = lv_screen_active();
+        lv_screen_load(build());
     } else {
-        s_clean_active = false;
-        /* A sync during the wipe may have built the deck behind the lock. */
+        /* A sync during the overlay may have built the deck behind it. */
         lv_screen_load(
             s_active && s_deck_screen != NULL
                 ? s_deck_screen
-                : s_clean_return_screen
+                : s_modal_return_screen
         );
     }
 
@@ -875,6 +921,32 @@ const char *deck_ui_set_clean(bool active)
     return NULL;
 }
 
+const char *deck_ui_set_clean(bool active)
+{
+    return set_modal(
+        &s_clean_active,
+        active,
+        deck_clean_screen,
+        deck_clean_reset
+    );
+}
+
+const char *deck_ui_set_calibrate(bool active)
+{
+    /* Probing the BSP keeps a rogue host from stranding a board that has
+       nothing to calibrate on an overlay it cannot dismiss. */
+    if (active && bsp_touch_set_calibration(NULL) == ESP_ERR_NOT_SUPPORTED) {
+        return "calibrate-unsupported";
+    }
+
+    return set_modal(
+        &s_calibrate_active,
+        active,
+        deck_calibrate_screen,
+        deck_calibrate_reset
+    );
+}
+
 const char *deck_ui_blank_display(void)
 {
     s_consume_touch = false;
@@ -884,6 +956,20 @@ const char *deck_ui_blank_display(void)
 
 const char *deck_ui_apply_display(const deck_protocol_display_t *display)
 {
+    if (display->has_invert && display->invert != bsp_display_invert()) {
+        const esp_err_t error = bsp_display_set_invert(display->invert);
+
+        if (error == ESP_ERR_NOT_SUPPORTED) {
+            return "display-invert-unsupported";
+        }
+
+        if (error != ESP_OK) {
+            return "display-invert-failed";
+        }
+
+        deck_settings_set_invert(display->invert);
+    }
+
     if (display->has_brightness) {
         const esp_err_t error =
             bsp_display_set_brightness(display->brightness_percent);

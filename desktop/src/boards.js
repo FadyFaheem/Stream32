@@ -31,6 +31,7 @@ const BOOT_MAGIC = 0xe9;
 // bootloader, i.e. where the 0xE9 image magic sits inside a merged image
 // flashed at offset 0.
 const SUPPORTED_CHIPS = new Map([
+  ['ESP32', { bootMagicOffset: 0x1000 }],
   ['ESP32-S3', { bootMagicOffset: 0x0 }],
   ['ESP32-P4', { bootMagicOffset: 0x2000 }],
 ]);

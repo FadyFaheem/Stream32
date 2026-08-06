@@ -5,6 +5,7 @@ const {
   MAX_PROTOCOL_LINE_LENGTH,
   crc32,
   createLineDecoder,
+  encodeCalibrateMessage,
   encodeCleanMessage,
   encodeDisplayBlankMessage,
   encodeDisplayMessage,
@@ -17,8 +18,11 @@ const {
   isExpectedChip,
   layoutLineLimitFor,
   transportRank,
+  validateCalibrateAck,
+  validateCalibrateMessage,
   validateCleanMessage,
   validateDeviceHello,
+  validateDisplayInvertMessage,
   validateImageAck,
   validateKeyUpdateAck,
   validateLayoutAck,
@@ -605,6 +609,82 @@ test('encodes the cleaning lock and reads the board state back', () => {
   assert.throws(() => validateCleanMessage({ type: 'clean' }), /boolean/);
   assert.throws(
     () => validateCleanMessage({ type: 'clean', active: 'true' }),
+    /boolean/,
+  );
+});
+
+test('encodes the calibration request and reads its outcome back', () => {
+  assert.equal(
+    new TextDecoder().decode(encodeCalibrateMessage('start')),
+    '{"type":"calibrate","action":"start"}\n',
+  );
+  assert.equal(
+    new TextDecoder().decode(encodeCalibrateMessage('cancel')),
+    '{"type":"calibrate","action":"cancel"}\n',
+  );
+  assert.throws(() => encodeCalibrateMessage('restart'), /start or cancel/);
+  assert.throws(() => encodeCalibrateMessage(true), /start or cancel/);
+
+  assert.deepEqual(
+    validateCalibrateAck({ type: 'calibrate-ack', action: 'start' }),
+    { action: 'start' },
+  );
+  assert.throws(
+    () => validateCalibrateAck({ type: 'calibrate-ack', action: 'done' }),
+    /invalid/,
+  );
+
+  // The wizard runs on the board, so the outcome arrives unsolicited.
+  for (const state of ['done', 'failed', 'cancelled']) {
+    assert.deepEqual(
+      validateCalibrateMessage({ type: 'calibrate', state }),
+      { state },
+    );
+  }
+
+  assert.throws(
+    () => validateCalibrateMessage({ type: 'calibrate', state: 'running' }),
+    /invalid/,
+  );
+  assert.throws(() => validateCalibrateMessage({ type: 'calibrate' }), /invalid/);
+});
+
+test('carries colour inversion on the display message in both directions', () => {
+  assert.equal(
+    new TextDecoder().decode(
+      encodeDisplayMessage({
+        awake: true,
+        idleTimeoutSeconds: 600,
+        invert: true,
+      }),
+    ),
+    '{"type":"display","awake":true,"idleTimeoutSeconds":600,"invert":true}\n',
+  );
+
+  // Absent means "leave it alone", which is what every routine policy push
+  // sends, since the board owns the stored value.
+  assert.doesNotMatch(
+    new TextDecoder().decode(
+      encodeDisplayMessage({ awake: true, idleTimeoutSeconds: 600 }),
+    ),
+    /invert/,
+  );
+  assert.throws(
+    () =>
+      encodeDisplayMessage({
+        awake: true,
+        idleTimeoutSeconds: 600,
+        invert: 'yes',
+      }),
+    /boolean/,
+  );
+
+  assert.deepEqual(
+    validateDisplayInvertMessage({ type: 'display', invert: false }),
+    { invert: false },
+  );
+  assert.throws(
+    () => validateDisplayInvertMessage({ type: 'display' }),
     /boolean/,
   );
 });

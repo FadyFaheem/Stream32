@@ -139,6 +139,11 @@ bool bsp_display_lock(uint32_t timeout_ms);
 void bsp_display_unlock(void);
 esp_err_t bsp_display_set_awake(bool awake);
 esp_err_t bsp_display_set_brightness(uint32_t brightness_percent);
+esp_err_t bsp_display_set_invert(bool invert);
+bool bsp_display_invert(void);
+/* GT911 reports screen coordinates directly, so these decline. */
+bool bsp_touch_read_raw(uint16_t *raw_x, uint16_t *raw_y);
+esp_err_t bsp_touch_set_calibration(const float *coefficients);
 void bsp_display_rotate(lv_display_t *disp, lv_disp_rotation_t rotation);
 #endif // BSP_CONFIG_NO_GRAPHIC_LIB == 0
 

@@ -918,6 +918,10 @@ class DeviceController {
     return session.hello?.features?.includes('display-brightness') === true;
   }
 
+  displayInvertSupported(session) {
+    return session.hello?.features?.includes('display-invert') === true;
+  }
+
   // A board keeps its own brightness when one is saved; otherwise it follows
   // the app-wide default from Settings.
   brightnessFor(session) {
@@ -926,7 +930,9 @@ class DeviceController {
     return saved ?? this.displayPolicy.brightnessPercent;
   }
 
-  async applyDisplayPolicyToSession(session) {
+  // The board stores inversion itself, so it is only ever sent as an explicit
+  // override and never replayed as part of the routine policy push.
+  async applyDisplayPolicyToSession(session, overrides = {}) {
     if (!session.handshakeComplete || !this.displayControlSupported(session)) {
       return;
     }
@@ -938,6 +944,7 @@ class DeviceController {
         ...(this.displayBrightnessSupported(session)
           ? { brightness: this.brightnessFor(session) }
           : {}),
+        ...overrides,
       }),
     );
   }
@@ -949,6 +956,21 @@ class DeviceController {
     if (session) {
       await this.applyDisplayPolicyToSession(session);
     }
+  }
+
+  async setDisplayInvert(deviceId, invert) {
+    const session = this.deckRuntime?.sessionFor(deviceId);
+
+    if (!session) {
+      throw new Error('The deck is not connected.');
+    }
+
+    if (!this.displayInvertSupported(session)) {
+      throw new Error('Colour inversion requires updated board firmware.');
+    }
+
+    await this.applyDisplayPolicyToSession(session, { invert });
+    this.deckRuntime?.applyInvertState(deviceId, invert);
   }
 
   async broadcastDisplayPolicy() {

@@ -171,7 +171,7 @@ static void send_hello(void)
         "{\"type\":\"hello\",\"protocol\":%d,\"boardId\":\"%s\","
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
         "\"features\":[\"display-control\",\"display-brightness\",\"display-blank\","
-        "\"key-update\",\"image-rle\",\"clean-mode\",\"%s\"]}",
+        "\"display-invert\",\"key-update\",\"image-rle\",\"clean-mode\",\"%s\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -240,6 +240,14 @@ static void handle_host_message(const char *line, size_t length)
             if (deck_ui_clean_active()) {
                 serial_write_line("{\"type\":\"clean\",\"active\":true}");
             }
+
+            /* Inversion is stored on the board, so the desktop has to be told
+               where the toggle actually sits. */
+            serial_write_line(
+                bsp_display_invert()
+                    ? "{\"type\":\"display\",\"invert\":true}"
+                    : "{\"type\":\"display\",\"invert\":false}"
+            );
         }
     } else if (strcmp(type->valuestring, "ping") == 0) {
         const cJSON *id = cJSON_GetObjectItemCaseSensitive(message, "id");

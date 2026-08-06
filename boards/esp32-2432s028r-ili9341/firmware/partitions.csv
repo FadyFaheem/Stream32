@@ -1,0 +1,7 @@
+# Name,   Type, SubType, Offset,   Size, Flags
+# 4 MB flash: the app gets 1.75 MB and the rest of the chip becomes the deck
+# pool, ending exactly at 0x400000.
+nvs,      data, nvs,     0x9000,   24K,
+phy_init, data, phy,     0xf000,   4K,
+factory,  app,  factory, 0x10000,  0x1C0000,
+deck,     data, 0x40,    0x1D0000, 0x230000,

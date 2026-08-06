@@ -198,6 +198,59 @@ test('verifies the ESP32-P4 boot magic at the 0x2000 bootloader offset', async (
   }
 });
 
+test('verifies the classic ESP32 boot magic at the 0x1000 offset', async () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'stream32-boards-'));
+  // A merged classic ESP32 image pads from 0x0; its bootloader sits at 0x1000.
+  const image = Buffer.alloc(0x1010, 0xff);
+  image[0x1000] = 0xe9;
+  const catalog = catalogFor(image, { chip: 'ESP32', id: 'cyd-test' });
+  const badImage = Buffer.alloc(0x1010, 0xff);
+  // The S3 offset must not satisfy a classic ESP32 board.
+  badImage[0x0] = 0xe9;
+  const badCatalog = catalogFor(badImage, { chip: 'ESP32', id: 'cyd-test' });
+
+  const serviceFor = (payload, json, userDataPath) =>
+    createBoardService({
+      appVersion: '0.1.0',
+      assetBaseUrl: 'https://github.com/example/boards/',
+      catalogUrl: 'https://github.com/example/catalog.json',
+      fetcher: async (url) =>
+        url === 'https://github.com/example/catalog.json'
+          ? new Response(json)
+          : new Response(payload, {
+              headers: { 'content-length': payload.length },
+            }),
+      userDataPath,
+    });
+
+  try {
+    const service = serviceFor(image, JSON.stringify(catalog), directory);
+    const firmware = await service.getFirmware(catalog.boards[0].id);
+
+    assert.equal(firmware.board.compatible, true);
+    assert.deepEqual(Buffer.from(firmware.images[0].data), image);
+
+    const badDirectory = mkdtempSync(
+      path.join(os.tmpdir(), 'stream32-boards-'),
+    );
+
+    try {
+      await assert.rejects(
+        serviceFor(
+          badImage,
+          JSON.stringify(badCatalog),
+          badDirectory,
+        ).getFirmware(badCatalog.boards[0].id),
+        /not an Espressif boot image/,
+      );
+    } finally {
+      rmSync(badDirectory, { force: true, recursive: true });
+    }
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
 test('applies and validates optional per-board deck limits', () => {
   const image = Buffer.from([0xe9, 1, 2, 3]);
 

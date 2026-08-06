@@ -31,6 +31,7 @@ const POST_FLASH_RESETS = new Set(['automatic', 'manual']);
 // expects the second-stage bootloader, i.e. where the 0xE9 image magic sits
 // inside a merged image flashed at 0x0.
 const SUPPORTED_CHIPS = new Map([
+  ['ESP32', { bootOffset: 0x1000, idfTarget: 'esp32' }],
   ['ESP32-S3', { bootOffset: 0x0, idfTarget: 'esp32s3' }],
   ['ESP32-P4', { bootOffset: 0x2000, idfTarget: 'esp32p4' }],
 ]);

@@ -33,4 +33,19 @@ menu "Stream32 deck"
         range 1 40
         default 25
 
+    # Artwork is pooled in fixed-size flash slots, so the slot must hold the
+    # largest key a board can render: KEY_MAX_PX * KEY_MAX_PX * 2 bytes in
+    # RGB565. The defaults pair 180 px keys with 64 KB slots. A board with a
+    # small deck partition shrinks both together to keep enough slots, for
+    # example 128 px keys in 32 KB slots.
+    config STREAM32_DECK_SLOT_KB
+        int "Flash pool slot size in KB"
+        range 8 64
+        default 64
+
+    config STREAM32_DECK_KEY_MAX_PX
+        int "Largest rendered key edge in pixels"
+        range 32 180
+        default 180
+
 endmenu

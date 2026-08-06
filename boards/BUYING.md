@@ -1,8 +1,9 @@
 # Buying a display
 
-Stream32 runs on two off-the-shelf ESP32 touch displays. This page explains
-which one to buy and, just as importantly, what to avoid, since several
-look-alike products share almost the same name but are not compatible.
+Stream32 runs on a handful of off-the-shelf ESP32 touch displays. This page
+explains which one to buy and, just as importantly, what to avoid, since
+several look-alike products share almost the same name but are not
+compatible.
 
 > [!NOTE]
 > **Affiliate disclosure.** Some links on this page are Amazon affiliate links.
@@ -17,6 +18,7 @@ look-alike products share almost the same name but are not compatible.
 | --- | --- | --- | --- | --- |
 | [Waveshare `ESP32-S3-Touch-LCD-4`](#waveshare-esp32-s3-touch-lcd-4) | 4" | 480x480 | up to 5x5, 8 pages | A compact, single-cable deck |
 | [Elecrow `CrowPanel Advanced 10.1"`](#elecrow-crowpanel-advanced-101-esp32-p4) | 10.1" | 1024x600 | up to 40 keys/page, 8 pages | A large deck with many keys per page |
+| [`ESP32-2432S028R`](#esp32-2432s028r-cheap-yellow-display) | 2.8" | 320x240 | up to 12 keys/page, 8 pages | The cheapest way to try Stream32 |
 
 ## Waveshare ESP32-S3-Touch-LCD-4
 
@@ -55,6 +57,33 @@ sizes and chip variants, so choose carefully.
   USB link that syncs artwork far faster than the UART0 bridge.
 
 The on-board ESP32-C6 wireless module is not used by Stream32.
+
+## ESP32-2432S028R (Cheap Yellow Display)
+
+A 2.8-inch, 320x240 resistive touch panel on a classic ESP32, widely sold as
+the "CYD". It is by far the cheapest supported board, and the compromise is
+size: 12 keys per page instead of 25 or 40.
+
+This model number is sold by many sellers and covers several incompatible
+boards, and **the number of USB connectors tells you which panel is inside**.
+Listings routinely claim ILI9341 regardless of what ships, so trust the
+connectors and not the description.
+
+- **Confirm before ordering:**
+  - **One USB-C connector**: the ILI9341 panel this profile targets.
+  - **One micro-USB connector**: also ILI9341, but an older revision that
+    has not been tested with Stream32.
+  - **Two connectors (USB-C and micro-USB)**: usually an **ST7789** panel.
+    This is a different display controller and the current profile will not
+    drive it correctly.
+  - The trailing **R** means resistive touch (XPT2046), which is what this
+    profile expects. The **C** variants use capacitive GT911 touch and are
+    different devices.
+- **Expect to calibrate the touch panel.** Resistive panels vary between
+  units. The firmware's self-test screen shows the raw touch values needed
+  to adjust the calibration window in the board's BSP.
+- Some USB-C revisions omit the CC resistors, so a USB-C-to-USB-C cable may
+  not power the board. A USB-A-to-USB-C cable avoids the problem.
 
 ## What else you need
 

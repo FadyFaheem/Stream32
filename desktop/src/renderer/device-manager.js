@@ -28,7 +28,14 @@ function companionStatusText(row, link) {
 // Joins the persisted device registry, the live runtime sessions, and the
 // board catalog into one inventory. Pure so the view model is unit-testable
 // without a DOM.
-function deviceInventory({ devices = {}, sessions, boards, cleaning } = {}) {
+function deviceInventory({
+  devices = {},
+  sessions,
+  boards,
+  cleaning,
+  calibrating,
+  inverted,
+} = {}) {
   const sessionFor = (id) => (sessions && sessions.get ? sessions.get(id) : undefined);
   const boardFor = (id) => (boards && boards.get ? boards.get(id) : undefined);
 
@@ -67,6 +74,17 @@ function deviceInventory({ devices = {}, sessions, boards, cleaning } = {}) {
         ? (session.hello?.features ?? []).includes('clean-mode')
         : false,
       cleaning: connected && cleaning ? cleaning.has(deviceId) : false,
+      supportsCalibration: connected
+        ? (session.hello?.features ?? []).includes('touch-calibration')
+        : false,
+      calibrating:
+        connected && calibrating ? calibrating.has(deviceId) : false,
+      supportsInvert: connected
+        ? (session.hello?.features ?? []).includes('display-invert')
+        : false,
+      // The board announces this after every hello, so an unknown value only
+      // means the announcement has not landed yet.
+      inverted: connected && inverted ? inverted.get(deviceId) === true : false,
       deckLimits: board?.deck ?? {
         maxRows: MAX_ROWS,
         maxCols: MAX_COLS,
@@ -157,6 +175,9 @@ class DeviceManager {
     this.list = document.querySelector('#device-manager-list');
     this.empty = document.querySelector('#device-manager-empty');
     this.status = document.querySelector('#device-manager-status');
+    // The wizard runs on the board, so its result arrives unsolicited.
+    this.deck.runtime.onCalibrateOutcome = (deviceId, outcome) =>
+      this.showCalibrateOutcome(deviceId, outcome);
     this.scanButton = document.querySelector('#device-manager-scan');
     this.cleanAllButton = document.querySelector('#device-manager-clean-all');
     this.companionEnabledControl = document.querySelector('#companion-enabled');
@@ -282,6 +303,8 @@ class DeviceManager {
       sessions: this.deck.runtime.sessions,
       boards: this.deviceController.boards,
       cleaning: this.deck.runtime.cleaning,
+      calibrating: this.deck.runtime.calibrating,
+      inverted: this.deck.runtime.inverted,
     });
   }
 
@@ -382,6 +405,16 @@ class DeviceManager {
       actions.append(clean);
     }
 
+    if (row.supportsCalibration) {
+      const calibrate = this.createButton(
+        row.calibrating ? 'Cancel calibration' : 'Calibrate touch',
+        row.calibrating ? 'button button-primary' : 'button button-quiet',
+      );
+      calibrate.addEventListener('click', () =>
+        this.toggleCalibration(row, calibrate));
+      actions.append(calibrate);
+    }
+
     const toggle = this.createButton(
       row.connected ? 'Disconnect' : 'Reconnect',
       'button button-quiet',
@@ -393,6 +426,10 @@ class DeviceManager {
 
     if (row.supportsBrightness) {
       card.append(this.renderBrightness(row));
+    }
+
+    if (row.supportsInvert) {
+      card.append(this.renderInvert(row));
     }
 
     if (this.companionSettings.enabled) {
@@ -507,6 +544,87 @@ class DeviceManager {
 
     section.append(toggleLabel, grid, status);
     return section;
+  }
+
+  // Same board model can ship panels that disagree about inversion, so this
+  // is the fix for a screen that looks like a photographic negative.
+  renderInvert(row) {
+    const { document } = this;
+    const section = document.createElement('div');
+    const label = document.createElement('label');
+    const toggle = document.createElement('input');
+    const caption = document.createElement('span');
+
+    section.className = 'device-invert';
+    label.className = 'device-companion-toggle';
+    toggle.type = 'checkbox';
+    toggle.checked = row.inverted;
+    caption.textContent = 'Invert display colours';
+    toggle.addEventListener('change', () => this.saveInvert(row, toggle));
+    label.append(toggle, caption);
+
+    const helper = document.createElement('p');
+    helper.className = 'helper';
+    helper.textContent =
+      'Turn this on if the screen looks like a photographic negative. ' +
+      'The board remembers it.';
+
+    section.append(label, helper);
+    return section;
+  }
+
+  async saveInvert(row, toggle) {
+    toggle.disabled = true;
+
+    try {
+      await this.deviceController.setDisplayInvert(row.deviceId, toggle.checked);
+    } catch (error) {
+      this.setStatus(`Could not change colours: ${error.message}`, 'error');
+    }
+
+    this.render();
+  }
+
+  showCalibrateOutcome(deviceId, outcome) {
+    if (!outcome) {
+      return;
+    }
+
+    const name = this.deck.devices[deviceId]?.name ?? 'The deck';
+    const messages = {
+      done: [`${name} touch calibration saved.`, 'ready'],
+      failed: [
+        `${name} calibration did not check out. The taps were too close ` +
+          'together or one missed its marker. The previous calibration is ' +
+          'still in use.',
+        'error',
+      ],
+      cancelled: [`${name} calibration timed out.`, 'idle'],
+    };
+
+    this.setStatus(...(messages[outcome] ?? messages.cancelled));
+  }
+
+  async toggleCalibration(row, control) {
+    control.disabled = true;
+    let status;
+
+    try {
+      await this.deck.runtime.setCalibrating(row.deviceId, !row.calibrating);
+      status = row.calibrating
+        ? [`${row.name} calibration cancelled.`, 'idle']
+        : [
+          `Follow the markers on ${row.name}. Tap the centre of each one; ` +
+            'the board saves the result itself.',
+          'working',
+        ];
+    } catch (error) {
+      status = [`Could not start calibration: ${error.message}`, 'error'];
+    }
+
+    // render() rewrites the status line, so the outcome has to follow it.
+    this.render();
+    this.setStatus(...status);
   }
 
   async saveBrightness(row, input) {

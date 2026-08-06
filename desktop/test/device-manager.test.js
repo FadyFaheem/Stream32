@@ -144,6 +144,22 @@ function findByText(node, text) {
   return null;
 }
 
+function findByClass(node, className) {
+  if (node.className === className) {
+    return node;
+  }
+
+  for (const child of node.children || []) {
+    const found = findByClass(child, className);
+
+    if (found) {
+      return found;
+    }
+  }
+
+  return null;
+}
+
 async function fire(node, type) {
   for (const handler of node.listeners[type] || []) {
     await handler();
@@ -160,10 +176,14 @@ function managerFixture() {
     reconnects: 0,
     renamed: [],
     cleaned: [],
+    calibrated: [],
+    invertedTo: [],
   };
   const manager = Object.create(DeviceManager.prototype);
   const document = { createElement: (tag) => makeElement(tag) };
   const cleaning = new Set();
+  const calibrating = new Set();
+  const inverted = new Map();
 
   manager.document = document;
   manager.companionSettings = { enabled: false, host: '127.0.0.1', port: 16622 };
@@ -185,6 +205,12 @@ function managerFixture() {
         }
 
         cleaning[active ? 'add' : 'delete'](deviceId);
+      },
+      calibrating,
+      inverted,
+      setCalibrating: async (deviceId, active) => {
+        calls.calibrated.push([deviceId, active]);
+        calibrating[active ? 'add' : 'delete'](deviceId);
       },
     },
     api: {
@@ -210,6 +236,10 @@ function managerFixture() {
     },
     reconnectAuthorizedDevice: async () => {
       calls.reconnects++;
+    },
+    setDisplayInvert: async (deviceId, invert) => {
+      calls.invertedTo.push([deviceId, invert]);
+      inverted.set(deviceId, invert);
     },
   };
 
@@ -319,6 +349,60 @@ test('cleaning locks capable boards and keeps going when one refuses', async () 
   assert.equal(manager.deck.runtime.cleaning.has('bbbbbbbbbbbb'), false);
   assert.equal(manager.status.dataset.state, 'error');
   assert.match(manager.status.textContent, /Studio: The device did not/);
+});
+
+test('calibration and inversion appear only on boards that support them', async () => {
+  const { manager, calls } = managerFixture();
+  const sessions = manager.deck.runtime.sessions;
+
+  // A GT911 board has nothing to calibrate, so neither control belongs there.
+  manager.render();
+  assert.equal(findByText(manager.list, 'Calibrate touch'), null);
+  assert.equal(findByText(manager.list, 'Invert display colours'), null);
+
+  sessions.get('bbbbbbbbbbbb').hello.features = [
+    'touch-calibration',
+    'display-invert',
+  ];
+  manager.render();
+
+  // Connected boards sort by name, so the first card is Booth.
+  await fire(findByText(manager.list, 'Calibrate touch'), 'click');
+  assert.deepEqual(calls.calibrated, [['bbbbbbbbbbbb', true]]);
+  assert.ok(findByText(manager.list, 'Cancel calibration'));
+  assert.match(manager.status.textContent, /Follow the markers on Booth/);
+
+  await fire(findByText(manager.list, 'Cancel calibration'), 'click');
+  assert.deepEqual(calls.calibrated.at(-1), ['bbbbbbbbbbbb', false]);
+  assert.ok(findByText(manager.list, 'Calibrate touch'));
+
+  // The board owns the stored value, so the checkbox follows what it reported.
+  const invertToggle = () =>
+    findByClass(manager.list, 'device-invert').children[0].children[0];
+
+  assert.equal(invertToggle().checked, false);
+
+  const toggle = invertToggle();
+  toggle.checked = true;
+  await fire(toggle, 'change');
+  assert.deepEqual(calls.invertedTo, [['bbbbbbbbbbbb', true]]);
+  assert.equal(invertToggle().checked, true);
+});
+
+test('the board reports how a calibration ended', () => {
+  const { manager } = managerFixture();
+
+  manager.showCalibrateOutcome('bbbbbbbbbbbb', 'done');
+  assert.match(manager.status.textContent, /Booth touch calibration saved/);
+  assert.equal(manager.status.dataset.state, 'ready');
+
+  manager.showCalibrateOutcome('bbbbbbbbbbbb', 'failed');
+  assert.match(manager.status.textContent, /did not check out/);
+  assert.match(manager.status.textContent, /previous calibration is still/);
+  assert.equal(manager.status.dataset.state, 'error');
+
+  manager.showCalibrateOutcome('bbbbbbbbbbbb', 'cancelled');
+  assert.match(manager.status.textContent, /timed out/);
 });
 
 test('Companion controls appear only once the setting turns them on', () => {

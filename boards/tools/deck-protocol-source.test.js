@@ -17,6 +17,8 @@ const read = (file) => readFileSync(file, 'utf8');
 const protocol = read(componentPath('deck_protocol.c'));
 const ui = read(componentPath('deck_ui.c'));
 const clean = read(componentPath('deck_clean.c'));
+const storage = read(componentPath('deck_storage.c'));
+const calibrate = read(componentPath('deck_calibrate.c'));
 
 test('protocol decoding and image sequencing stay outside the LVGL UI', () => {
   assert.match(protocol, /static bool valid_utf8\(/);
@@ -58,6 +60,83 @@ test('RLE decoding still commits raw pixels through existing storage ownership',
   );
 });
 
+test('artwork allocation falls back to internal RAM on boards without PSRAM', () => {
+  // A bare MALLOC_CAP_SPIRAM allocation returns NULL on the classic ESP32,
+  // which would fail every image with image-no-memory.
+  for (const source of [protocol, ui]) {
+    assert.doesNotMatch(source, /heap_caps_malloc\([^)]*MALLOC_CAP_SPIRAM/);
+    assert.match(
+      source,
+      /heap_caps_malloc_prefer\([\s\S]{0,120}MALLOC_CAP_SPIRAM,\s*MALLOC_CAP_INTERNAL \| MALLOC_CAP_8BIT/,
+    );
+  }
+});
+
+test('the artwork pool is bounded by the partition, not by the slot table', () => {
+  const slotWrite = storage.slice(
+    storage.indexOf('esp_err_t deck_storage_slot_write('),
+    storage.indexOf('void deck_storage_gc('),
+  );
+
+  // DECK_MAX_SLOTS is sized for the 16 MB boards, so a 4 MB board would
+  // otherwise address pool slots past the end of its deck partition.
+  assert.match(
+    slotWrite,
+    /offset \+ erase_bytes > s_partition->size[\s\S]{0,60}ESP_ERR_NO_MEM/,
+  );
+  assert.ok(
+    slotWrite.indexOf('s_partition->size') <
+      slotWrite.indexOf('esp_partition_erase_range'),
+    'the bound must be checked before erasing',
+  );
+  assert.match(storage, /The largest key must fit one flash pool slot/);
+});
+
+test('the calibration overlay owns only its own screen', () => {
+  // Same boundary the cleaning overlay keeps: no deck grid, no storage, no
+  // protocol decoding.
+  assert.doesNotMatch(calibrate, /deck_storage_|s_pages|deck_protocol_/);
+  assert.doesNotMatch(calibrate, /\bcJSON\b/);
+  assert.ok(calibrate.split(/\r?\n/).length < 1000);
+
+  // Taps are read from the BSP, not from LVGL, because the transform being
+  // replaced is the one LVGL's coordinates come from.
+  assert.match(calibrate, /bsp_touch_read_raw\(&raw_x, &raw_y\)/);
+  assert.doesNotMatch(calibrate, /lv_indev_/);
+
+  // A wizard nobody finishes must hand the screen back on its own.
+  assert.match(calibrate, /CALIBRATE_TIMEOUT_MS\)[\s\S]{0,120}cancelled/);
+
+  // The outcome latches so a busy display lock only delays the handover.
+  assert.match(calibrate, /if \(s_outcome != NULL\) \{\s*return s_outcome;/);
+
+  // Only a verified solve is allowed to replace a working calibration.
+  assert.match(
+    calibrate,
+    /DECK_CALIBRATE_DONE[\s\S]{0,200}bsp_touch_set_calibration\([\s\S]{0,80}deck_settings_set_calibration/,
+  );
+});
+
+test('every board answers the calibration and invert BSP contract', () => {
+  const bsps = [
+    ['waveshare-esp32-s3-touch-lcd-4-v3', 'waveshare_bsp/waveshare_bsp.c'],
+    ['elecrow-crowpanel-advanced-10-1-esp32-p4', 'elecrow_bsp/elecrow_bsp.c'],
+    ['esp32-2432s028r-ili9341', 'cyd_bsp/cyd_bsp.c'],
+  ];
+
+  // deck_ui declares these extern, so a board that omits one fails to link.
+  for (const [board, source] of bsps) {
+    const bsp = read(
+      path.join(ROOT, 'boards', board, 'firmware', 'components', ...source.split('/')),
+    );
+
+    assert.match(bsp, /esp_err_t bsp_display_set_invert\(bool invert\)/);
+    assert.match(bsp, /bool bsp_display_invert\(void\)/);
+    assert.match(bsp, /bool bsp_touch_read_raw\(/);
+    assert.match(bsp, /esp_err_t bsp_touch_set_calibration\(/);
+  }
+});
+
 test('UI owns overlays and detaches LVGL images before freeing pixels', () => {
   const key = ui.match(/typedef struct \{([\s\S]*?)\} deck_key_t;/)?.[1];
   const overlay = ui.match(
@@ -83,13 +162,14 @@ test('UI owns overlays and detaches LVGL images before freeing pixels', () => {
   );
 });
 
-test('both board transports dispatch through the shared protocol module', () => {
-  const boards = [
-    'waveshare-esp32-s3-touch-lcd-4-v3',
-    'elecrow-crowpanel-advanced-10-1-esp32-p4',
-  ];
+const BOARDS = [
+  'waveshare-esp32-s3-touch-lcd-4-v3',
+  'elecrow-crowpanel-advanced-10-1-esp32-p4',
+  'esp32-2432s028r-ili9341',
+];
 
-  for (const board of boards) {
+test('every board transport dispatches through the shared protocol module', () => {
+  for (const board of BOARDS) {
     const main = read(
       path.join(ROOT, 'boards', board, 'firmware', 'main', 'main.c'),
     );
@@ -100,10 +180,19 @@ test('both board transports dispatch through the shared protocol module', () => 
     assert.match(main, /display-blank/);
   }
 
-  assert.match(
-    read(componentPath('CMakeLists.txt')),
-    /SRCS "deck_clean\.c" "deck_protocol\.c" "deck_storage\.c" "deck_ui\.c"/,
-  );
+  const cmake = read(componentPath('CMakeLists.txt'));
+
+  for (const source of [
+    'deck_affine.c',
+    'deck_calibrate.c',
+    'deck_clean.c',
+    'deck_protocol.c',
+    'deck_settings.c',
+    'deck_storage.c',
+    'deck_ui.c',
+  ]) {
+    assert.match(cmake, new RegExp(`"${source.replace('.', '\\.')}"`));
+  }
 });
 
 test('the CrowPanel serves both links without risking the flashing one', () => {
@@ -174,7 +263,12 @@ test('the cleaning lock swallows the wipe and only a held exit lifts it', () => 
   );
 
   // Consumed before anything routes a press to the host or a local goPage.
-  assert.match(handleTouch, /^\s*if \(s_clean_active \|\| s_forced_asleep\) \{\s*return true;/m);
+  // Both modal overlays are in the guard: neither a wipe nor a calibration
+  // tap may reach a deck key.
+  assert.match(
+    handleTouch,
+    /^\s*if \(s_clean_active \|\| s_calibrate_active \|\| s_forced_asleep\) \{\s*return true;/m,
+  );
 
   // A sync arriving mid-wipe stages the grid behind the lock, never over it.
   assert.match(buildPage, /if \(!s_clean_active\) \{\s*lv_screen_load\(s_deck_screen\);/);
@@ -194,10 +288,7 @@ test('the cleaning lock swallows the wipe and only a held exit lifts it', () => 
   assert.match(protocol, /"clean-invalid"[\s\S]*deck_ui_set_clean\(wanted\)/);
   assert.match(protocol, /clean-ack/);
 
-  for (const board of [
-    'waveshare-esp32-s3-touch-lcd-4-v3',
-    'elecrow-crowpanel-advanced-10-1-esp32-p4',
-  ]) {
+  for (const board of BOARDS) {
     const main = read(
       path.join(ROOT, 'boards', board, 'firmware', 'main', 'main.c'),
     );

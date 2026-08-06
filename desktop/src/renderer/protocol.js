@@ -537,7 +537,12 @@ function encodePageMessage(index) {
   return encodeLine({ type: 'page', index });
 }
 
-function encodeDisplayMessage({ awake, idleTimeoutSeconds, brightness }) {
+function encodeDisplayMessage({
+  awake,
+  idleTimeoutSeconds,
+  brightness,
+  invert,
+}) {
   if (typeof awake !== 'boolean') {
     throw new TypeError('Display awake state must be a boolean.');
   }
@@ -560,7 +565,25 @@ function encodeDisplayMessage({ awake, idleTimeoutSeconds, brightness }) {
     );
   }
 
+  if (invert !== undefined) {
+    if (typeof invert !== 'boolean') {
+      throw new TypeError('Display invert must be a boolean.');
+    }
+
+    message.invert = invert;
+  }
+
   return encodeLine(message);
+}
+
+// The board stores inversion itself and announces it after each hello, so
+// this reads the same shape the desktop sends.
+function validateDisplayInvertMessage(message) {
+  if (typeof message.invert !== 'boolean') {
+    throw new TypeError('Display invert must be a boolean.');
+  }
+
+  return { invert: message.invert };
 }
 
 function encodeDisplayBlankMessage() {
@@ -573,6 +596,35 @@ function encodeCleanMessage(active) {
   }
 
   return encodeLine({ type: 'clean', active });
+}
+
+const CALIBRATE_ACTIONS = new Set(['start', 'cancel']);
+const CALIBRATE_STATES = new Set(['done', 'failed', 'cancelled']);
+
+function encodeCalibrateMessage(action) {
+  if (!CALIBRATE_ACTIONS.has(action)) {
+    throw new TypeError('Calibration action must be start or cancel.');
+  }
+
+  return encodeLine({ type: 'calibrate', action });
+}
+
+function validateCalibrateAck(message) {
+  if (!CALIBRATE_ACTIONS.has(message.action)) {
+    throw new TypeError('calibrate-ack action is invalid.');
+  }
+
+  return { action: message.action };
+}
+
+// The unsolicited line the board sends once the wizard is over, whether the
+// taps solved, failed their check, or the board gave up waiting.
+function validateCalibrateMessage(message) {
+  if (!CALIBRATE_STATES.has(message.state)) {
+    throw new TypeError('Calibration state is invalid.');
+  }
+
+  return { state: message.state };
 }
 
 // Shared by the clean-ack and by the unsolicited state the board sends when a
@@ -741,6 +793,7 @@ module.exports = {
   crc32,
   layoutLineLimitFor,
   createLineDecoder,
+  encodeCalibrateMessage,
   encodeCleanMessage,
   encodeDisplayBlankMessage,
   encodeDisplayMessage,
@@ -754,8 +807,11 @@ module.exports = {
   normalizeChipName,
   toRgb565,
   transportRank,
+  validateCalibrateAck,
+  validateCalibrateMessage,
   validateCleanMessage,
   validateDeviceHello,
+  validateDisplayInvertMessage,
   validateImageAck,
   validateKeyUpdateAck,
   validateLayoutAck,

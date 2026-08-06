@@ -18,6 +18,7 @@ before flashing, because look-alike products are not interchangeable.
 | --- | --- | --- |
 | Waveshare `ESP32-S3-Touch-LCD-4` | Silkscreen reads **Rev 3.0** (not Rev 4, and not the 4.3" board) | Single USB-C carries data and power |
 | Elecrow `CrowPanel Advanced 10.1"` ESP32-P4 | It is the **10.1" ESP32-P4** model, not a 5"/7"/9" or ESP32-S3 variant | **UART0** carries power and data and is the only port that can flash it; connecting **USB 2.0** as well adds power and a much faster sync link |
+| `ESP32-2432S028R` "Cheap Yellow Display" | It has exactly **one USB-C connector**. A two-connector board is the ST7789 variant and this profile will not drive it | Single USB-C carries data and power |
 
 See [Buying a display](../boards/BUYING.md) for exactly what to look for on each
 product page.

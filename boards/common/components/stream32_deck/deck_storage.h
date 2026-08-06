@@ -24,12 +24,14 @@
 #define DECK_PAGE_SECTORS (DECK_MAX_KEYS > 30 ? 2 : 1)
 /* 12 bytes of page metadata (magic, length, CRC) lead each stored page. */
 #define DECK_PAGE_JSON_CAPACITY (DECK_PAGE_SECTORS * 4096 - 12)
-/* The 0xBF0000 deck partition holds 3056 erase sectors. After the header
-   sector and 8 pages of DECK_PAGE_SECTORS each, the remaining sectors form
-   64 KB slots: floor(3047/16) = 190, or floor(3039/16) = 189 with
-   two-sector pages. */
+/* Ceiling on the slot table the header can carry, sized for the 0xBF0000
+   partition the 16 MB boards use: after the header sector and 8 pages of
+   DECK_PAGE_SECTORS each, floor(3047/16) = 190 slots of 64 KB fit, or 189
+   with two-sector pages. Boards with a smaller deck partition simply run
+   out of room first, which deck_storage_slot_write enforces against the
+   partition it actually found. */
 #define DECK_MAX_SLOTS (DECK_PAGE_SECTORS == 2 ? 189 : 190)
-#define DECK_SLOT_BYTES 0x10000
+#define DECK_SLOT_BYTES ((uint32_t)CONFIG_STREAM32_DECK_SLOT_KB * 1024)
 
 #ifdef __cplusplus
 extern "C" {

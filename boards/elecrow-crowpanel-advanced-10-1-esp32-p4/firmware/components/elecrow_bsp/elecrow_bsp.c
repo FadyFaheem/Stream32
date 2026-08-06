@@ -43,6 +43,7 @@ static esp_lcd_touch_handle_t s_touch;
 static const char *s_status = "display-not-started";
 static uint32_t s_brightness_percent = 100;
 static bool s_display_awake;
+static bool s_invert;
 
 static esp_err_t backlight_init(void)
 {
@@ -411,4 +412,39 @@ esp_err_t bsp_display_set_brightness(uint32_t brightness_percent)
 
     s_brightness_percent = brightness_percent;
     return ESP_OK;
+}
+
+esp_err_t bsp_display_set_invert(bool invert)
+{
+    if (s_panel == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    const esp_err_t error = esp_lcd_panel_invert_color(s_panel, invert);
+
+    if (error == ESP_OK) {
+        s_invert = invert;
+    }
+
+    return error;
+}
+
+bool bsp_display_invert(void)
+{
+    return s_invert;
+}
+
+/* GT911 is a capacitive controller that reports screen coordinates directly,
+   so there is nothing to calibrate and no raw sample to expose. */
+bool bsp_touch_read_raw(uint16_t *raw_x, uint16_t *raw_y)
+{
+    (void)raw_x;
+    (void)raw_y;
+    return false;
+}
+
+esp_err_t bsp_touch_set_calibration(const float *coefficients)
+{
+    (void)coefficients;
+    return ESP_ERR_NOT_SUPPORTED;
 }

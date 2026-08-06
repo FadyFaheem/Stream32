@@ -880,6 +880,75 @@ test('Sleep blanks capable firmware and rejects stale firmware', async () => {
   assert.match(statuses.at(-1)[0], /updated board firmware/);
 });
 
+test('Calibration starts on acknowledgement and ends on the board outcome', async () => {
+  const controller = createRuntime();
+  const messages = [];
+  const outcomes = [];
+  const session = {
+    hello: { deviceId: 'aaaa11112222', features: ['touch-calibration'] },
+    send: async (bytes) => {
+      messages.push(JSON.parse(new TextDecoder().decode(bytes)));
+      controller.handleDeviceMessage(session, {
+        type: 'calibrate-ack',
+        action: messages.at(-1).action,
+      });
+    },
+  };
+  controller.sessions = new Map([['aaaa11112222', session]]);
+  controller.onCalibrateOutcome = (deviceId, outcome) =>
+    outcomes.push([deviceId, outcome]);
+
+  await controller.setCalibrating('aaaa11112222', true);
+  assert.deepEqual(messages, [{ type: 'calibrate', action: 'start' }]);
+  assert.equal(controller.calibrating.has('aaaa11112222'), true);
+
+  // The wizard runs on the board, which reports how it ended unprompted.
+  controller.handleDeviceMessage(session, { type: 'calibrate', state: 'done' });
+  assert.equal(controller.calibrating.has('aaaa11112222'), false);
+  assert.deepEqual(outcomes.at(-1), ['aaaa11112222', 'done']);
+
+  // A failed solve must not look like a success.
+  await controller.setCalibrating('aaaa11112222', true);
+  controller.handleDeviceMessage(session, {
+    type: 'calibrate',
+    state: 'failed',
+  });
+  assert.equal(controller.calibrating.has('aaaa11112222'), false);
+  assert.deepEqual(outcomes.at(-1), ['aaaa11112222', 'failed']);
+
+  // A disconnect cannot leave the desktop showing a wizard that is gone.
+  await controller.setCalibrating('aaaa11112222', true);
+  controller.detachSession(session);
+  assert.equal(controller.calibrating.has('aaaa11112222'), false);
+
+  controller.sessions = new Map([['aaaa11112222', session]]);
+  session.hello.features = ['clean-mode'];
+  await assert.rejects(
+    controller.setCalibrating('aaaa11112222', true),
+    /updated board firmware/,
+  );
+});
+
+test('Colour inversion is read from the board, not remembered locally', () => {
+  const controller = createRuntime();
+  const session = {
+    hello: { deviceId: 'aaaa11112222', features: ['display-invert'] },
+    send: async () => {},
+  };
+  controller.sessions = new Map([['aaaa11112222', session]]);
+
+  // The board announces the stored value after every hello.
+  controller.handleDeviceMessage(session, { type: 'display', invert: true });
+  assert.equal(controller.inverted.get('aaaa11112222'), true);
+
+  controller.handleDeviceMessage(session, { type: 'display', invert: false });
+  assert.equal(controller.inverted.get('aaaa11112222'), false);
+
+  // Nothing survives the disconnect: the next hello re-announces it.
+  controller.detachSession(session);
+  assert.equal(controller.inverted.has('aaaa11112222'), false);
+});
+
 test('Screen cleaning locks on acknowledgement and unlocks on the deck hold', async () => {
   const controller = createRuntime();
   const messages = [];

@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "id": "esp32-2432s028r-ili9341",
+  "name": "ESP32-2432S028R (Cheap Yellow Display)",
+  "vendor": "Generic",
+  "hardwareRevision": "Single USB-C, ILI9341",
+  "chip": "ESP32",
+  "protocolVersion": 1,
+  "minimumDesktopVersion": "1.4.0",
+  "preferredFlashBaud": 921600,
+  "postFlashReset": "automatic",
+  "usbFilters": [
+    {
+      "usbVendorId": 6790,
+      "usbProductId": 29987
+    },
+    {
+      "usbVendorId": 6790,
+      "usbProductId": 21972
+    }
+  ],
+  "deck": {
+    "maxRows": 4,
+    "maxCols": 4,
+    "maxKeys": 12,
+    "maxPages": 8
+  },
+  "firmware": {
+    "version": "0.1.0",
+    "projectPath": "firmware",
+    "imageName": "esp32-2432s028r-ili9341-0.1.0.bin",
+    "offset": 0
+  },
+  "capabilities": [
+    "display",
+    "brightness",
+    "touch",
+    "usb-uart-bridge"
+  ],
+  "recoveryInstructions": [
+    "Use a USB data cable and close any serial monitor before flashing.",
+    "This board has no PSRAM, so its page budget is 12 keys and its 2.19 MB deck partition holds fewer artwork images than the larger boards.",
+    "If automatic bootloader entry fails, hold BOOT while reconnecting the cable, then release BOOT and flash again.",
+    "If 921600 baud is unstable, the desktop automatically restarts the complete write once at 460800 baud.",
+    "Leave Full erase off to preserve saved decks; enable it only for slow, destructive troubleshooting.",
+    "The desktop resets the board automatically after a successful flash. If it does not reconnect, press RST or reconnect power."
+  ]
+}

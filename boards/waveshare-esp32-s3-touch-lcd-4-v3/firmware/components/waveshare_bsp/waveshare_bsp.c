@@ -37,6 +37,7 @@ uint8_t brightness;
 sdmmc_card_t *bsp_sdcard = NULL;
 static esp_lcd_touch_handle_t tp = NULL;
 static esp_lcd_panel_handle_t panel_handle = NULL;
+static bool s_invert = false;
 
 static const st7701_lcd_init_cmd_t lcd_init_cmds[] = {
     {0x11, (uint8_t[]){0x00}, 0, 120},
@@ -493,4 +494,39 @@ esp_err_t bsp_display_set_brightness(uint32_t brightness_percent)
     }
 
     return bsp_display_brightness_set((int)brightness_percent);
+}
+
+esp_err_t bsp_display_set_invert(bool invert)
+{
+    if (panel_handle == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    const esp_err_t error = esp_lcd_panel_invert_color(panel_handle, invert);
+
+    if (error == ESP_OK) {
+        s_invert = invert;
+    }
+
+    return error;
+}
+
+bool bsp_display_invert(void)
+{
+    return s_invert;
+}
+
+/* GT911 is a capacitive controller that reports screen coordinates directly,
+   so there is nothing to calibrate and no raw sample to expose. */
+bool bsp_touch_read_raw(uint16_t *raw_x, uint16_t *raw_y)
+{
+    (void)raw_x;
+    (void)raw_y;
+    return false;
+}
+
+esp_err_t bsp_touch_set_calibration(const float *coefficients)
+{
+    (void)coefficients;
+    return ESP_ERR_NOT_SUPPORTED;
 }

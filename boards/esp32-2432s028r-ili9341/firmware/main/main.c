@@ -7,54 +7,57 @@
 #include "cJSON.h"
 #include "deck_protocol.h"
 #include "deck_ui.h"
-#include "driver/usb_serial_jtag.h"
+#include "driver/gpio.h"
+#include "driver/uart.h"
 #include "esp_app_desc.h"
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lvgl.h"
 
-#define STREAM32_BOARD_ID "waveshare-esp32-s3-touch-lcd-4-v3"
+#define STREAM32_BOARD_ID "esp32-2432s028r-ili9341"
 #define STREAM32_PROTOCOL_VERSION 1
-/* Matches the desktop's protocol line limit; image chunks fill whole lines. */
+/* The classic ESP32 has no native USB, so the board's on-board USB-serial
+   bridge on UART0 is the only link. The console is disabled in sdkconfig so
+   protocol lines stay clean. */
+#define STREAM32_UART UART_NUM_0
+#define STREAM32_UART_BAUD 115200
+#define STREAM32_UART_TX GPIO_NUM_1
+#define STREAM32_UART_RX GPIO_NUM_3
+/* This board advertises a 12-key page budget, which fits the baseline 4 KB
+   layout line every protocol-1 firmware accepts. */
 #define STREAM32_LINE_CAPACITY 4096
-#define STREAM32_USB_BUFFER_SIZE 4096
+#define STREAM32_UART_BUFFER_SIZE 4096
 #define STREAM32_EVENT_LINE_CAPACITY 128
 #define STREAM32_REPLY_CAPACITY 384
 
+/* Assembler for newline-delimited JSON. */
+typedef struct {
+    char *buffer;
+    size_t capacity;
+    size_t length;
+    bool dropping_oversized_line;
+} line_reader_t;
+
 static const char *TAG = "stream32";
 static QueueHandle_t event_queue;
+/* Serializes dispatch and every physical write. deck_protocol keeps static
+   decode state, and queued touch events are the one writer outside dispatch. */
+static SemaphoreHandle_t protocol_mutex;
 static lv_obj_t *connection_label;
 static lv_obj_t *touch_label;
 static lv_obj_t *touch_surface;
+static volatile bool system_ready;
 
-static void usb_write_all(const char *data, size_t length)
+static void serial_write_line(const char *json)
 {
-    size_t written = 0;
-
-    while (written < length) {
-        const int result = usb_serial_jtag_write_bytes(
-            data + written,
-            length - written,
-            pdMS_TO_TICKS(100)
-        );
-
-        if (result <= 0) {
-            ESP_LOGW(TAG, "USB write timed out");
-            return;
-        }
-
-        written += (size_t)result;
-    }
-}
-
-static void usb_write_line(const char *json)
-{
-    usb_write_all(json, strlen(json));
-    usb_write_all("\n", 1);
+    /* uart_write_bytes blocks until the line fits the TX ring buffer. */
+    uart_write_bytes(STREAM32_UART, json, strlen(json));
+    uart_write_bytes(STREAM32_UART, "\n", 1);
 }
 
 /* Queues a ready-to-send JSON line from LVGL/event context. */
@@ -79,17 +82,19 @@ static void update_connection_label(const char *text)
 static void send_hello(void)
 {
     uint8_t mac[6];
-    char message[256];
+    char message[288];
     const esp_app_desc_t *app = esp_app_get_description();
 
+    /* Reads the efuse MAC; the radio is never started. */
     ESP_ERROR_CHECK(esp_read_mac(mac, ESP_MAC_WIFI_STA));
     snprintf(
         message,
         sizeof(message),
         "{\"type\":\"hello\",\"protocol\":%d,\"boardId\":\"%s\","
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
-        "\"features\":[\"display-control\",\"display-blank\","
-        "\"display-invert\",\"key-update\",\"image-rle\",\"clean-mode\"]}",
+        "\"features\":[\"display-control\",\"display-brightness\","
+        "\"display-blank\",\"display-invert\",\"key-update\",\"image-rle\","
+        "\"clean-mode\",\"touch-calibration\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -100,7 +105,7 @@ static void send_hello(void)
         mac[4],
         mac[5]
     );
-    usb_write_line(message);
+    serial_write_line(message);
 }
 
 static void send_error(const char *code)
@@ -113,7 +118,7 @@ static void send_error(const char *code)
         "{\"type\":\"error\",\"code\":\"%s\"}",
         code
     );
-    usb_write_line(message);
+    serial_write_line(message);
 }
 
 static void handle_host_message(const char *line, size_t length)
@@ -139,20 +144,22 @@ static void handle_host_message(const char *line, size_t length)
         if (!cJSON_IsNumber(protocol) ||
             protocol->valueint != STREAM32_PROTOCOL_VERSION) {
             send_error("unsupported-protocol");
+        } else if (!system_ready) {
+            send_error(bsp_display_status());
         } else {
             deck_protocol_clear_overlays();
-            update_connection_label("USB connected to Stream32");
+            update_connection_label("Connected to Stream32");
             send_hello();
 
-            /* A cleaning lock outlives the USB link, so a desktop that
-               reconnects mid-wipe learns the panel is still locked. */
+            /* A cleaning lock outlives the link, so a desktop that reconnects
+               mid-wipe learns the panel is still locked. */
             if (deck_ui_clean_active()) {
-                usb_write_line("{\"type\":\"clean\",\"active\":true}");
+                serial_write_line("{\"type\":\"clean\",\"active\":true}");
             }
 
             /* Inversion is stored on the board, so the desktop has to be told
                where the toggle actually sits. */
-            usb_write_line(
+            serial_write_line(
                 bsp_display_invert()
                     ? "{\"type\":\"display\",\"invert\":true}"
                     : "{\"type\":\"display\",\"invert\":false}"
@@ -172,7 +179,7 @@ static void handle_host_message(const char *line, size_t length)
                 "{\"type\":\"pong\",\"id\":%d}",
                 id->valueint
             );
-            usb_write_line(response);
+            serial_write_line(response);
         }
     } else {
         const char *error = NULL;
@@ -182,7 +189,7 @@ static void handle_host_message(const char *line, size_t length)
             length,
             reply,
             sizeof(reply),
-            usb_write_line,
+            serial_write_line,
             &error
         );
 
@@ -196,47 +203,91 @@ static void handle_host_message(const char *line, size_t length)
     cJSON_Delete(message);
 }
 
-static void usb_protocol_task(void *argument)
+/* Feeds the link's bytes into the assembler and dispatches whole lines under
+   the shared lock. */
+static void consume_bytes(
+    line_reader_t *reader,
+    const uint8_t *data,
+    size_t count
+)
 {
-    usb_serial_jtag_driver_config_t config = {
-        .tx_buffer_size = STREAM32_USB_BUFFER_SIZE,
-        .rx_buffer_size = STREAM32_USB_BUFFER_SIZE,
+    for (size_t index = 0; index < count; index++) {
+        const char byte = (char)data[index];
+
+        if (byte != '\n') {
+            if (byte != '\r' && !reader->dropping_oversized_line) {
+                if (reader->length < reader->capacity - 1) {
+                    reader->buffer[reader->length++] = byte;
+                } else {
+                    reader->dropping_oversized_line = true;
+                }
+            }
+
+            continue;
+        }
+
+        xSemaphoreTake(protocol_mutex, portMAX_DELAY);
+
+        if (reader->dropping_oversized_line) {
+            send_error("message-too-large");
+        } else if (reader->length > 0) {
+            handle_host_message(reader->buffer, reader->length);
+        }
+
+        xSemaphoreGive(protocol_mutex);
+        reader->length = 0;
+        reader->dropping_oversized_line = false;
+    }
+}
+
+static void serial_protocol_task(void *argument)
+{
+    const uart_config_t config = {
+        .baud_rate = STREAM32_UART_BAUD,
+        .data_bits = UART_DATA_8_BITS,
+        .parity = UART_PARITY_DISABLE,
+        .stop_bits = UART_STOP_BITS_1,
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .source_clk = UART_SCLK_DEFAULT,
     };
     uint8_t incoming[256];
     /* Static: a 4 KB line does not belong on the task stack. */
     static char line[STREAM32_LINE_CAPACITY];
-    size_t line_length = 0;
-    bool dropping_oversized_line = false;
+    line_reader_t reader = {
+        .buffer = line,
+        .capacity = sizeof(line),
+    };
 
     (void)argument;
-    ESP_ERROR_CHECK(usb_serial_jtag_driver_install(&config));
+    ESP_ERROR_CHECK(uart_driver_install(
+        STREAM32_UART,
+        STREAM32_UART_BUFFER_SIZE,
+        STREAM32_UART_BUFFER_SIZE,
+        0,
+        NULL,
+        0
+    ));
+    ESP_ERROR_CHECK(uart_param_config(STREAM32_UART, &config));
+    /* Do not rely on ROM routing surviving the console-disabled app startup:
+       the bridge is wired to the ESP32's default UART0 pins. */
+    ESP_ERROR_CHECK(uart_set_pin(
+        STREAM32_UART,
+        STREAM32_UART_TX,
+        STREAM32_UART_RX,
+        UART_PIN_NO_CHANGE,
+        UART_PIN_NO_CHANGE
+    ));
 
     while (true) {
-        const int received = usb_serial_jtag_read_bytes(
+        const int received = uart_read_bytes(
+            STREAM32_UART,
             incoming,
             sizeof(incoming),
             pdMS_TO_TICKS(20)
         );
 
-        for (int index = 0; index < received; index++) {
-            const char byte = (char)incoming[index];
-
-            if (byte == '\n') {
-                if (dropping_oversized_line) {
-                    send_error("message-too-large");
-                } else if (line_length > 0) {
-                    handle_host_message(line, line_length);
-                }
-
-                line_length = 0;
-                dropping_oversized_line = false;
-            } else if (byte != '\r' && !dropping_oversized_line) {
-                if (line_length < sizeof(line) - 1) {
-                    line[line_length++] = byte;
-                } else {
-                    dropping_oversized_line = true;
-                }
-            }
+        if (received > 0) {
+            consume_bytes(&reader, incoming, (size_t)received);
         }
 
         deck_ui_poll();
@@ -244,7 +295,11 @@ static void usb_protocol_task(void *argument)
         char event_line[STREAM32_EVENT_LINE_CAPACITY];
 
         while (xQueueReceive(event_queue, event_line, 0) == pdTRUE) {
-            usb_write_line(event_line);
+            /* Touch and press events are the one writer outside dispatch, so
+               they take the same lock to stay off a half-written reply. */
+            xSemaphoreTake(protocol_mutex, portMAX_DELAY);
+            serial_write_line(event_line);
+            xSemaphoreGive(protocol_mutex);
         }
     }
 }
@@ -269,14 +324,21 @@ static void touch_event_handler(lv_event_t *event)
 
     lv_point_t point;
     const char *phase = code == LV_EVENT_PRESSED ? "down" : "up";
+    uint16_t raw_x = 0;
+    uint16_t raw_y = 0;
 
     lv_indev_get_point(input, &point);
+    bsp_touch_last_raw(&raw_x, &raw_y);
+    /* The raw pair is the only way to calibrate this resistive panel: the
+       console is disabled because UART0 carries the protocol. */
     lv_label_set_text_fmt(
         touch_label,
-        "Touch %s\nX %ld   Y %ld",
+        "Touch %s\nX %ld   Y %ld\nraw %u / %u",
         phase,
         (long)point.x,
-        (long)point.y
+        (long)point.y,
+        (unsigned)raw_x,
+        (unsigned)raw_y
     );
     lv_obj_set_style_bg_color(
         touch_surface,
@@ -310,8 +372,8 @@ static void create_self_test_ui(void)
     lv_obj_t *title = lv_label_create(screen);
     lv_label_set_text(title, "Stream32");
     lv_obj_set_style_text_color(title, lv_color_hex(0xffad22), LV_PART_MAIN);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_28, LV_PART_MAIN);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 30);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, LV_PART_MAIN);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 8);
 
     connection_label = lv_label_create(screen);
     lv_label_set_text(connection_label, "Waiting for the desktop app");
@@ -320,12 +382,12 @@ static void create_self_test_ui(void)
         lv_color_hex(0x91a6b5),
         LV_PART_MAIN
     );
-    lv_obj_align(connection_label, LV_ALIGN_TOP_MID, 0, 78);
+    lv_obj_align(connection_label, LV_ALIGN_TOP_MID, 0, 36);
 
     touch_surface = lv_obj_create(screen);
-    lv_obj_set_size(touch_surface, 410, 280);
-    lv_obj_align(touch_surface, LV_ALIGN_BOTTOM_MID, 0, -34);
-    lv_obj_set_style_radius(touch_surface, 20, LV_PART_MAIN);
+    lv_obj_set_size(touch_surface, 296, 148);
+    lv_obj_align(touch_surface, LV_ALIGN_BOTTOM_MID, 0, -12);
+    lv_obj_set_style_radius(touch_surface, 16, LV_PART_MAIN);
     lv_obj_set_style_bg_color(
         touch_surface,
         lv_color_hex(0x172630),
@@ -346,27 +408,40 @@ static void create_self_test_ui(void)
     );
 
     lv_obj_t *hint = lv_label_create(touch_surface);
-    lv_label_set_text(hint, "Touch anywhere in this area");
+    lv_label_set_text(hint, "Touch each corner to calibrate");
     lv_obj_set_style_text_color(hint, lv_color_hex(0x91a6b5), LV_PART_MAIN);
-    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 42);
+    lv_obj_align(hint, LV_ALIGN_TOP_MID, 0, 0);
 
     touch_label = lv_label_create(touch_surface);
-    lv_label_set_text(touch_label, "Touch ready\nX --   Y --");
+    lv_label_set_text(touch_label, "Touch ready\nX --   Y --\nraw -- / --");
     lv_obj_set_style_text_align(touch_label, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
-    lv_obj_set_style_text_font(
-        touch_label,
-        &lv_font_montserrat_20,
-        LV_PART_MAIN
-    );
-    lv_obj_align(touch_label, LV_ALIGN_CENTER, 0, 28);
+    lv_obj_align(touch_label, LV_ALIGN_CENTER, 0, 16);
 }
 
 void app_main(void)
 {
     event_queue = xQueueCreate(24, STREAM32_EVENT_LINE_CAPACITY);
+    protocol_mutex = xSemaphoreCreateMutex();
 
-    if (event_queue == NULL) {
-        ESP_LOGE(TAG, "Could not allocate the event queue");
+    if (event_queue == NULL || protocol_mutex == NULL) {
+        ESP_LOGE(TAG, "Could not allocate the protocol primitives");
+        return;
+    }
+
+    /* Start communication before display bring-up. A slow panel init no
+       longer misses every desktop hello, and UART remains available for
+       startup diagnostics if the BSP fails. */
+    const BaseType_t task_created = xTaskCreate(
+        serial_protocol_task,
+        "stream32_uart",
+        6144,
+        NULL,
+        5,
+        NULL
+    );
+
+    if (task_created != pdPASS) {
+        ESP_LOGE(TAG, "Could not create the serial protocol task");
         return;
     }
 
@@ -377,7 +452,7 @@ void app_main(void)
         return;
     }
 
-    if (!bsp_display_lock(0)) {
+    if (!bsp_display_lock(1000)) {
         ESP_LOGE(TAG, "Could not lock LVGL");
         return;
     }
@@ -391,16 +466,5 @@ void app_main(void)
         ESP_LOGW(TAG, "Deck storage is unavailable; decks will not persist");
     }
 
-    const BaseType_t task_created = xTaskCreate(
-        usb_protocol_task,
-        "stream32_usb",
-        8192,
-        NULL,
-        5,
-        NULL
-    );
-
-    if (task_created != pdPASS) {
-        ESP_LOGE(TAG, "Could not create the USB protocol task");
-    }
+    system_ready = true;
 }

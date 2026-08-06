@@ -50,6 +50,30 @@ Elecrow `CrowPanel Advanced 10.1"` (profile
   Connect both cables and pick that port for the deck; artwork sync is roughly
   two orders of magnitude faster than over the bridge.
 
+`ESP32-2432S028R`, the "Cheap Yellow Display" (profile
+`esp32-2432s028r-ili9341`):
+
+- The revision with a **single USB-C connector** and an ILI9341 panel.
+  This model number also ships as a single micro-USB board and as a
+  two-connector board whose panel is an ST7789, and the display controller
+  cannot be detected from the chip ID. Flashing the wrong profile leaves a
+  blank or garbled screen, so count the connectors before choosing.
+- ESP32-WROOM-32 (4 MB flash, 520 KB SRAM, **no PSRAM**), ILI9341 240x320
+  SPI panel rotated to 320x240 landscape, XPT2046 resistive touch, and a PWM
+  backlight on GPIO21.
+- Flashing and the deck protocol both run over the on-board USB-serial
+  bridge. Shipping boards use a CH340 (`1a86:7523`) or a CH9102
+  (`1a86:55d4`); the profile accepts either. These are generic bridge chips,
+  so an attached CrowPanel can appear in the same port list and the right
+  COM port has to be picked by hand.
+- This is the smallest board in the fleet by a wide margin. Artwork for the
+  visible page lives in internal DRAM instead of PSRAM, so the page budget
+  is 12 keys in any shape up to 4 per axis, and the 2.19 MB deck partition
+  pools 32 KB artwork slots rather than the 64 KB slots the 16 MB boards use.
+- Resistive touch needs per-unit calibration. The self-test screen prints the
+  raw ADC pair for each press; put those values in `BSP_TOUCH_RAW_*` in
+  `firmware/components/cyd_bsp/cyd_bsp.c`.
+
 The Espressif ROM reports the chip family, which the desktop verifies
 before erasing. The ROM cannot identify the attached display or PCB
 revision, so the user-visible silkscreen confirmation is the final
@@ -67,14 +91,16 @@ bash ../../tools/build-firmware.sh
 
 The helper reads the versioned image name from `board.json` and writes the
 merged factory image to `boards/dist/`. Merged images are flashed at
-offset `0x0`; on the ESP32-P4 the bootloader (and its `0xE9` magic byte)
-sits at `0x2000` inside that image.
+offset `0x0`, and the bootloader (with its `0xE9` magic byte) sits wherever
+the chip's ROM expects it inside that image: `0x0` on the ESP32-S3, `0x1000`
+on the classic ESP32, and `0x2000` on the ESP32-P4.
 
 ### Desktop flashing behavior
 
-The CrowPanel profile prefers 921600 baud. If that attempt fails, the desktop
-disconnects the failed loader and restarts the complete image write once at
-460800 baud; other boards default to 460800. Normal flashing sector-erases
+The CrowPanel and Cheap Yellow Display profiles prefer 921600 baud. If that
+attempt fails, the desktop disconnects the failed loader and restarts the
+complete image write once at 460800 baud, which is also the default for
+boards that state no preference. Normal flashing sector-erases
 only the verified merged-image range, preserving the CrowPanel's dedicated
 11.94 MB `deck` partition. The advanced **Full erase (slow troubleshooting)**
 option is off by default and deliberately erases the entire chip, including
@@ -138,8 +164,9 @@ New protocols, chips, or transports require corresponding desktop support.
 ## USB protocol v1
 
 Firmware and desktop exchange bounded newline-delimited JSON over the
-board's serial link: the ESP32-S3's native USB Serial/JTAG port, or on the
-CrowPanel either its CH340 UART0 bridge at a fixed 115200 baud or its native
+board's serial link: the ESP32-S3's native USB Serial/JTAG port, the Cheap
+Yellow Display's USB-serial bridge at a fixed 115200 baud, or on the
+CrowPanel either its CH340 UART0 bridge at that same rate or its native
 USB 2.0 CDC link. Image lines remain below 4096 bytes; the 40-key CrowPanel
 accepts up to 8192 bytes for its larger single-line layouts.
 
@@ -160,7 +187,9 @@ Desktop messages:
 {"type":"image","mode":"ephemeral","page":0,"index":0,"seq":0,"of":13,"w":150,"h":150,"data":"<base64 RGB565>"}
 {"type":"page","index":1}
 {"type":"display","awake":false,"idleTimeoutSeconds":600}
+{"type":"display","awake":true,"idleTimeoutSeconds":600,"invert":true}
 {"type":"display","blankNow":true}
+{"type":"calibrate","action":"start"}
 ```
 
 Firmware messages:
@@ -175,6 +204,9 @@ Firmware messages:
 {"type":"image-ack","page":0,"index":0,"seq":0,"mode":"ephemeral"}
 {"type":"page","index":1}
 {"type":"press","page":0,"index":4,"phase":"down"}
+{"type":"calibrate-ack","action":"start"}
+{"type":"calibrate","state":"done"}
+{"type":"display","invert":true}
 ```
 
 The desktop does not mark a port connected until the hello response has the
@@ -223,6 +255,32 @@ The deck extension is additive to protocol 1; firmware without it answers
   reboot, or expiry of the desktop-refreshed 30-second overlay lease after a
   physical disconnect. Older protocol-1 firmware simply runs the base deck; the desktop
   does not emulate live state by rewriting layouts or flash artwork.
+
+### Touch calibration and colour inversion
+
+Both settings live on the board in NVS, so a deck running without a computer
+starts with the touch and colours it was last given, and both follow the board
+to another machine. Only a **Full erase** reflash clears them.
+
+`calibrate` starts or cancels the on-device wizard for firmware advertising
+`touch-calibration`, and is acknowledged with `calibrate-ack`. The board then
+shows four markers: three solve an affine transform from raw ADC counts to
+screen pixels, and the fourth checks it. That one transform absorbs offset,
+scale, axis swap, mirroring, and glass mounted slightly askew, which is why a
+resistive panel needs no per-board constants compiled in. A solve is rejected
+when the three taps are near-collinear or the check tap lands more than 10
+percent of the short edge from its marker, and the previous calibration
+survives. The board reports `{"type":"calibrate","state":...}` as `done`,
+`failed`, or `cancelled`; a wizard nobody finishes times out after a minute
+rather than owning the screen. Capacitive GT911 boards report screen
+coordinates already and answer `calibrate-unsupported`.
+
+The optional `invert` field on `display` flips the panel's colour inversion
+for firmware advertising `display-invert`. The same board model ships with
+panels that disagree about this, so a screen that looks like a photographic
+negative is fixed from the Devices page rather than by rebuilding. Because the
+board owns the stored value, it announces `{"type":"display","invert":...}`
+after every hello so the desktop toggle shows the real position.
 
 ### Display protection
 

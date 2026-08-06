@@ -72,7 +72,7 @@ test('firmware ephemeral images have explicit RAM lifecycle', () => {
   );
   assert.match(
     commitBody,
-    /heap_caps_malloc\(size, MALLOC_CAP_SPIRAM\)[\s\S]*memcpy\(owned_pixels, pixels, size\)/,
+    /owned_pixels = heap_caps_malloc_prefer\([\s\S]*memcpy\(owned_pixels, pixels, size\)/,
   );
   assert.match(commitBody, /heap_caps_free\(overlay->image\)/);
   assert.match(commitBody, /overlay->image = owned_pixels;/);

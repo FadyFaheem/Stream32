@@ -1,0 +1,49 @@
+# ESP32-2432S028R "Cheap Yellow Display": ESP32-WROOM-32 with 4 MB
+# flash, 520 KB SRAM, and no PSRAM. Both the flash pool and the LVGL/artwork
+# heap are far tighter than on the other Stream32 boards, so this file
+# optimizes for size rather than speed.
+CONFIG_IDF_TARGET="esp32"
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_80M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_APP_REPRODUCIBLE_BUILD=y
+
+# UART0 is the only link to the desktop and it runs through the on-board
+# USB bridge, so no console may share it. Only the ROM's boot banner appears
+# on reset; the desktop tolerates that pre-handshake noise.
+CONFIG_ESP_CONSOLE_NONE=y
+
+# Stream32 deck grid. Artwork for the whole visible page lives in internal
+# DRAM on this board, and the cost is bounded by screen area rather than by
+# key count, so 12 keys is the page budget in any shape up to 4 per axis.
+# The 32 KB pool slots pair with 128 px keys (128*128*2 bytes) and yield 68
+# slots in the 2.19 MB deck partition, where 64 KB slots would give 34.
+CONFIG_STREAM32_DECK_SCREEN_WIDTH=320
+CONFIG_STREAM32_DECK_SCREEN_HEIGHT=240
+CONFIG_STREAM32_DECK_MAX_ROWS=4
+CONFIG_STREAM32_DECK_MAX_COLS=4
+CONFIG_STREAM32_DECK_MAX_KEYS=12
+CONFIG_STREAM32_DECK_SLOT_KB=32
+CONFIG_STREAM32_DECK_KEY_MAX_PX=128
+
+# The XPT2046 driver's own ADC-to-pixel conversion is a full-range linear
+# map that cannot express this panel's offset window or its landscape
+# rotation, so the BSP reads raw counts and calibrates them itself.
+CONFIG_XPT2046_CONVERT_ADC_TO_COORDS=n
+
+CONFIG_FREERTOS_HZ=1000
+# The default light theme renders card/label text near-black on the dark UI.
+CONFIG_LV_THEME_DEFAULT_DARK=y
+CONFIG_LV_USE_CLIB_MALLOC=y
+CONFIG_LV_USE_CLIB_STRING=y
+CONFIG_LV_USE_CLIB_SPRINTF=y
+CONFIG_LV_DEF_REFR_PERIOD=15
+CONFIG_LV_OS_FREERTOS=y
+CONFIG_LV_DRAW_SW_DRAW_UNIT_CNT=1
+CONFIG_LV_FONT_MONTSERRAT_14=y
+CONFIG_LV_FONT_MONTSERRAT_20=y
+CONFIG_LV_USE_FONT_COMPRESSED=y

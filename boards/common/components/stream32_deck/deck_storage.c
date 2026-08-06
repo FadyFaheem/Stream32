@@ -45,6 +45,18 @@ _Static_assert(
     sizeof(deck_page_header_t) + DECK_PAGE_JSON_CAPACITY <= DECK_PAGE_BYTES,
     "Deck page metadata must fit its erase sectors"
 );
+/* Artwork is pooled one key per slot, so the board's largest rendered key
+   must fit the slot size it configured. */
+_Static_assert(
+    (uint32_t)CONFIG_STREAM32_DECK_KEY_MAX_PX *
+            CONFIG_STREAM32_DECK_KEY_MAX_PX * 2 <=
+        DECK_SLOT_BYTES,
+    "The largest key must fit one flash pool slot"
+);
+_Static_assert(
+    DECK_SLOT_BYTES % DECK_SECTOR == 0,
+    "Pool slots must be a whole number of erase sectors"
+);
 
 static const char *TAG = "deck_storage";
 static const esp_partition_t *s_partition;
@@ -361,6 +373,13 @@ esp_err_t deck_storage_slot_write(
 
     const uint32_t offset = DECK_POOL_OFFSET + (uint32_t)slot * DECK_SLOT_BYTES;
     const uint32_t erase_bytes = (size + DECK_SECTOR - 1) & ~(DECK_SECTOR - 1);
+
+    /* DECK_MAX_SLOTS is sized for the largest deck partition in the fleet,
+       so a board with a smaller one runs out of pool before it runs out of
+       table entries. */
+    if (offset + erase_bytes > s_partition->size) {
+        return ESP_ERR_NO_MEM;
+    }
     esp_err_t error = esp_partition_erase_range(s_partition, offset, erase_bytes);
 
     if (error == ESP_OK) {

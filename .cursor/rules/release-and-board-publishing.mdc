@@ -66,7 +66,8 @@ that no Settings option selects, so no installed build would ever see it.
    `CMakeLists.txt` `PROJECT_VER` identical. If firmware bytes change, bump the
    version; published firmware asset names are immutable.
 4. Use precise USB VID/PID filters and correct hardware-revision warnings.
-   Catalog schema 1 currently accepts only ESP32-S3 and protocol 1.
+   Catalog schema 1 currently accepts ESP32, ESP32-S3, and ESP32-P4, and
+ protocol 1.
 5. Build with ESP-IDF 5.4.4 from the firmware directory:
    `bash ../../tools/build-firmware.sh`.
 6. Run `node boards/tools/build-catalog.js --validate-only` from the repository

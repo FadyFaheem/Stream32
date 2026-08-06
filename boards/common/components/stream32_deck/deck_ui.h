@@ -40,6 +40,15 @@ bool deck_ui_handle_touch(bool pressed);
 const char *deck_ui_set_clean(bool active);
 bool deck_ui_clean_active(void);
 
+// Touch calibration wizard. Like the cleaning lock it takes over the screen
+// and swallows every touch, but its taps are sampled raw from the BSP rather
+// than through LVGL, because it exists to replace the transform LVGL's
+// coordinates come from. Completion is reported through deck_ui_poll.
+//
+// Unlike the cleaning lock this is self-limiting, so an abandoned wizard is
+// not re-announced to a reconnecting host; it simply times out.
+const char *deck_ui_set_calibrate(bool active);
+
 // Narrow typed operations used by deck_protocol after JSON validation.
 const char *deck_ui_apply_layout(
     const deck_protocol_layout_t *layout,

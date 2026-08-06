@@ -643,7 +643,12 @@ static const char *handle_image(
 
     if (sequence_index == 0) {
         reset_image_sequence();
-        s_staging = heap_caps_malloc(total_size, MALLOC_CAP_SPIRAM);
+        s_staging = heap_caps_malloc_prefer(
+            total_size,
+            2,
+            MALLOC_CAP_SPIRAM,
+            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT
+        );
 
         if (s_staging == NULL) {
             return "image-no-memory";
@@ -809,6 +814,42 @@ static const char *handle_clean(
         : "reply-too-small";
 }
 
+static const char *handle_calibrate(
+    const cJSON *message,
+    char *reply,
+    size_t reply_capacity
+)
+{
+    const cJSON *action = cJSON_GetObjectItemCaseSensitive(message, "action");
+
+    if (!cJSON_IsString(action) || action->valuestring == NULL) {
+        return "calibrate-invalid";
+    }
+
+    const bool start = strcmp(action->valuestring, "start") == 0;
+
+    if (!start && strcmp(action->valuestring, "cancel") != 0) {
+        return "calibrate-invalid";
+    }
+
+    const char *error = deck_ui_set_calibrate(start);
+
+    if (error != NULL) {
+        return error;
+    }
+
+    const int written = snprintf(
+        reply,
+        reply_capacity,
+        "{\"type\":\"calibrate-ack\",\"action\":\"%s\"}",
+        start ? "start" : "cancel"
+    );
+
+    return written >= 0 && (size_t)written < reply_capacity
+        ? NULL
+        : "reply-too-small";
+}
+
 static const char *handle_display(const cJSON *message)
 {
     const cJSON *blank_now =
@@ -818,16 +859,21 @@ static const char *handle_display(const cJSON *message)
         cJSON_GetObjectItemCaseSensitive(message, "idleTimeoutSeconds");
     const cJSON *brightness =
         cJSON_GetObjectItemCaseSensitive(message, "brightness");
+    const cJSON *invert = cJSON_GetObjectItemCaseSensitive(message, "invert");
     int idle_timeout;
     int brightness_percent = 0;
 
     if (blank_now != NULL) {
         if (!cJSON_IsTrue(blank_now) || awake != NULL ||
-            idle_seconds != NULL || brightness != NULL) {
+            idle_seconds != NULL || brightness != NULL || invert != NULL) {
             return "display-invalid";
         }
 
         return deck_ui_blank_display();
+    }
+
+    if (invert != NULL && !cJSON_IsBool(invert)) {
+        return "display-invalid";
     }
 
     if (!cJSON_IsBool(awake) ||
@@ -850,6 +896,8 @@ static const char *handle_display(const cJSON *message)
     const deck_protocol_display_t display = {
         .awake = cJSON_IsTrue(awake),
         .has_brightness = brightness != NULL,
+        .has_invert = invert != NULL,
+        .invert = cJSON_IsTrue(invert),
         .idle_timeout_seconds = (uint32_t)idle_timeout,
         .brightness_percent = (uint8_t)brightness_percent,
     };
@@ -892,6 +940,9 @@ bool deck_protocol_dispatch(
         has_reply = true;
     } else if (strcmp(type->valuestring, "clean") == 0) {
         *error_out = handle_clean(message, reply, reply_capacity);
+        has_reply = true;
+    } else if (strcmp(type->valuestring, "calibrate") == 0) {
+        *error_out = handle_calibrate(message, reply, reply_capacity);
         has_reply = true;
     } else if (strcmp(type->valuestring, "page") == 0) {
         *error_out = handle_page(message);

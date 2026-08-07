@@ -191,6 +191,52 @@ test('screen geometry is read live, not from Kconfig', () => {
   );
 });
 
+test('settings and artwork sit outside the region a flash rewrites', () => {
+  // Published firmware is a single raw image written from offset 0, so
+  // esptool rewrites every byte below the end of the app partition, and
+  // merge-bin fills the gaps between bootloader, table and app with 0xFF.
+  // Anything expected to outlive an update therefore has to start past the
+  // app. nvs shipped at the ESP-IDF default of 0x9000, inside that span, so
+  // each firmware update silently erased the touch calibration.
+  const size = (text) => {
+    const match = /^(0x[0-9a-f]+|\d+)([KM]?)$/i.exec(text);
+
+    assert.ok(match, `unparsable partition size ${text}`);
+
+    return Number(match[1]) *
+      ({ K: 1024, M: 1024 * 1024 }[match[2].toUpperCase()] ?? 1);
+  };
+
+  for (const board of BOARDS) {
+    const rows = read(
+      path.join(ROOT, 'boards', board, 'firmware', 'partitions.csv'),
+    )
+      .split('\n')
+      .filter((line) => line.trim() && !line.trim().startsWith('#'))
+      .map((line) => line.split(',').map((cell) => cell.trim()))
+      .map(([name, type, , offset, length]) => ({
+        name,
+        type,
+        offset: Number(offset),
+        end: Number(offset) + size(length),
+      }));
+    const app = rows.find((row) => row.type === 'app');
+
+    assert.ok(app, `${board} declares no app partition`);
+
+    for (const name of ['nvs', 'deck']) {
+      const partition = rows.find((row) => row.name === name);
+
+      assert.ok(partition, `${board} declares no ${name} partition`);
+      assert.ok(
+        partition.offset >= app.end,
+        `${board} ${name} starts at 0x${partition.offset.toString(16)}, ` +
+          `inside the image a flash rewrites (app ends 0x${app.end.toString(16)})`,
+      );
+    }
+  }
+});
+
 test('no board redoes a rotation the platform already applies', () => {
   // Rotation is applied for us in two places, and duplicating either half
   // fails silently. lvgl_port_add_disp writes the panel's MADCTL from its own

@@ -1,7 +1,12 @@
 # Name,   Type, SubType, Offset,   Size, Flags
-# 4 MB flash: the app gets 1.75 MB and the rest of the chip becomes the deck
-# pool, ending exactly at 0x400000.
-nvs,      data, nvs,     0x9000,   24K,
+# nvs sits past the app deliberately. Published firmware is one raw image
+# written from offset 0, so every byte below the end of the app partition is
+# rewritten by an update, gaps included as 0xFF. At the default 0x9000 the
+# touch calibration was erased by each flash.
+#
+# 4 MB flash: the app gets 1.6875 MB, then nvs, and the rest of the chip is
+# the deck pool, ending exactly at 0x400000.
 phy_init, data, phy,     0xf000,   4K,
-factory,  app,  factory, 0x10000,  0x1C0000,
+factory,  app,  factory, 0x10000,  0x1B0000,
+nvs,      data, nvs,     0x1C0000, 64K,
 deck,     data, 0x40,    0x1D0000, 0x230000,

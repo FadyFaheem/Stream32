@@ -1,5 +1,11 @@
 # Name,   Type, SubType, Offset,   Size, Flags
-nvs,      data, nvs,     0x9000,   24K,
+# nvs sits past the app deliberately. Published firmware is one raw image
+# written from offset 0, so every byte below the end of the app partition is
+# rewritten by an update, gaps included as 0xFF. At the default 0x9000 the
+# stored display settings were erased by each flash.
+#
+# 16 MB flash: the app, then nvs, then the deck pool to 0x1000000.
 phy_init, data, phy,     0xf000,   4K,
-factory,  app,  factory, 0x10000,  4M,
+factory,  app,  factory, 0x10000,  0x3F0000,
+nvs,      data, nvs,     0x400000, 64K,
 deck,     data, 0x40,    0x410000, 0xBF0000,

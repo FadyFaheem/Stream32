@@ -9,6 +9,7 @@ const {
   deviceMetaText,
   firmwareStatus,
   summarizeInventory,
+  syncProgressText,
 } = require('../src/renderer/device-manager');
 
 const WAVESHARE = 'waveshare-esp32-s3-touch-lcd-4-v3';
@@ -186,12 +187,15 @@ function managerFixture() {
   const document = { createElement: (tag) => makeElement(tag) };
   const cleaning = new Set();
   const calibrating = new Set();
+  const syncProgress = new Map();
   const inverted = new Map();
   const rotation = new Map();
   const iconSize = new Map();
   const labelLines = new Map();
 
   manager.document = document;
+  manager.expanded = new Set();
+  manager.syncNodes = new Map();
   manager.companionSettings = { enabled: false, host: '127.0.0.1', port: 16622 };
   manager.list = makeElement('div');
   manager.empty = makeElement('p');
@@ -202,6 +206,7 @@ function managerFixture() {
     devices,
     runtime: {
       sessions,
+      syncProgress,
       cleaning,
       setCleanMode: async (deviceId, active) => {
         calls.cleaned.push([deviceId, active]);
@@ -524,6 +529,105 @@ test('Companion controls appear only once the setting turns them on', () => {
   assert.ok(
     findByText(manager.list, 'Companion surface'),
     'each card offers the surface toggle while Companion is on',
+  );
+});
+
+test('per-device settings fold into a panel that remembers being open', async () => {
+  const { manager } = managerFixture();
+  const sessions = manager.deck.runtime.sessions;
+
+  sessions.get('bbbbbbbbbbbb').hello.features = [
+    'display-invert',
+    'display-rotation',
+  ];
+  manager.render();
+
+  // Connected boards sort by name, so Booth is first and Studio second.
+  const card = manager.list.children[0];
+  const panel = card.children[4];
+
+  assert.equal(panel.tag, 'details');
+  assert.equal(panel.className, 'device-settings');
+  assert.equal(panel.children[0].tag, 'summary');
+  assert.equal(panel.children[0].textContent, 'Settings (2)');
+  assert.equal(panel.open, false);
+
+  // The controls belong to the panel, not the card, so a card is only its
+  // name, meta, firmware badge, sync line, the panel, and the actions.
+  assert.equal(card.children.length, 6);
+  assert.ok(findByClass(panel, 'device-rotation'));
+  assert.ok(findByClass(panel, 'device-invert'));
+
+  // Studio configures nothing, so it is not given an empty panel.
+  assert.equal(findByClass(manager.list.children[1], 'device-settings'), null);
+
+  // Every change re-renders the list, so opening it has to survive that.
+  panel.open = true;
+  await fire(panel, 'toggle');
+  manager.render();
+  assert.equal(manager.list.children[0].children[4].open, true);
+
+  panel.open = false;
+  await fire(panel, 'toggle');
+  manager.render();
+  assert.equal(manager.list.children[0].children[4].open, false);
+});
+
+test('a re-syncing board counts its progress down on its own card', () => {
+  const { manager } = managerFixture();
+  const { syncProgress } = manager.deck.runtime;
+
+  manager.render();
+
+  // Connected boards sort by name, so Booth is first and Studio second.
+  const line = manager.list.children[0].children[3];
+  const other = manager.list.children[1].children[3];
+
+  assert.equal(line.className, 'device-sync');
+  assert.equal(line.hidden, true, 'an idle board shows no progress line');
+
+  syncProgress.set('bbbbbbbbbbbb', { page: 1, pages: 2, sent: 0, images: 4 });
+  manager.renderSyncProgress();
+  assert.equal(line.hidden, false);
+  assert.equal(line.textContent, 'Resyncing page 1 of 2 · icon 1 of 4…');
+
+  // Only the board that is syncing says so.
+  assert.equal(other.hidden, true);
+
+  syncProgress.set('bbbbbbbbbbbb', { page: 2, pages: 2, sent: 3, images: 4 });
+  manager.renderSyncProgress();
+  assert.equal(line.textContent, 'Resyncing page 2 of 2 · icon 4 of 4…');
+
+  // A rebuild mid-sync has to pick the count back up rather than blank it.
+  manager.render();
+  assert.equal(
+    manager.list.children[0].children[3].textContent,
+    'Resyncing page 2 of 2 · icon 4 of 4…',
+  );
+
+  syncProgress.delete('bbbbbbbbbbbb');
+  manager.renderSyncProgress();
+  assert.equal(manager.list.children[0].children[3].hidden, true);
+});
+
+test('progress text drops the parts a sync has nothing to say about', () => {
+  // A single page is not worth counting, and a layout-only page sends no art.
+  assert.equal(
+    syncProgressText({ page: 1, pages: 1, sent: 0, images: 0 }),
+    'Resyncing…',
+  );
+  assert.equal(
+    syncProgressText({ page: 1, pages: 1, sent: 2, images: 6 }),
+    'Resyncing icon 3 of 6…',
+  );
+  assert.equal(
+    syncProgressText({ page: 3, pages: 4, sent: 0, images: 0 }),
+    'Resyncing page 3 of 4…',
+  );
+  // The last icon must not read as "icon 7 of 6" once it lands.
+  assert.equal(
+    syncProgressText({ page: 1, pages: 1, sent: 6, images: 6 }),
+    'Resyncing icon 6 of 6…',
   );
 });
 

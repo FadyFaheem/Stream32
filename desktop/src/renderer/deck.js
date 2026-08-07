@@ -260,7 +260,10 @@ class DeckController {
       onStatus: (message, state) => this.setSyncStatus(message, state),
       onProfileStatus: (message, state) =>
         this.setProfileMatchStatus(message, state),
-      onRenderSyncStatus: () => this.renderSyncStatus(),
+      onRenderSyncStatus: () => {
+        this.renderSyncStatus();
+        this.onSyncProgress?.();
+      },
     });
   }
 

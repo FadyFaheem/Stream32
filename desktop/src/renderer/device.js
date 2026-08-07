@@ -922,6 +922,10 @@ class DeviceController {
     return session.hello?.features?.includes('display-invert') === true;
   }
 
+  displayRotationSupported(session) {
+    return session.hello?.features?.includes('display-rotation') === true;
+  }
+
   // A board keeps its own brightness when one is saved; otherwise it follows
   // the app-wide default from Settings.
   brightnessFor(session) {
@@ -970,7 +974,24 @@ class DeviceController {
     }
 
     await this.applyDisplayPolicyToSession(session, { invert });
-    this.deckRuntime?.applyInvertState(deviceId, invert);
+    this.deckRuntime?.applyDisplayState(deviceId, { invert });
+  }
+
+  // The board re-flows its grid at the new shape, which changes keyPx and
+  // makes the next layout-ack pull a fresh copy of every icon.
+  async setDisplayRotation(deviceId, rotation) {
+    const session = this.deckRuntime?.sessionFor(deviceId);
+
+    if (!session) {
+      throw new Error('The deck is not connected.');
+    }
+
+    if (!this.displayRotationSupported(session)) {
+      throw new Error('Screen rotation requires updated board firmware.');
+    }
+
+    await this.applyDisplayPolicyToSession(session, { rotation });
+    this.deckRuntime?.applyDisplayState(deviceId, { rotation });
   }
 
   async broadcastDisplayPolicy() {

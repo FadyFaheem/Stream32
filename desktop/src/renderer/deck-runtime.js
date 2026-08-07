@@ -21,7 +21,7 @@ const {
   validateCalibrateAck,
   validateCalibrateMessage,
   validateCleanMessage,
-  validateDisplayInvertMessage,
+  validateDisplayStateMessage,
   validateImageAck,
   validateKeyUpdateAck,
   validateLayoutAck,
@@ -99,8 +99,9 @@ class DeckRuntime {
     this.multiRuns = new Set();
     this.cleaning = new Set();
     this.calibrating = new Set();
-    // Reported by the board after every hello, since it stores the setting.
+    // Reported by the board after every hello, since it stores the settings.
     this.inverted = new Map();
+    this.rotation = new Map();
     this.liveValues = new Map();
     this.liveQueues = new Map();
     this.liveTimers = new Map();
@@ -523,6 +524,7 @@ class DeckRuntime {
       this.cleaning.delete(deviceId);
       this.calibrating.delete(deviceId);
       this.inverted.delete(deviceId);
+      this.rotation.delete(deviceId);
       this.clearLiveRuntime(deviceId);
       this.onRenderAll();
     }
@@ -570,10 +572,7 @@ class DeckRuntime {
         validateCalibrateMessage(message).state,
       );
     } else if (message.type === 'display') {
-      this.applyInvertState(
-        deviceId,
-        validateDisplayInvertMessage(message).invert,
-      );
+      this.applyDisplayState(deviceId, validateDisplayStateMessage(message));
     }
   }
 
@@ -866,10 +865,17 @@ class DeckRuntime {
     this.applyCalibrateState(deviceId, ack.action === 'start');
   }
 
-  // The board persists inversion and re-announces it after the next hello,
-  // so this only records what it last told us.
-  applyInvertState(deviceId, invert) {
-    this.inverted.set(deviceId, invert);
+  // The board persists these and re-announces them after the next hello, so
+  // this only records what it last told us.
+  applyDisplayState(deviceId, { invert, rotation }) {
+    if (invert !== undefined) {
+      this.inverted.set(deviceId, invert);
+    }
+
+    if (rotation !== undefined) {
+      this.rotation.set(deviceId, rotation);
+    }
+
     this.onRenderAll();
   }
 

@@ -178,12 +178,14 @@ function managerFixture() {
     cleaned: [],
     calibrated: [],
     invertedTo: [],
+    rotatedTo: [],
   };
   const manager = Object.create(DeviceManager.prototype);
   const document = { createElement: (tag) => makeElement(tag) };
   const cleaning = new Set();
   const calibrating = new Set();
   const inverted = new Map();
+  const rotation = new Map();
 
   manager.document = document;
   manager.companionSettings = { enabled: false, host: '127.0.0.1', port: 16622 };
@@ -208,6 +210,7 @@ function managerFixture() {
       },
       calibrating,
       inverted,
+      rotation,
       setCalibrating: async (deviceId, active) => {
         calls.calibrated.push([deviceId, active]);
         calibrating[active ? 'add' : 'delete'](deviceId);
@@ -240,6 +243,10 @@ function managerFixture() {
     setDisplayInvert: async (deviceId, invert) => {
       calls.invertedTo.push([deviceId, invert]);
       inverted.set(deviceId, invert);
+    },
+    setDisplayRotation: async (deviceId, degrees) => {
+      calls.rotatedTo.push([deviceId, degrees]);
+      rotation.set(deviceId, degrees);
     },
   };
 
@@ -387,6 +394,40 @@ test('calibration and inversion appear only on boards that support them', async 
   await fire(toggle, 'change');
   assert.deepEqual(calls.invertedTo, [['bbbbbbbbbbbb', true]]);
   assert.equal(invertToggle().checked, true);
+});
+
+test('screen rotation appears only on boards that can turn the panel', async () => {
+  const { manager, calls } = managerFixture();
+  const sessions = manager.deck.runtime.sessions;
+
+  // A fixed-orientation panel offers no control at all.
+  manager.render();
+  assert.equal(findByClass(manager.list, 'device-rotation'), null);
+
+  sessions.get('bbbbbbbbbbbb').hello.features = ['display-rotation'];
+  manager.deck.runtime.rotation.set('bbbbbbbbbbbb', 90);
+  manager.render();
+
+  const picker = () =>
+    findByClass(manager.list, 'device-rotation').children[1];
+
+  // The board owns the value, so the control shows what it reported.
+  assert.equal(picker().value, '90');
+  assert.deepEqual(
+    picker().children.map((option) => option.value),
+    ['0', '90', '180', '270'],
+  );
+
+  const select = picker();
+  select.value = '270';
+  await fire(select, 'change');
+  assert.deepEqual(calls.rotatedTo, [['bbbbbbbbbbbb', 270]]);
+  assert.equal(picker().value, '270');
+
+  // Turning the screen resizes the keys, so the artwork goes again and the
+  // status line has to say so rather than looking like nothing happened.
+  assert.match(manager.status.textContent, /rotated to 270/);
+  assert.match(manager.status.textContent, /artwork/);
 });
 
 test('the board reports how a calibration ended', () => {

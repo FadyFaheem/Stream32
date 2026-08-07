@@ -1,14 +1,8 @@
 menu "Stream32 deck"
 
-    config STREAM32_DECK_SCREEN_WIDTH
-        int "Deck screen width in pixels"
-        range 240 4096
-        default 480
-
-    config STREAM32_DECK_SCREEN_HEIGHT
-        int "Deck screen height in pixels"
-        range 240 4096
-        default 480
+    # There is deliberately no screen size here. It changes with display
+    # rotation, so every geometry decision reads the live value from LVGL
+    # instead. A board's native size belongs in its own BSP header.
 
     # A page layout is one JSON protocol line, and the firmware persists
     # that raw line to flash. A fully decorated key costs about 131 bytes:

@@ -5,19 +5,16 @@
 #include "deck_affine.h"
 #include "esp_err.h"
 #include "esp_timer.h"
-#include "sdkconfig.h"
 
 /* Same arrangement as deck_ui: the BSP component name differs per board, so
    the contract is declared rather than included. */
 extern bool bsp_display_lock(uint32_t timeout_ms);
 extern void bsp_display_unlock(void);
 extern bool bsp_touch_read_raw(uint16_t *x, uint16_t *y);
+extern uint16_t bsp_display_rotation(void);
 extern esp_err_t bsp_touch_set_calibration(
     const float coefficients[DECK_CALIBRATION_COEFFICIENTS]
 );
-
-#define CALIBRATE_SCREEN_W CONFIG_STREAM32_DECK_SCREEN_WIDTH
-#define CALIBRATE_SCREEN_H CONFIG_STREAM32_DECK_SCREEN_HEIGHT
 
 /* Internal: callers see only the outcome line from deck_calibrate_poll. */
 typedef enum {
@@ -64,21 +61,34 @@ static int64_t now_ms(void)
     return esp_timer_get_time() / 1000;
 }
 
+/* Read from LVGL, not Kconfig: the targets have to land on the screen as it
+   is oriented right now, and deck_calibrate_reset re-places them on entry. */
+static int32_t screen_w(void)
+{
+    return lv_display_get_horizontal_resolution(lv_display_get_default());
+}
+
+static int32_t screen_h(void)
+{
+    return lv_display_get_vertical_resolution(lv_display_get_default());
+}
+
 static int32_t target_x(uint8_t index)
 {
-    return CALIBRATE_SCREEN_W * TARGET_PERCENT[index][0] / 100;
+    return screen_w() * TARGET_PERCENT[index][0] / 100;
 }
 
 static int32_t target_y(uint8_t index)
 {
-    return CALIBRATE_SCREEN_H * TARGET_PERCENT[index][1] / 100;
+    return screen_h() * TARGET_PERCENT[index][1] / 100;
 }
 
 static int32_t short_edge(void)
 {
-    return CALIBRATE_SCREEN_W < CALIBRATE_SCREEN_H
-        ? CALIBRATE_SCREEN_W
-        : CALIBRATE_SCREEN_H;
+    const int32_t width = screen_w();
+    const int32_t height = screen_h();
+
+    return width < height ? width : height;
 }
 
 static void place_target(void)
@@ -158,16 +168,37 @@ void deck_calibrate_reset(void)
     place_target();
 }
 
+/* Markers are drawn in the rotated space the person is looking at, but the
+   solve has to land in unrotated coordinates so the result survives a later
+   rotation change. The touch driver turns each sample back on the way out. */
+static void unrotated_target(uint8_t index, int32_t *x, int32_t *y)
+{
+    const uint16_t degrees = bsp_display_rotation();
+    const bool quarter_turn = degrees == 90 || degrees == 270;
+    const int32_t base_w = quarter_turn ? screen_h() : screen_w();
+    const int32_t base_h = quarter_turn ? screen_w() : screen_h();
+
+    deck_affine_unrotate(
+        degrees,
+        base_w,
+        base_h,
+        target_x(index),
+        target_y(index),
+        x,
+        y
+    );
+}
+
 static deck_calibrate_state_t finish(
     float coefficients[DECK_CALIBRATION_COEFFICIENTS]
 )
 {
-    const int32_t screen_x[CALIBRATE_SOLVE_POINTS] = {
-        target_x(0), target_x(1), target_x(2)
-    };
-    const int32_t screen_y[CALIBRATE_SOLVE_POINTS] = {
-        target_y(0), target_y(1), target_y(2)
-    };
+    int32_t screen_x[CALIBRATE_SOLVE_POINTS];
+    int32_t screen_y[CALIBRATE_SOLVE_POINTS];
+
+    for (uint8_t index = 0; index < CALIBRATE_SOLVE_POINTS; index++) {
+        unrotated_target(index, &screen_x[index], &screen_y[index]);
+    }
 
     if (!deck_affine_solve(
             s_samples_x,
@@ -182,12 +213,17 @@ static deck_calibrate_state_t finish(
     /* A three-point solve always fits its own three points exactly, so only
        the fourth tap can tell a good calibration from a mistyped one. */
     const uint8_t check = CALIBRATE_TOTAL_POINTS - 1;
+    int32_t check_x;
+    int32_t check_y;
+
+    unrotated_target(check, &check_x, &check_y);
+
     const float mapped_x = coefficients[0] * s_samples_x[check] +
         coefficients[1] * s_samples_y[check] + coefficients[2];
     const float mapped_y = coefficients[3] * s_samples_x[check] +
         coefficients[4] * s_samples_y[check] + coefficients[5];
-    const float error_x = mapped_x - target_x(check);
-    const float error_y = mapped_y - target_y(check);
+    const float error_x = mapped_x - check_x;
+    const float error_y = mapped_y - check_y;
     const float tolerance =
         (float)short_edge() * CALIBRATE_TOLERANCE_PERCENT / 100.0f;
 

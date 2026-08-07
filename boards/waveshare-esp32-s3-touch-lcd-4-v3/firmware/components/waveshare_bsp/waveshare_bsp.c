@@ -516,6 +516,19 @@ bool bsp_display_invert(void)
     return s_invert;
 }
 
+/* The ST7701 runs as an RGB panel, whose esp_lcd driver has no swap_xy, so
+   there is no rotation to offer on a square 480x480 screen anyway. */
+esp_err_t bsp_display_set_rotation(uint16_t degrees)
+{
+    (void)degrees;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+uint16_t bsp_display_rotation(void)
+{
+    return 0;
+}
+
 /* GT911 is a capacitive controller that reports screen coordinates directly,
    so there is nothing to calibrate and no raw sample to expose. */
 bool bsp_touch_read_raw(uint16_t *raw_x, uint16_t *raw_y)

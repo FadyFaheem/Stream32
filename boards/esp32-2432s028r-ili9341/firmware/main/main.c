@@ -95,8 +95,8 @@ static void send_hello(void)
         "{\"type\":\"hello\",\"protocol\":%d,\"boardId\":\"%s\","
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
         "\"features\":[\"display-control\",\"display-brightness\","
-        "\"display-blank\",\"display-invert\",\"key-update\",\"image-rle\","
-        "\"clean-mode\",\"touch-calibration\"]}",
+        "\"display-blank\",\"display-invert\",\"display-rotation\","
+        "\"key-update\",\"image-rle\",\"clean-mode\",\"touch-calibration\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -159,13 +159,18 @@ static void handle_host_message(const char *line, size_t length)
                 serial_write_line("{\"type\":\"clean\",\"active\":true}");
             }
 
-            /* Inversion is stored on the board, so the desktop has to be told
-               where the toggle actually sits. */
-            serial_write_line(
-                bsp_display_invert()
-                    ? "{\"type\":\"display\",\"invert\":true}"
-                    : "{\"type\":\"display\",\"invert\":false}"
+            /* Inversion and rotation are stored on the board, so the desktop
+               has to be told where its controls actually sit. */
+            char state[64];
+
+            snprintf(
+                state,
+                sizeof(state),
+                "{\"type\":\"display\",\"invert\":%s,\"rotation\":%u}",
+                bsp_display_invert() ? "true" : "false",
+                (unsigned)bsp_display_rotation()
             );
+            serial_write_line(state);
         }
     } else if (strcmp(type->valuestring, "ping") == 0) {
         const cJSON *id = cJSON_GetObjectItemCaseSensitive(message, "id");

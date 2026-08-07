@@ -35,6 +35,7 @@ function deviceInventory({
   cleaning,
   calibrating,
   inverted,
+  rotation,
 } = {}) {
   const sessionFor = (id) => (sessions && sessions.get ? sessions.get(id) : undefined);
   const boardFor = (id) => (boards && boards.get ? boards.get(id) : undefined);
@@ -82,9 +83,13 @@ function deviceInventory({
       supportsInvert: connected
         ? (session.hello?.features ?? []).includes('display-invert')
         : false,
-      // The board announces this after every hello, so an unknown value only
-      // means the announcement has not landed yet.
+      // The board announces these after every hello, so an unknown value
+      // only means the announcement has not landed yet.
       inverted: connected && inverted ? inverted.get(deviceId) === true : false,
+      supportsRotation: connected
+        ? (session.hello?.features ?? []).includes('display-rotation')
+        : false,
+      rotation: connected && rotation ? rotation.get(deviceId) ?? 0 : 0,
       deckLimits: board?.deck ?? {
         maxRows: MAX_ROWS,
         maxCols: MAX_COLS,
@@ -305,6 +310,7 @@ class DeviceManager {
       cleaning: this.deck.runtime.cleaning,
       calibrating: this.deck.runtime.calibrating,
       inverted: this.deck.runtime.inverted,
+      rotation: this.deck.runtime.rotation,
     });
   }
 
@@ -430,6 +436,10 @@ class DeviceManager {
 
     if (row.supportsInvert) {
       card.append(this.renderInvert(row));
+    }
+
+    if (row.supportsRotation) {
+      card.append(this.renderRotation(row));
     }
 
     if (this.companionSettings.enabled) {
@@ -571,6 +581,61 @@ class DeviceManager {
 
     section.append(label, helper);
     return section;
+  }
+
+  // A panel mounted sideways or upside down still reads correctly, and the
+  // board keeps the choice so it survives being unplugged.
+  renderRotation(row) {
+    const { document } = this;
+    const section = document.createElement('div');
+    const label = document.createElement('label');
+    const select = document.createElement('select');
+
+    section.className = 'device-rotation';
+    label.className = 'field-label';
+    label.textContent = 'Screen rotation';
+    label.htmlFor = `rotation-${row.deviceId}`;
+    select.id = label.htmlFor;
+
+    for (const degrees of [0, 90, 180, 270]) {
+      const option = document.createElement('option');
+      option.value = String(degrees);
+      option.textContent = `${degrees}\u00b0`;
+      select.append(option);
+    }
+
+    select.value = String(row.rotation);
+    select.addEventListener('change', () => this.saveRotation(row, select));
+
+    const helper = document.createElement('p');
+    helper.className = 'helper';
+    helper.textContent =
+      'Turning the screen re-sizes the keys, so every icon is sent again.';
+
+    section.append(label, select, helper);
+    return section;
+  }
+
+  async saveRotation(row, select) {
+    const degrees = Number(select.value);
+    let status;
+
+    select.disabled = true;
+
+    try {
+      await this.deviceController.setDisplayRotation(row.deviceId, degrees);
+      status = [
+        `${row.name} rotated to ${degrees}\u00b0. The keys change size, so ` +
+          'the artwork is on its way again.',
+        'working',
+      ];
+    } catch (error) {
+      status = [`Could not rotate the screen: ${error.message}`, 'error'];
+    }
+
+    // render() rewrites the status line, so the outcome has to follow it.
+    this.render();
+    this.setStatus(...status);
   }
 
   async saveInvert(row, toggle) {

@@ -37,8 +37,6 @@ CONFIG_CACHE_L2_CACHE_LINE_128B=y
 # Stream32 deck grid: free-form shapes up to 10 per axis (9x4, 4x9, ...)
 # within a 40-key page budget. Budgets above 30 keys use two flash sectors
 # per stored page and need the 8 KB protocol line buffer in main.c.
-CONFIG_STREAM32_DECK_SCREEN_WIDTH=1024
-CONFIG_STREAM32_DECK_SCREEN_HEIGHT=600
 CONFIG_STREAM32_DECK_MAX_ROWS=10
 CONFIG_STREAM32_DECK_MAX_COLS=10
 CONFIG_STREAM32_DECK_MAX_KEYS=40

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "deck_artwork.h"
 #include "deck_calibrate.h"
 #include "deck_clean.h"
 #include "deck_settings.h"
@@ -24,14 +25,16 @@ extern esp_err_t bsp_display_set_awake(bool awake);
 extern esp_err_t bsp_display_set_brightness(uint32_t brightness_percent);
 extern esp_err_t bsp_display_set_invert(bool invert);
 extern bool bsp_display_invert(void);
+extern esp_err_t bsp_display_set_rotation(uint16_t degrees);
+extern uint16_t bsp_display_rotation(void);
 extern esp_err_t bsp_touch_set_calibration(
     const float coefficients[DECK_CALIBRATION_COEFFICIENTS]
 );
 
-/* Panel and grid limits are per-board Kconfig values (see this component's
-   Kconfig for the protocol line-budget ceiling behind the ranges). */
-#define DECK_SCREEN_W CONFIG_STREAM32_DECK_SCREEN_WIDTH
-#define DECK_SCREEN_H CONFIG_STREAM32_DECK_SCREEN_HEIGHT
+/* Grid limits are per-board Kconfig values (see this component's Kconfig for
+   the protocol line-budget ceiling behind the ranges). The screen size is
+   deliberately not one of them: it changes with display rotation, so it is
+   read from LVGL, which reports the post-rotation size. */
 #define DECK_MAX_ROWS CONFIG_STREAM32_DECK_MAX_ROWS
 #define DECK_MAX_COLS CONFIG_STREAM32_DECK_MAX_COLS
 #define DECK_KEY_GAP 8
@@ -92,8 +95,6 @@ static bool s_calibrate_active;
 static lv_obj_t *s_deck_screen;
 /* Shared by both modal overlays; only one can be up at a time. */
 static lv_obj_t *s_modal_return_screen;
-static uint8_t *s_key_buffers[DECK_MAX_KEYS];
-static lv_image_dsc_t s_key_dsc[DECK_MAX_KEYS];
 
 static void build_page(uint8_t page_index);
 static void build_page_locked(uint8_t page_index);
@@ -111,10 +112,20 @@ static bool overlays_active(void)
     return false;
 }
 
+static int32_t screen_w(void)
+{
+    return lv_display_get_horizontal_resolution(lv_display_get_default());
+}
+
+static int32_t screen_h(void)
+{
+    return lv_display_get_vertical_resolution(lv_display_get_default());
+}
+
 static int compute_key_px(int rows, int cols)
 {
-    const int width = (DECK_SCREEN_W - DECK_KEY_GAP * (cols + 1)) / cols;
-    const int height = (DECK_SCREEN_H - DECK_KEY_GAP * (rows + 1)) / rows;
+    const int width = (screen_w() - DECK_KEY_GAP * (cols + 1)) / cols;
+    const int height = (screen_h() - DECK_KEY_GAP * (rows + 1)) / rows;
     const int size = width < height ? width : height;
 
     return size > DECK_KEY_MAX_PX ? DECK_KEY_MAX_PX : size;
@@ -215,79 +226,19 @@ static void key_event_handler(lv_event_t *event)
     }
 }
 
-static void free_key_buffers(void)
+/* Reloads the visible page's artwork. Runs before the grid is (re)built so
+   the image descriptors point at valid pixels. */
+static void reload_artwork(const deck_page_t *page, int key_px)
 {
-    for (int index = 0; index < DECK_MAX_KEYS; index++) {
-        if (s_key_buffers[index] != NULL) {
-            heap_caps_free(s_key_buffers[index]);
-            s_key_buffers[index] = NULL;
-        }
+    uint32_t crcs[DECK_MAX_KEYS];
+    const int count = page->rows * page->cols;
+
+    for (int index = 0; index < count && index < DECK_MAX_KEYS; index++) {
+        crcs[index] = page->keys[index].used ? page->keys[index].image_crc : 0;
     }
-}
 
-static void set_key_image_dsc(int index, int key_px, const uint8_t *pixels)
-{
-    memset(&s_key_dsc[index], 0, sizeof(s_key_dsc[index]));
-    s_key_dsc[index].header.magic = LV_IMAGE_HEADER_MAGIC;
-    s_key_dsc[index].header.cf = LV_COLOR_FORMAT_RGB565;
-    s_key_dsc[index].header.w = key_px;
-    s_key_dsc[index].header.h = key_px;
-    s_key_dsc[index].header.stride = key_px * 2;
-    s_key_dsc[index].data_size = (uint32_t)key_px * key_px * 2;
-    s_key_dsc[index].data = pixels;
-}
-
-static void attach_key_image(lv_obj_t *parent, int index)
-{
-    lv_obj_t *image = lv_image_create(parent);
-
-    lv_image_set_src(image, &s_key_dsc[index]);
-    lv_obj_center(image);
-    /* The parent key owns the full touch target; artwork is visual only. */
-    lv_obj_remove_flag(image, LV_OBJ_FLAG_CLICKABLE);
-    /* Labels stay above artwork. */
-    lv_obj_move_to_index(image, 0);
-}
-
-/* Loads the artwork for every key on the page into RAM. Runs before the
-   grid is (re)built so image descriptors point at valid pixels. Boards
-   without PSRAM hold the whole visible page in internal DRAM, so their
-   key budget is bounded by heap rather than by the grid. */
-static void load_key_buffers(const deck_page_t *page, int key_px)
-{
-    const uint32_t size = (uint32_t)key_px * key_px * 2;
-
-    for (int index = 0; index < page->rows * page->cols; index++) {
-        const deck_key_t *key = &page->keys[index];
-        uint32_t stored_size = 0;
-
-        if (!key->used || key->image_crc == 0 ||
-            !deck_storage_slot_find(key->image_crc, &stored_size) ||
-            stored_size != size) {
-            continue;
-        }
-
-        s_key_buffers[index] = heap_caps_malloc_prefer(
-            size,
-            2,
-            MALLOC_CAP_SPIRAM,
-            MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT
-        );
-
-        if (s_key_buffers[index] == NULL) {
-            ESP_LOGW(TAG, "Out of memory for key %d artwork", index);
-            continue;
-        }
-
-        if (deck_storage_slot_read(
-                key->image_crc,
-                s_key_buffers[index],
-                size
-            ) != ESP_OK) {
-            heap_caps_free(s_key_buffers[index]);
-            s_key_buffers[index] = NULL;
-        }
-    }
+    deck_artwork_release();
+    deck_artwork_load(crcs, count, key_px);
 }
 
 bool deck_ui_clear_overlays(void)
@@ -335,8 +286,8 @@ static void build_page_locked(uint8_t page_index)
         page->cols * key_px + (page->cols - 1) * DECK_KEY_GAP;
     const int grid_height =
         page->rows * key_px + (page->rows - 1) * DECK_KEY_GAP;
-    const int origin_x = (DECK_SCREEN_W - grid_width) / 2;
-    const int origin_y = (DECK_SCREEN_H - grid_height) / 2;
+    const int origin_x = (screen_w() - grid_width) / 2;
+    const int origin_y = (screen_h() - grid_height) / 2;
 
     if (s_deck_screen == NULL) {
         s_deck_screen = lv_obj_create(NULL);
@@ -362,8 +313,7 @@ static void build_page_locked(uint8_t page_index)
     lv_obj_clean(s_deck_screen);
     s_visible_page = page_index;
 
-    free_key_buffers();
-    load_key_buffers(page, key_px);
+    reload_artwork(page, key_px);
 
     for (int index = 0; index < page->rows * page->cols; index++) {
         const deck_key_t *key = &page->keys[index];
@@ -374,7 +324,7 @@ static void build_page_locked(uint8_t page_index)
             : key->label;
         const uint8_t *image = live && overlay->image_crc != 0
             ? overlay->image
-            : s_key_buffers[index];
+            : deck_artwork_pixels(index);
         const int row = index / page->cols;
         const int col = index % page->cols;
         lv_obj_t *cell = lv_obj_create(s_deck_screen);
@@ -453,8 +403,7 @@ static void build_page_locked(uint8_t page_index)
         }
 
         if (image != NULL) {
-            set_key_image_dsc(index, key_px, image);
-            attach_key_image(cell, index);
+            deck_artwork_attach(cell, index, key_px, image);
         }
     }
 
@@ -954,32 +903,70 @@ const char *deck_ui_blank_display(void)
     return NULL;
 }
 
+/* Every display setting reports a refusal the same way: a board without the
+   hardware says so distinctly from one that tried and failed, because the
+   first means "hide the control" and the second means "something broke". */
+static const char *setting_error(
+    esp_err_t error,
+    const char *unsupported,
+    const char *failed
+)
+{
+    if (error == ESP_ERR_NOT_SUPPORTED) {
+        return unsupported;
+    }
+
+    return error == ESP_OK ? NULL : failed;
+}
+
 const char *deck_ui_apply_display(const deck_protocol_display_t *display)
 {
-    if (display->has_invert && display->invert != bsp_display_invert()) {
-        const esp_err_t error = bsp_display_set_invert(display->invert);
+    const char *error;
 
-        if (error == ESP_ERR_NOT_SUPPORTED) {
-            return "display-invert-unsupported";
+    if (display->has_rotation && display->rotation != bsp_display_rotation()) {
+        error = setting_error(
+            bsp_display_set_rotation(display->rotation),
+            "display-rotation-unsupported",
+            "display-rotation-failed"
+        );
+
+        if (error != NULL) {
+            return error;
         }
 
-        if (error != ESP_OK) {
-            return "display-invert-failed";
+        deck_settings_set_rotation(display->rotation);
+
+        /* The screen is a different shape now, so the grid has to re-flow.
+           That changes keyPx, which the desktop notices on the next
+           layout-ack and answers by re-sending the artwork. */
+        if (s_active) {
+            build_page(s_visible_page);
+        }
+    }
+
+    if (display->has_invert && display->invert != bsp_display_invert()) {
+        error = setting_error(
+            bsp_display_set_invert(display->invert),
+            "display-invert-unsupported",
+            "display-invert-failed"
+        );
+
+        if (error != NULL) {
+            return error;
         }
 
         deck_settings_set_invert(display->invert);
     }
 
     if (display->has_brightness) {
-        const esp_err_t error =
-            bsp_display_set_brightness(display->brightness_percent);
+        error = setting_error(
+            bsp_display_set_brightness(display->brightness_percent),
+            "display-brightness-unsupported",
+            "display-brightness-failed"
+        );
 
-        if (error == ESP_ERR_NOT_SUPPORTED) {
-            return "display-brightness-unsupported";
-        }
-
-        if (error != ESP_OK) {
-            return "display-brightness-failed";
+        if (error != NULL) {
+            return error;
         }
     }
 

@@ -8,6 +8,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "deck_affine.h"
 #include "esp_err.h"
@@ -37,6 +38,11 @@ esp_err_t deck_settings_set_calibration(
 // has been stored, which leaves the board's compiled-in default standing.
 bool deck_settings_get_invert(bool *invert);
 esp_err_t deck_settings_set_invert(bool invert);
+
+// Display rotation in degrees clockwise: 0, 90, 180 or 270. Same contract as
+// invert; nothing stored leaves the board's own orientation alone.
+bool deck_settings_get_rotation(uint16_t *degrees);
+esp_err_t deck_settings_set_rotation(uint16_t degrees);
 
 #ifdef __cplusplus
 }

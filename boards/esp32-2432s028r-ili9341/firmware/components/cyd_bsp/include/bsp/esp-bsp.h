@@ -90,6 +90,17 @@ esp_err_t bsp_display_set_invert(bool invert);
 bool bsp_display_invert(void);
 
 /**
+ * @brief Rotate the display by 0, 90, 180 or 270 degrees clockwise.
+ *
+ * The panel is 240x320 portrait glass, so the deck runs in whichever
+ * orientation the board is mounted. Touch follows without recalibration
+ * because the stored transform is in unrotated coordinates.
+ */
+esp_err_t bsp_display_set_rotation(uint16_t degrees);
+
+uint16_t bsp_display_rotation(void);
+
+/**
  * @brief Last raw 12-bit touch sample, before calibration is applied, and
  *        whether a touch is currently down.
  *

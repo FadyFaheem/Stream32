@@ -860,12 +860,16 @@ static const char *handle_display(const cJSON *message)
     const cJSON *brightness =
         cJSON_GetObjectItemCaseSensitive(message, "brightness");
     const cJSON *invert = cJSON_GetObjectItemCaseSensitive(message, "invert");
+    const cJSON *rotation =
+        cJSON_GetObjectItemCaseSensitive(message, "rotation");
     int idle_timeout;
     int brightness_percent = 0;
+    int rotation_degrees = 0;
 
     if (blank_now != NULL) {
         if (!cJSON_IsTrue(blank_now) || awake != NULL ||
-            idle_seconds != NULL || brightness != NULL || invert != NULL) {
+            idle_seconds != NULL || brightness != NULL || invert != NULL ||
+            rotation != NULL) {
             return "display-invalid";
         }
 
@@ -873,6 +877,12 @@ static const char *handle_display(const cJSON *message)
     }
 
     if (invert != NULL && !cJSON_IsBool(invert)) {
+        return "display-invalid";
+    }
+
+    if (rotation != NULL &&
+        (!parse_integer(rotation, 0, 270, &rotation_degrees) ||
+         rotation_degrees % 90 != 0)) {
         return "display-invalid";
     }
 
@@ -898,6 +908,8 @@ static const char *handle_display(const cJSON *message)
         .has_brightness = brightness != NULL,
         .has_invert = invert != NULL,
         .invert = cJSON_IsTrue(invert),
+        .has_rotation = rotation != NULL,
+        .rotation = (uint16_t)rotation_degrees,
         .idle_timeout_seconds = (uint32_t)idle_timeout,
         .brightness_percent = (uint8_t)brightness_percent,
     };

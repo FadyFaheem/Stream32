@@ -9,6 +9,7 @@
 /* Same arrangement as deck_ui: the BSP component name differs per board, so
    the contract is declared rather than included. */
 extern esp_err_t bsp_display_set_invert(bool invert);
+extern esp_err_t bsp_display_set_rotation(uint16_t degrees);
 extern esp_err_t bsp_touch_set_calibration(
     const float coefficients[DECK_CALIBRATION_COEFFICIENTS]
 );
@@ -16,6 +17,7 @@ extern esp_err_t bsp_touch_set_calibration(
 #define DECK_SETTINGS_NAMESPACE "stream32"
 #define DECK_SETTINGS_KEY_CALIBRATION "touchcal"
 #define DECK_SETTINGS_KEY_INVERT "invert"
+#define DECK_SETTINGS_KEY_ROTATION "rotation"
 
 static const char *TAG = "deck_settings";
 static bool s_mounted;
@@ -55,6 +57,14 @@ void deck_settings_apply(void)
 {
     float coefficients[DECK_CALIBRATION_COEFFICIENTS];
     bool invert;
+    uint16_t degrees;
+
+    /* Rotation first: it changes the screen size everything else is laid out
+       against, and the calibration is stored in unrotated coordinates so it
+       does not care which way round the panel ends up. */
+    if (deck_settings_get_rotation(&degrees)) {
+        bsp_display_set_rotation(degrees);
+    }
 
     if (deck_settings_get_calibration(coefficients)) {
         bsp_touch_set_calibration(coefficients);
@@ -157,6 +167,62 @@ bool deck_settings_get_invert(bool *invert)
 
     *invert = stored != 0;
     return true;
+}
+
+bool deck_settings_get_rotation(uint16_t *degrees)
+{
+    if (!s_mounted || degrees == NULL) {
+        return false;
+    }
+
+    nvs_handle_t handle;
+
+    if (nvs_open(DECK_SETTINGS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
+        return false;
+    }
+
+    uint16_t stored = 0;
+    const esp_err_t error =
+        nvs_get_u16(handle, DECK_SETTINGS_KEY_ROTATION, &stored);
+
+    nvs_close(handle);
+
+    /* A value written by a newer build is discarded rather than passed on to
+       a BSP that would reject it. */
+    if (error != ESP_OK || (stored != 0 && stored != 90 && stored != 180 &&
+                            stored != 270)) {
+        return false;
+    }
+
+    *degrees = stored;
+    return true;
+}
+
+esp_err_t deck_settings_set_rotation(uint16_t degrees)
+{
+    if (degrees != 0 && degrees != 90 && degrees != 180 && degrees != 270) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!s_mounted) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    nvs_handle_t handle;
+    esp_err_t error = nvs_open(DECK_SETTINGS_NAMESPACE, NVS_READWRITE, &handle);
+
+    if (error != ESP_OK) {
+        return error;
+    }
+
+    error = nvs_set_u16(handle, DECK_SETTINGS_KEY_ROTATION, degrees);
+
+    if (error == ESP_OK) {
+        error = nvs_commit(handle);
+    }
+
+    nvs_close(handle);
+    return error;
 }
 
 esp_err_t deck_settings_set_invert(bool invert)

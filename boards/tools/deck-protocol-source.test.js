@@ -31,6 +31,7 @@ const ui = read(componentPath('deck_ui.c'));
 const clean = read(componentPath('deck_clean.c'));
 const storage = read(componentPath('deck_storage.c'));
 const calibrate = read(componentPath('deck_calibrate.c'));
+const artwork = read(componentPath('deck_artwork.c'));
 
 test('protocol decoding and image sequencing stay outside the LVGL UI', () => {
   assert.match(protocol, /static bool valid_utf8\(/);
@@ -75,7 +76,7 @@ test('RLE decoding still commits raw pixels through existing storage ownership',
 test('artwork allocation falls back to internal RAM on boards without PSRAM', () => {
   // A bare MALLOC_CAP_SPIRAM allocation returns NULL on the classic ESP32,
   // which would fail every image with image-no-memory.
-  for (const source of [protocol, ui]) {
+  for (const source of [protocol, artwork]) {
     assert.doesNotMatch(source, /heap_caps_malloc\([^)]*MALLOC_CAP_SPIRAM/);
     assert.match(
       source,
@@ -127,6 +128,14 @@ test('the calibration overlay owns only its own screen', () => {
     calibrate,
     /DECK_CALIBRATE_DONE[\s\S]{0,200}bsp_touch_set_calibration\([\s\S]{0,80}deck_settings_set_calibration/,
   );
+
+  // Markers are unrotated before solving so turning the screen afterwards
+  // does not silently invalidate the calibration.
+  assert.match(calibrate, /deck_affine_unrotate\(/);
+  assert.match(
+    calibrate,
+    /unrotated_target\([\s\S]{0,400}deck_affine_solve\(/,
+  );
 });
 
 test('every bsp_ call in a board main.c is declared by that board BSP', () => {
@@ -156,6 +165,21 @@ test('every bsp_ call in a board main.c is declared by that board BSP', () => {
       );
     }
   }
+});
+
+test('screen geometry is read live, not from Kconfig', () => {
+  // The screen size changes with rotation, so a compile-time value would lay
+  // the grid out for the wrong shape the moment the panel is turned.
+  for (const source of [ui, clean, calibrate]) {
+    assert.doesNotMatch(source, /CONFIG_STREAM32_DECK_SCREEN_/);
+    assert.match(source, /lv_display_get_horizontal_resolution\(/);
+    assert.match(source, /lv_display_get_vertical_resolution\(/);
+  }
+
+  assert.doesNotMatch(
+    read(componentPath('Kconfig')),
+    /config STREAM32_DECK_SCREEN_/,
+  );
 });
 
 test('no board sets panel rotation behind esp_lvgl_port', () => {
@@ -196,6 +220,8 @@ test('every board answers the calibration and invert BSP contract', () => {
 
     assert.match(bsp, /esp_err_t bsp_display_set_invert\(bool invert\)/);
     assert.match(bsp, /bool bsp_display_invert\(void\)/);
+    assert.match(bsp, /esp_err_t bsp_display_set_rotation\(uint16_t degrees\)/);
+    assert.match(bsp, /uint16_t bsp_display_rotation\(void\)/);
     assert.match(bsp, /bool bsp_touch_read_raw\(/);
     assert.match(bsp, /esp_err_t bsp_touch_set_calibration\(/);
   }
@@ -248,6 +274,7 @@ test('every board transport dispatches through the shared protocol module', () =
 
   for (const source of [
     'deck_affine.c',
+    'deck_artwork.c',
     'deck_calibrate.c',
     'deck_clean.c',
     'deck_protocol.c',
@@ -374,7 +401,10 @@ test('key labels stay on one ellipsized line above artwork', () => {
     buildPage,
     /lv_label_set_long_mode\(label_obj, LV_LABEL_LONG_DOT\);[\s\S]*lv_obj_set_width\(label_obj, key_px - 12\);[\s\S]*lv_obj_set_height\([\s\S]*lv_font_get_line_height\(LV_FONT_DEFAULT\)/,
   );
-  assert.match(ui, /Labels stay above artwork[\s\S]*lv_obj_move_to_index\(image, 0\)/);
+  assert.match(
+    artwork,
+    /Labels stay above artwork[\s\S]*lv_obj_move_to_index\(image, 0\)/,
+  );
 });
 
 test('CrowPanel blanking keeps the touch and DSI pipeline alive', () => {

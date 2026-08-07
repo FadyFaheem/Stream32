@@ -21,6 +21,8 @@
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 
+#include "deck_affine.h"
+
 #define BSP_LCD_SPI_HOST SPI2_HOST
 #define BSP_TOUCH_SPI_HOST SPI3_HOST
 #define BSP_LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000)
@@ -57,6 +59,8 @@ static uint16_t s_last_raw_y;
 static bool s_touch_down;
 static bool s_calibrated;
 static float s_calibration[BSP_TOUCH_CALIBRATION_COEFFICIENTS];
+static uint16_t s_rotation;
+static lv_display_t *s_display;
 
 static esp_err_t backlight_init(void)
 {
@@ -218,12 +222,17 @@ static int32_t map_fallback(uint16_t raw, int32_t span)
 /* The XPT2046 driver reports raw ADC counts: its own conversion is a
    full-range linear map that cannot express this panel's offset window, and
    it ignores rotation entirely. The stored affine transform handles offset,
-   scale, axis swap and mirroring together. */
+   scale, axis swap and mirroring together.
+ *
+ * Both paths produce a point in the unrotated BSP_LCD_H_RES x BSP_LCD_V_RES
+ * space, which the caller then turns to match the current rotation. Storing
+ * the calibration unrotated is what lets the display be turned afterwards
+ * without asking for it again. */
 static void apply_calibration(uint16_t raw_x, uint16_t raw_y, lv_point_t *point)
 {
     if (!s_calibrated) {
-        /* Axes swapped by hand here only because the panel is rotated to
-           landscape and nothing better is known yet. */
+        /* Axes swapped by hand here only because the unrotated orientation
+           is landscape and nothing better is known yet. */
         point->x = map_fallback(raw_y, BSP_LCD_H_RES);
         point->y = map_fallback(raw_x, BSP_LCD_V_RES);
         return;
@@ -260,7 +269,18 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     s_last_raw_y = raw_y[0];
     s_touch_down = true;
 
-    apply_calibration(raw_x[0], raw_y[0], &data->point);
+    lv_point_t unrotated;
+
+    apply_calibration(raw_x[0], raw_y[0], &unrotated);
+    deck_affine_rotate(
+        s_rotation,
+        BSP_LCD_H_RES,
+        BSP_LCD_V_RES,
+        unrotated.x,
+        unrotated.y,
+        &data->point.x,
+        &data->point.y
+    );
     data->state = LV_INDEV_STATE_PRESSED;
 }
 
@@ -327,6 +347,8 @@ lv_display_t *bsp_display_start(void)
         ESP_LOGE(TAG, "Could not register the display with LVGL");
         return NULL;
     }
+
+    s_display = display;
 
     /* Make display failures visible even if touch initialization fails. */
     s_status = "display-backlight";
@@ -472,4 +494,36 @@ esp_err_t bsp_display_set_invert(bool invert)
 bool bsp_display_invert(void)
 {
     return s_invert;
+}
+
+esp_err_t bsp_display_set_rotation(uint16_t degrees)
+{
+    static const lv_display_rotation_t ROTATIONS[] = {
+        LV_DISPLAY_ROTATION_0,
+        LV_DISPLAY_ROTATION_90,
+        LV_DISPLAY_ROTATION_180,
+        LV_DISPLAY_ROTATION_270,
+    };
+
+    if (degrees % 90 != 0 || degrees > 270) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (s_display == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /* lv_display_set_rotation swaps LVGL's own resolution and fires the size
+       event that makes esp_lvgl_port rewrite the panel's MADCTL, so this one
+       call turns both the framebuffer and the glass. */
+    lvgl_port_lock(0);
+    lv_display_set_rotation(s_display, ROTATIONS[degrees / 90]);
+    lvgl_port_unlock();
+    s_rotation = degrees;
+    return ESP_OK;
+}
+
+uint16_t bsp_display_rotation(void)
+{
+    return s_rotation;
 }

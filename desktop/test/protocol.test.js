@@ -22,7 +22,7 @@ const {
   validateCalibrateMessage,
   validateCleanMessage,
   validateDeviceHello,
-  validateDisplayInvertMessage,
+  validateDisplayStateMessage,
   validateImageAck,
   validateKeyUpdateAck,
   validateLayoutAck,
@@ -680,12 +680,71 @@ test('carries colour inversion on the display message in both directions', () =>
   );
 
   assert.deepEqual(
-    validateDisplayInvertMessage({ type: 'display', invert: false }),
+    validateDisplayStateMessage({ type: 'display', invert: false }),
     { invert: false },
   );
   assert.throws(
-    () => validateDisplayInvertMessage({ type: 'display' }),
+    () => validateDisplayStateMessage({ type: 'display', invert: 1 }),
     /boolean/,
+  );
+});
+
+test('carries screen rotation on the display message in both directions', () => {
+  for (const rotation of [0, 90, 180, 270]) {
+    assert.match(
+      new TextDecoder().decode(
+        encodeDisplayMessage({
+          awake: true,
+          idleTimeoutSeconds: 600,
+          rotation,
+        }),
+      ),
+      new RegExp(`"rotation":${rotation}}`),
+    );
+  }
+
+  // Anything off the quarter turns would leave the grid at a size the deck
+  // cannot lay out.
+  for (const bad of [45, 360, -90, '90']) {
+    assert.throws(
+      () =>
+        encodeDisplayMessage({
+          awake: true,
+          idleTimeoutSeconds: 600,
+          rotation: bad,
+        }),
+      /0, 90, 180 or 270/,
+    );
+  }
+
+  // Absent means "leave it alone", which every routine policy push sends.
+  assert.doesNotMatch(
+    new TextDecoder().decode(
+      encodeDisplayMessage({ awake: true, idleTimeoutSeconds: 600 }),
+    ),
+    /rotation/,
+  );
+
+  // The board announces both together, and older firmware only one of them.
+  assert.deepEqual(
+    validateDisplayStateMessage({
+      type: 'display',
+      invert: true,
+      rotation: 270,
+    }),
+    { invert: true, rotation: 270 },
+  );
+  assert.deepEqual(
+    validateDisplayStateMessage({ type: 'display', rotation: 90 }),
+    { rotation: 90 },
+  );
+  assert.throws(
+    () => validateDisplayStateMessage({ type: 'display' }),
+    /carries nothing/,
+  );
+  assert.throws(
+    () => validateDisplayStateMessage({ type: 'display', rotation: 45 }),
+    /0, 90, 180 or 270/,
   );
 });
 

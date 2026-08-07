@@ -22,8 +22,6 @@ CONFIG_ESP_CONSOLE_NONE=y
 # key count, so 12 keys is the page budget in any shape up to 4 per axis.
 # The 32 KB pool slots pair with 128 px keys (128*128*2 bytes) and yield 68
 # slots in the 2.19 MB deck partition, where 64 KB slots would give 34.
-CONFIG_STREAM32_DECK_SCREEN_WIDTH=320
-CONFIG_STREAM32_DECK_SCREEN_HEIGHT=240
 CONFIG_STREAM32_DECK_MAX_ROWS=4
 CONFIG_STREAM32_DECK_MAX_COLS=4
 CONFIG_STREAM32_DECK_MAX_KEYS=12

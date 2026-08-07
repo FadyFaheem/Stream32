@@ -434,6 +434,19 @@ bool bsp_display_invert(void)
     return s_invert;
 }
 
+/* The EK79007 driver overrides del, init, reset, mirror and invert_color but
+   not swap_xy, so a DSI panel in video mode has no rotation to offer. */
+esp_err_t bsp_display_set_rotation(uint16_t degrees)
+{
+    (void)degrees;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+uint16_t bsp_display_rotation(void)
+{
+    return 0;
+}
+
 /* GT911 is a capacitive controller that reports screen coordinates directly,
    so there is nothing to calibrate and no raw sample to expose. */
 bool bsp_touch_read_raw(uint16_t *raw_x, uint16_t *raw_y)

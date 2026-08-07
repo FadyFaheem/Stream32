@@ -20,9 +20,9 @@
     "maxPages": 8
   },
   "firmware": {
-    "version": "0.3.3",
+    "version": "0.3.4",
     "projectPath": "firmware",
-    "imageName": "waveshare-esp32-s3-touch-lcd-4-v3-0.3.3.bin",
+    "imageName": "waveshare-esp32-s3-touch-lcd-4-v3-0.3.4.bin",
     "offset": 0
   },
   "capabilities": [

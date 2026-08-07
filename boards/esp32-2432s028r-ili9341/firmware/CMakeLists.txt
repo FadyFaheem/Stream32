@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
 set(EXTRA_COMPONENT_DIRS "${CMAKE_CURRENT_LIST_DIR}/../../common/components")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
-set(PROJECT_VER "0.1.2")
+set(PROJECT_VER "0.1.3")
 project(stream32_esp32_2432s028r_ili9341)

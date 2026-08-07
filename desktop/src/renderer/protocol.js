@@ -537,11 +537,14 @@ function encodePageMessage(index) {
   return encodeLine({ type: 'page', index });
 }
 
+const DISPLAY_ROTATIONS = new Set([0, 90, 180, 270]);
+
 function encodeDisplayMessage({
   awake,
   idleTimeoutSeconds,
   brightness,
   invert,
+  rotation,
 }) {
   if (typeof awake !== 'boolean') {
     throw new TypeError('Display awake state must be a boolean.');
@@ -573,17 +576,44 @@ function encodeDisplayMessage({
     message.invert = invert;
   }
 
+  if (rotation !== undefined) {
+    if (!DISPLAY_ROTATIONS.has(rotation)) {
+      throw new TypeError('Display rotation must be 0, 90, 180 or 270.');
+    }
+
+    message.rotation = rotation;
+  }
+
   return encodeLine(message);
 }
 
-// The board stores inversion itself and announces it after each hello, so
-// this reads the same shape the desktop sends.
-function validateDisplayInvertMessage(message) {
-  if (typeof message.invert !== 'boolean') {
-    throw new TypeError('Display invert must be a boolean.');
+// The board stores inversion and rotation itself and announces them after
+// each hello, so this reads the same shape the desktop sends. Either field
+// may be absent on firmware that supports only one of them.
+function validateDisplayStateMessage(message) {
+  const state = {};
+
+  if (message.invert !== undefined) {
+    if (typeof message.invert !== 'boolean') {
+      throw new TypeError('Display invert must be a boolean.');
+    }
+
+    state.invert = message.invert;
   }
 
-  return { invert: message.invert };
+  if (message.rotation !== undefined) {
+    if (!DISPLAY_ROTATIONS.has(message.rotation)) {
+      throw new TypeError('Display rotation must be 0, 90, 180 or 270.');
+    }
+
+    state.rotation = message.rotation;
+  }
+
+  if (Object.keys(state).length === 0) {
+    throw new TypeError('Display state carries nothing.');
+  }
+
+  return state;
 }
 
 function encodeDisplayBlankMessage() {
@@ -811,7 +841,7 @@ module.exports = {
   validateCalibrateMessage,
   validateCleanMessage,
   validateDeviceHello,
-  validateDisplayInvertMessage,
+  validateDisplayStateMessage,
   validateImageAck,
   validateKeyUpdateAck,
   validateLayoutAck,

@@ -70,6 +70,7 @@ test('the touch calibration solve recovers known panel wirings', (t) => {
       'ok swapped axes',
       'ok mirrored axes',
       'ok skewed glass',
+      'ok rotation round trips and corners',
       'ok collinear taps rejected',
       'ok repeated tap rejected',
     ]) {

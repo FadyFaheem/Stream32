@@ -50,6 +50,8 @@ typedef struct {
     bool has_brightness;
     bool has_invert;
     bool invert;
+    bool has_rotation;
+    uint16_t rotation;
     uint32_t idle_timeout_seconds;
     uint8_t brightness_percent;
 } deck_protocol_display_t;

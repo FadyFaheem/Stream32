@@ -46,3 +46,63 @@ bool deck_affine_solve(
 
     return true;
 }
+
+void deck_affine_rotate(
+    uint16_t degrees,
+    int32_t base_w,
+    int32_t base_h,
+    int32_t x,
+    int32_t y,
+    int32_t *out_x,
+    int32_t *out_y
+)
+{
+    switch (degrees) {
+    case 90:
+        *out_x = base_h - 1 - y;
+        *out_y = x;
+        break;
+    case 180:
+        *out_x = base_w - 1 - x;
+        *out_y = base_h - 1 - y;
+        break;
+    case 270:
+        *out_x = y;
+        *out_y = base_w - 1 - x;
+        break;
+    default:
+        *out_x = x;
+        *out_y = y;
+        break;
+    }
+}
+
+void deck_affine_unrotate(
+    uint16_t degrees,
+    int32_t base_w,
+    int32_t base_h,
+    int32_t x,
+    int32_t y,
+    int32_t *out_x,
+    int32_t *out_y
+)
+{
+    switch (degrees) {
+    case 90:
+        *out_x = y;
+        *out_y = base_h - 1 - x;
+        break;
+    case 180:
+        *out_x = base_w - 1 - x;
+        *out_y = base_h - 1 - y;
+        break;
+    case 270:
+        *out_x = base_w - 1 - y;
+        *out_y = x;
+        break;
+    default:
+        *out_x = x;
+        *out_y = y;
+        break;
+    }
+}

@@ -1,10 +1,7 @@
 #include "deck_clean.h"
 
 #include "esp_timer.h"
-#include "sdkconfig.h"
 
-#define CLEAN_SCREEN_W CONFIG_STREAM32_DECK_SCREEN_WIDTH
-#define CLEAN_SCREEN_H CONFIG_STREAM32_DECK_SCREEN_HEIGHT
 /* Long enough that a wiping cloth cannot dwell its way out of the lock. */
 #define DECK_CLEAN_HOLD_MS 5000
 
@@ -75,9 +72,13 @@ lv_obj_t *deck_clean_screen(void)
         return s_screen;
     }
 
-    const int short_edge = CLEAN_SCREEN_W < CLEAN_SCREEN_H
-        ? CLEAN_SCREEN_W
-        : CLEAN_SCREEN_H;
+    /* Read from LVGL rather than Kconfig because display rotation swaps the
+       two. A 90 degree turn leaves the short edge unchanged, so the overlay
+       keeps its proportions without being rebuilt. */
+    lv_display_t *display = lv_display_get_default();
+    const int32_t width = lv_display_get_horizontal_resolution(display);
+    const int32_t height = lv_display_get_vertical_resolution(display);
+    const int short_edge = width < height ? width : height;
     const int target_px = short_edge / 3;
 
     s_screen = lv_obj_create(NULL);

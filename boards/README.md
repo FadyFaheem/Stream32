@@ -193,7 +193,7 @@ Desktop messages:
 {"type":"image","mode":"ephemeral","page":0,"index":0,"seq":0,"of":13,"w":150,"h":150,"data":"<base64 RGB565>"}
 {"type":"page","index":1}
 {"type":"display","awake":false,"idleTimeoutSeconds":600}
-{"type":"display","awake":true,"idleTimeoutSeconds":600,"invert":true}
+{"type":"display","awake":true,"idleTimeoutSeconds":600,"invert":true,"rotation":90}
 {"type":"display","blankNow":true}
 {"type":"calibrate","action":"start"}
 ```
@@ -212,7 +212,7 @@ Firmware messages:
 {"type":"press","page":0,"index":4,"phase":"down"}
 {"type":"calibrate-ack","action":"start"}
 {"type":"calibrate","state":"done"}
-{"type":"display","invert":true}
+{"type":"display","invert":true,"rotation":90}
 ```
 
 The desktop does not mark a port connected until the hello response has the
@@ -280,6 +280,16 @@ survives. The board reports `{"type":"calibrate","state":...}` as `done`,
 `failed`, or `cancelled`; a wizard nobody finishes times out after a minute
 rather than owning the screen. Capacitive GT911 boards report screen
 coordinates already and answer `calibrate-unsupported`.
+
+The optional `rotation` field on `display` turns the screen by 0, 90, 180 or
+270 degrees for firmware advertising `display-rotation`, so a board can be
+mounted in any orientation. The grid re-flows to the new shape, which changes
+`keyPx` and makes the desktop re-send every icon on the next `layout-ack`.
+Touch follows without recalibration: the transform is stored against the
+panel's unrotated orientation and turned on the way out.
+
+Rotation needs `esp_lcd_panel_swap_xy`, which the RGB and MIPI-DSI panel
+drivers do not implement, so only the Cheap Yellow Display offers it today.
 
 The optional `invert` field on `display` flips the panel's colour inversion
 for firmware advertising `display-invert`. The same board model ships with

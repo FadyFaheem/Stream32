@@ -929,24 +929,38 @@ test('Calibration starts on acknowledgement and ends on the board outcome', asyn
   );
 });
 
-test('Colour inversion is read from the board, not remembered locally', () => {
+test('Colour and rotation are read from the board, not remembered locally', () => {
   const controller = createRuntime();
   const session = {
-    hello: { deviceId: 'aaaa11112222', features: ['display-invert'] },
+    hello: {
+      deviceId: 'aaaa11112222',
+      features: ['display-invert', 'display-rotation'],
+    },
     send: async () => {},
   };
   controller.sessions = new Map([['aaaa11112222', session]]);
 
-  // The board announces the stored value after every hello.
-  controller.handleDeviceMessage(session, { type: 'display', invert: true });
+  // The board announces the stored values after every hello.
+  controller.handleDeviceMessage(session, {
+    type: 'display',
+    invert: true,
+    rotation: 90,
+  });
   assert.equal(controller.inverted.get('aaaa11112222'), true);
+  assert.equal(controller.rotation.get('aaaa11112222'), 90);
 
+  // Firmware that supports only one of them must not clear the other.
   controller.handleDeviceMessage(session, { type: 'display', invert: false });
   assert.equal(controller.inverted.get('aaaa11112222'), false);
+  assert.equal(controller.rotation.get('aaaa11112222'), 90);
+
+  controller.handleDeviceMessage(session, { type: 'display', rotation: 270 });
+  assert.equal(controller.rotation.get('aaaa11112222'), 270);
 
   // Nothing survives the disconnect: the next hello re-announces it.
   controller.detachSession(session);
   assert.equal(controller.inverted.has('aaaa11112222'), false);
+  assert.equal(controller.rotation.has('aaaa11112222'), false);
 });
 
 test('Screen cleaning locks on acknowledgement and unlocks on the deck hold', async () => {

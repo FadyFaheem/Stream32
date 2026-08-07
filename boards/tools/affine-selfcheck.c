@@ -9,6 +9,7 @@
  * Built and run by affine-solve.test.js.
  */
 #include <assert.h>
+#include <stddef.h>
 #include <stdio.h>
 
 #include "deck_affine.h"
@@ -105,12 +106,81 @@ static uint16_t mirrored_y(int32_t x, int32_t y) { (void)x; return 3800 - y * 14
 static uint16_t skewed_x(int32_t x, int32_t y) { return 300 + x * 11 + y / 2; }
 static uint16_t skewed_y(int32_t x, int32_t y) { return 320 + y * 14 - x / 2; }
 
+/* Turning the display must not invalidate a calibration, which only holds if
+ * rotate and unrotate are exact inverses and every rotated point lands inside
+ * the turned screen. Both are cheap to prove here and impossible to notice by
+ * eye on hardware, where a wrong corner just feels like drift. */
+static void check_rotations(void)
+{
+    const uint16_t angles[] = {0, 90, 180, 270};
+
+    for (size_t index = 0; index < 4; index++) {
+        const uint16_t degrees = angles[index];
+        /* A quarter turn swaps which edge is which. */
+        const int32_t turned_w = (degrees == 90 || degrees == 270)
+            ? SCREEN_H
+            : SCREEN_W;
+        const int32_t turned_h = (degrees == 90 || degrees == 270)
+            ? SCREEN_W
+            : SCREEN_H;
+
+        for (int32_t y = 0; y < SCREEN_H; y += 17) {
+            for (int32_t x = 0; x < SCREEN_W; x += 17) {
+                int32_t rx, ry, bx, by;
+
+                deck_affine_rotate(degrees, SCREEN_W, SCREEN_H, x, y, &rx, &ry);
+
+                if (rx < 0 || rx >= turned_w || ry < 0 || ry >= turned_h) {
+                    printf(
+                        "FAIL rotate %u: (%d,%d) left the screen at (%d,%d)\n",
+                        degrees,
+                        (int)x,
+                        (int)y,
+                        (int)rx,
+                        (int)ry
+                    );
+                    assert(0);
+                }
+
+                deck_affine_unrotate(
+                    degrees, SCREEN_W, SCREEN_H, rx, ry, &bx, &by
+                );
+
+                if (bx != x || by != y) {
+                    printf(
+                        "FAIL round trip %u: (%d,%d) came back (%d,%d)\n",
+                        degrees,
+                        (int)x,
+                        (int)y,
+                        (int)bx,
+                        (int)by
+                    );
+                    assert(0);
+                }
+            }
+        }
+    }
+
+    /* The corner each turn sends the origin to, spelled out so a sign slip
+       cannot hide behind a symmetric round trip. */
+    int32_t x, y;
+
+    deck_affine_rotate(90, SCREEN_W, SCREEN_H, 0, 0, &x, &y);
+    assert(x == SCREEN_H - 1 && y == 0);
+    deck_affine_rotate(180, SCREEN_W, SCREEN_H, 0, 0, &x, &y);
+    assert(x == SCREEN_W - 1 && y == SCREEN_H - 1);
+    deck_affine_rotate(270, SCREEN_W, SCREEN_H, 0, 0, &x, &y);
+    assert(x == 0 && y == SCREEN_W - 1);
+    printf("ok rotation round trips and corners\n");
+}
+
 int main(void)
 {
     check_panel("plain panel", plain_x, plain_y);
     check_panel("swapped axes", swapped_x, swapped_y);
     check_panel("mirrored axes", mirrored_x, mirrored_y);
     check_panel("skewed glass", skewed_x, skewed_y);
+    check_rotations();
 
     /* Three taps on one line describe no plane. A slipped tap that lands on
        the line through the other two must be rejected, not turned into a

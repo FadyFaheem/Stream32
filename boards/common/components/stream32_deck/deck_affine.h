@@ -29,6 +29,39 @@ bool deck_affine_solve(
     float coefficients[DECK_CALIBRATION_COEFFICIENTS]
 );
 
+// Rotation helpers shared by the touch driver and the calibration wizard.
+//
+// A calibration is stored against the panel's unrotated orientation so that
+// turning the display never invalidates it. The driver rotates each sampled
+// point on the way out, and the wizard unrotates its markers on the way in.
+// Keeping both directions here means they cannot drift apart, and lets a
+// host test prove they are inverses.
+//
+// base_w and base_h are the unrotated size. Degrees must be 0, 90, 180 or
+// 270; anything else is treated as 0.
+
+// Unrotated point to where it lands on a display turned by `degrees`.
+void deck_affine_rotate(
+    uint16_t degrees,
+    int32_t base_w,
+    int32_t base_h,
+    int32_t x,
+    int32_t y,
+    int32_t *out_x,
+    int32_t *out_y
+);
+
+// The inverse: a point on the turned display back to unrotated space.
+void deck_affine_unrotate(
+    uint16_t degrees,
+    int32_t base_w,
+    int32_t base_h,
+    int32_t x,
+    int32_t y,
+    int32_t *out_x,
+    int32_t *out_y
+);
+
 #ifdef __cplusplus
 }
 #endif

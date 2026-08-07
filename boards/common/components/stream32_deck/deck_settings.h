@@ -16,6 +16,9 @@
 // Artwork may shrink to a quarter of its tile but no further: below that the
 // picture is unreadable, and layout-ack's keyPx has a floor of 16 px.
 #define DECK_ICON_PERCENT_MIN 25
+// Label lines per key. Past three there is nothing left of the tile for the
+// artwork the label is supposed to be captioning.
+#define DECK_LABEL_LINES_MAX 3
 
 #ifdef __cplusplus
 extern "C" {
@@ -53,6 +56,10 @@ esp_err_t deck_settings_set_rotation(uint16_t degrees);
 // startup rather than deck_settings_apply pushing it anywhere.
 bool deck_settings_get_icon_percent(uint8_t *percent);
 esp_err_t deck_settings_set_icon_percent(uint8_t percent);
+
+// How many lines a key label may wrap to, 1 to DECK_LABEL_LINES_MAX.
+bool deck_settings_get_label_lines(uint8_t *lines);
+esp_err_t deck_settings_set_label_lines(uint8_t lines);
 
 #ifdef __cplusplus
 }

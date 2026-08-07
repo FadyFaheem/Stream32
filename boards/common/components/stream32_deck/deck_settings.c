@@ -19,6 +19,7 @@ extern esp_err_t bsp_touch_set_calibration(
 #define DECK_SETTINGS_KEY_INVERT "invert"
 #define DECK_SETTINGS_KEY_ROTATION "rotation"
 #define DECK_SETTINGS_KEY_ICON_PERCENT "iconpct"
+#define DECK_SETTINGS_KEY_LABEL_LINES "lbllines"
 
 static const char *TAG = "deck_settings";
 static bool s_mounted;
@@ -272,6 +273,59 @@ esp_err_t deck_settings_set_icon_percent(uint8_t percent)
     }
 
     error = nvs_set_u8(handle, DECK_SETTINGS_KEY_ICON_PERCENT, percent);
+
+    if (error == ESP_OK) {
+        error = nvs_commit(handle);
+    }
+
+    nvs_close(handle);
+    return error;
+}
+
+bool deck_settings_get_label_lines(uint8_t *lines)
+{
+    if (!s_mounted || lines == NULL) {
+        return false;
+    }
+
+    nvs_handle_t handle;
+
+    if (nvs_open(DECK_SETTINGS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
+        return false;
+    }
+
+    uint8_t stored = 0;
+    const esp_err_t error =
+        nvs_get_u8(handle, DECK_SETTINGS_KEY_LABEL_LINES, &stored);
+
+    nvs_close(handle);
+
+    if (error != ESP_OK || stored < 1 || stored > DECK_LABEL_LINES_MAX) {
+        return false;
+    }
+
+    *lines = stored;
+    return true;
+}
+
+esp_err_t deck_settings_set_label_lines(uint8_t lines)
+{
+    if (lines < 1 || lines > DECK_LABEL_LINES_MAX) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (!s_mounted) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    nvs_handle_t handle;
+    esp_err_t error = nvs_open(DECK_SETTINGS_NAMESPACE, NVS_READWRITE, &handle);
+
+    if (error != ESP_OK) {
+        return error;
+    }
+
+    error = nvs_set_u8(handle, DECK_SETTINGS_KEY_LABEL_LINES, lines);
 
     if (error == ESP_OK) {
         error = nvs_commit(handle);

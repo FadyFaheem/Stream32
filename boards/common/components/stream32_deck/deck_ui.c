@@ -263,6 +263,7 @@ static void build_page_locked(uint8_t page_index)
     const deck_page_t *page = &s_pages[page_index];
     const int key_px = deck_layout_key_px(page->rows, page->cols);
     const int icon_px = deck_layout_icon_px(page->rows, page->cols);
+    const int label_h = deck_layout_label_h();
     int origin_x;
     int origin_y;
 
@@ -362,11 +363,15 @@ static void build_page_locked(uint8_t page_index)
                 ),
                 LV_PART_MAIN
             );
+            /* LONG_DOT wraps inside the box and ellipsizes what will not
+               fit, so the height alone decides how many lines a label gets
+               and no text can ever push the artwork out of its tile. */
             lv_label_set_long_mode(label_obj, LV_LABEL_LONG_DOT);
             lv_obj_set_width(label_obj, key_px - 12);
             lv_obj_set_height(
                 label_obj,
-                lv_font_get_line_height(LV_FONT_DEFAULT)
+                deck_layout_label_lines() *
+                    lv_font_get_line_height(LV_FONT_DEFAULT)
             );
             lv_obj_set_style_text_align(
                 label_obj,
@@ -382,7 +387,7 @@ static void build_page_locked(uint8_t page_index)
         }
 
         if (image != NULL) {
-            deck_artwork_attach(cell, index, icon_px, image);
+            deck_artwork_attach(cell, index, icon_px, label_h, image);
         }
     }
 
@@ -419,15 +424,10 @@ esp_err_t deck_ui_init(deck_notify_fn notify)
     /* Device settings apply before any host connects, so a standalone board
        boots with the touch and colours it was last given. */
     if (deck_settings_init() == ESP_OK) {
-        uint8_t icon_percent;
-
         deck_settings_apply();
-
-        /* Read here rather than in deck_settings_apply, which only pushes
-           settings the BSP owns. */
-        if (deck_settings_get_icon_percent(&icon_percent)) {
-            deck_layout_set_icon_percent(icon_percent);
-        }
+        /* Separate because deck_settings_apply only pushes what the BSP owns,
+           and the key style is drawn by LVGL rather than the panel. */
+        deck_layout_init();
     }
 
     const esp_err_t error = deck_storage_init();
@@ -931,16 +931,18 @@ const char *deck_ui_apply_display(const deck_protocol_display_t *display)
         }
     }
 
-    if (display->has_icon_percent &&
-        display->icon_percent != deck_layout_icon_percent()) {
+    /* Both resize the artwork, so they take the same route as rotation: the
+       grid re-flows, keyPx moves, and the desktop re-sends every icon. */
+    bool restyled = display->has_icon_percent &&
         deck_layout_set_icon_percent(display->icon_percent);
-        deck_settings_set_icon_percent(display->icon_percent);
 
-        /* Same re-sync path as rotation: the artwork is a different size, so
-           keyPx moves and the desktop re-sends every icon. */
-        if (s_active) {
-            build_page(s_visible_page);
-        }
+    if (display->has_label_lines &&
+        deck_layout_set_label_lines(display->label_lines)) {
+        restyled = true;
+    }
+
+    if (restyled && s_active) {
+        build_page(s_visible_page);
     }
 
     if (display->has_invert && display->invert != bsp_display_invert()) {

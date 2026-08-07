@@ -94,8 +94,8 @@ static void send_hello(void)
         "{\"type\":\"hello\",\"protocol\":%d,\"boardId\":\"%s\","
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
         "\"features\":[\"display-control\",\"display-blank\","
-        "\"display-invert\",\"display-icon-size\",\"key-update\","
-        "\"image-rle\",\"clean-mode\"]}",
+        "\"display-invert\",\"display-icon-size\",\"display-label-lines\","
+        "\"key-update\",\"image-rle\",\"clean-mode\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -158,14 +158,16 @@ static void handle_host_message(const char *line, size_t length)
 
             /* Inversion is stored on the board, so the desktop has to be told
                where the toggle actually sits. */
-            char state[96];
+            char state[128];
 
             snprintf(
                 state,
                 sizeof(state),
-                "{\"type\":\"display\",\"invert\":%s,\"iconSize\":%u}",
+                "{\"type\":\"display\",\"invert\":%s,\"iconSize\":%u,"
+                "\"labelLines\":%u}",
                 bsp_display_invert() ? "true" : "false",
-                (unsigned)deck_layout_icon_percent()
+                (unsigned)deck_layout_icon_percent(),
+                (unsigned)deck_layout_label_lines()
             );
             usb_write_line(state);
         }

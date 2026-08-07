@@ -306,9 +306,17 @@ the tile and its label stay where the grid put them. `layout-ack` reports the
 inset size rather than the tile, because the host renders pixels at the size
 they are drawn, so changing it re-sends every icon the same way rotation does.
 
-All three of these live in NVS, which sits past the app partition so a
-firmware update cannot erase it. A single raw image is written from offset 0,
-and everything below the end of the app is overwritten, gaps included.
+The optional `labelLines` field on `display` lets a key label wrap to 1, 2 or
+3 lines instead of being cut short, for firmware advertising
+`display-label-lines`. The label box is always sized by the layout rather than
+by the text, so a long caption ellipsizes at the last allowed line and can
+never overrun its key. A single line keeps the original look of a caption over
+the bottom of a full-bleed icon; asking for more reserves that height out of
+the tile, and the artwork gives it up, so this moves `keyPx` too.
+
+All of these live in NVS, which sits past the app partition so a firmware
+update cannot erase it. A single raw image is written from offset 0, and
+everything below the end of the app is overwritten, gaps included.
 
 ### Display protection
 

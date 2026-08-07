@@ -37,6 +37,7 @@ function deviceInventory({
   inverted,
   rotation,
   iconSize,
+  labelLines,
 } = {}) {
   const sessionFor = (id) => (sessions && sessions.get ? sessions.get(id) : undefined);
   const boardFor = (id) => (boards && boards.get ? boards.get(id) : undefined);
@@ -95,6 +96,11 @@ function deviceInventory({
         ? (session.hello?.features ?? []).includes('display-icon-size')
         : false,
       iconSize: connected && iconSize ? iconSize.get(deviceId) ?? 100 : 100,
+      supportsLabelLines: connected
+        ? (session.hello?.features ?? []).includes('display-label-lines')
+        : false,
+      labelLines:
+        connected && labelLines ? labelLines.get(deviceId) ?? 1 : 1,
       deckLimits: board?.deck ?? {
         maxRows: MAX_ROWS,
         maxCols: MAX_COLS,
@@ -317,6 +323,7 @@ class DeviceManager {
       inverted: this.deck.runtime.inverted,
       rotation: this.deck.runtime.rotation,
       iconSize: this.deck.runtime.iconSize,
+      labelLines: this.deck.runtime.labelLines,
     });
   }
 
@@ -450,6 +457,10 @@ class DeviceManager {
 
     if (row.supportsIconSize) {
       card.append(this.renderIconSize(row));
+    }
+
+    if (row.supportsLabelLines) {
+      card.append(this.renderLabelLines(row));
     }
 
     if (this.companionSettings.enabled) {
@@ -657,6 +668,61 @@ class DeviceManager {
 
     section.append(label, select, helper);
     return section;
+  }
+
+  // A one-line label ellipsizes anything longer than the key. Allowing it to
+  // wrap costs tile height, which the artwork gives up.
+  renderLabelLines(row) {
+    const { document } = this;
+    const section = document.createElement('div');
+    const label = document.createElement('label');
+    const select = document.createElement('select');
+
+    section.className = 'device-label-lines';
+    label.className = 'field-label';
+    label.textContent = 'Label lines';
+    label.htmlFor = `label-lines-${row.deviceId}`;
+    select.id = label.htmlFor;
+
+    for (const lines of [1, 2, 3]) {
+      const option = document.createElement('option');
+      option.value = String(lines);
+      option.textContent = lines === 1 ? 'One line' : `${lines} lines`;
+      select.append(option);
+    }
+
+    select.value = String(row.labelLines);
+    select.addEventListener('change', () => this.saveLabelLines(row, select));
+
+    const helper = document.createElement('p');
+    helper.className = 'helper';
+    helper.textContent =
+      'Longer labels wrap instead of being cut short. Icons shrink to fit.';
+
+    section.append(label, select, helper);
+    return section;
+  }
+
+  async saveLabelLines(row, select) {
+    const lines = Number(select.value);
+    let status;
+
+    select.disabled = true;
+
+    try {
+      await this.deviceController.setDisplayLabelLines(row.deviceId, lines);
+      status = [
+        `${row.name} labels set to ${lines} line${lines === 1 ? '' : 's'}. ` +
+          'The artwork is on its way again at the new size.',
+        'working',
+      ];
+    } catch (error) {
+      status = [`Could not change the label lines: ${error.message}`, 'error'];
+    }
+
+    // render() rewrites the status line, so the outcome has to follow it.
+    this.render();
+    this.setStatus(...status);
   }
 
   async saveIconSize(row, select) {

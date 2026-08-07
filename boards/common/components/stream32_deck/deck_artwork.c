@@ -65,6 +65,7 @@ void deck_artwork_attach(
     lv_obj_t *parent,
     int index,
     int key_px,
+    int label_h,
     const uint8_t *pixels
 )
 {
@@ -82,7 +83,10 @@ void deck_artwork_attach(
     lv_obj_t *image = lv_image_create(parent);
 
     lv_image_set_src(image, descriptor);
-    lv_obj_center(image);
+    /* Centred in what the label leaves behind. label_h is zero for a
+       single-line caption, which puts this back to dead centre and keeps the
+       original full-bleed look. */
+    lv_obj_align(image, LV_ALIGN_CENTER, 0, -label_h / 2);
     /* The parent key owns the full touch target; artwork is visual only. */
     lv_obj_remove_flag(image, LV_OBJ_FLAG_CLICKABLE);
     /* Labels stay above artwork. */

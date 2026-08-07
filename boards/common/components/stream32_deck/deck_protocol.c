@@ -44,6 +44,13 @@ static uint8_t *s_staging;
 static uint8_t s_encoded_chunk[DECK_MAX_ENCODED_CHUNK_BYTES];
 static image_sequence_t s_image_sequence;
 
+/* cJSON's own accessor is long enough that nearly every lookup wrapped onto
+   a second line, which buried the field names this file is mostly made of. */
+static const cJSON *json_field(const cJSON *message, const char *name)
+{
+    return cJSON_GetObjectItemCaseSensitive(message, name);
+}
+
 static bool parse_integer(
     const cJSON *value,
     int minimum,
@@ -192,11 +199,11 @@ static const char *decode_layout(
     deck_protocol_layout_t *out
 )
 {
-    const cJSON *page = cJSON_GetObjectItemCaseSensitive(message, "page");
-    const cJSON *of = cJSON_GetObjectItemCaseSensitive(message, "of");
-    const cJSON *rows = cJSON_GetObjectItemCaseSensitive(message, "rows");
-    const cJSON *cols = cJSON_GetObjectItemCaseSensitive(message, "cols");
-    const cJSON *keys = cJSON_GetObjectItemCaseSensitive(message, "keys");
+    const cJSON *page = json_field(message, "page");
+    const cJSON *of = json_field(message, "of");
+    const cJSON *rows = json_field(message, "rows");
+    const cJSON *cols = json_field(message, "cols");
+    const cJSON *keys = json_field(message, "keys");
     int page_index;
     int page_count;
     int row_count;
@@ -225,8 +232,7 @@ static const char *decode_layout(
     const cJSON *entry = NULL;
 
     cJSON_ArrayForEach(entry, keys) {
-        const cJSON *index_value =
-            cJSON_GetObjectItemCaseSensitive(entry, "index");
+        const cJSON *index_value = json_field(entry, "index");
         int key_index;
 
         if (!cJSON_IsObject(entry) ||
@@ -236,16 +242,11 @@ static const char *decode_layout(
         }
 
         deck_protocol_key_t *key = &out->keys[key_index];
-        const cJSON *label =
-            cJSON_GetObjectItemCaseSensitive(entry, "label");
-        const cJSON *color =
-            cJSON_GetObjectItemCaseSensitive(entry, "color");
-        const cJSON *label_color =
-            cJSON_GetObjectItemCaseSensitive(entry, "labelColor");
-        const cJSON *image_crc =
-            cJSON_GetObjectItemCaseSensitive(entry, "imageCrc");
-        const cJSON *go_page =
-            cJSON_GetObjectItemCaseSensitive(entry, "goPage");
+        const cJSON *label = json_field(entry, "label");
+        const cJSON *color = json_field(entry, "color");
+        const cJSON *label_color = json_field(entry, "labelColor");
+        const cJSON *image_crc = json_field(entry, "imageCrc");
+        const cJSON *go_page = json_field(entry, "goPage");
 
         key->used = true;
 
@@ -465,9 +466,9 @@ static const char *handle_key_update(
     size_t reply_capacity
 )
 {
-    const cJSON *page = cJSON_GetObjectItemCaseSensitive(message, "page");
-    const cJSON *index = cJSON_GetObjectItemCaseSensitive(message, "index");
-    const cJSON *clear = cJSON_GetObjectItemCaseSensitive(message, "clear");
+    const cJSON *page = json_field(message, "page");
+    const cJSON *index = json_field(message, "index");
+    const cJSON *clear = json_field(message, "clear");
     int page_index;
     int key_index;
 
@@ -484,16 +485,11 @@ static const char *handle_key_update(
     };
 
     if (!update.clear) {
-        const cJSON *label =
-            cJSON_GetObjectItemCaseSensitive(message, "label");
-        const cJSON *color =
-            cJSON_GetObjectItemCaseSensitive(message, "color");
-        const cJSON *label_color =
-            cJSON_GetObjectItemCaseSensitive(message, "labelColor");
-        const cJSON *state =
-            cJSON_GetObjectItemCaseSensitive(message, "state");
-        const cJSON *image_crc =
-            cJSON_GetObjectItemCaseSensitive(message, "imageCrc");
+        const cJSON *label = json_field(message, "label");
+        const cJSON *color = json_field(message, "color");
+        const cJSON *label_color = json_field(message, "labelColor");
+        const cJSON *state = json_field(message, "state");
+        const cJSON *image_crc = json_field(message, "imageCrc");
 
         if (label == NULL && color == NULL && label_color == NULL &&
             state == NULL && image_crc == NULL) {
@@ -577,16 +573,15 @@ static const char *handle_image(
     size_t reply_capacity
 )
 {
-    const cJSON *page = cJSON_GetObjectItemCaseSensitive(message, "page");
-    const cJSON *index = cJSON_GetObjectItemCaseSensitive(message, "index");
-    const cJSON *seq = cJSON_GetObjectItemCaseSensitive(message, "seq");
-    const cJSON *of = cJSON_GetObjectItemCaseSensitive(message, "of");
-    const cJSON *width = cJSON_GetObjectItemCaseSensitive(message, "w");
-    const cJSON *height = cJSON_GetObjectItemCaseSensitive(message, "h");
-    const cJSON *data = cJSON_GetObjectItemCaseSensitive(message, "data");
-    const cJSON *mode = cJSON_GetObjectItemCaseSensitive(message, "mode");
-    const cJSON *encoding =
-        cJSON_GetObjectItemCaseSensitive(message, "encoding");
+    const cJSON *page = json_field(message, "page");
+    const cJSON *index = json_field(message, "index");
+    const cJSON *seq = json_field(message, "seq");
+    const cJSON *of = json_field(message, "of");
+    const cJSON *width = json_field(message, "w");
+    const cJSON *height = json_field(message, "h");
+    const cJSON *data = json_field(message, "data");
+    const cJSON *mode = json_field(message, "mode");
+    const cJSON *encoding = json_field(message, "encoding");
     int page_index;
     int key_index;
     int sequence_index;
@@ -774,7 +769,7 @@ static const char *handle_image(
 
 static const char *handle_page(const cJSON *message)
 {
-    const cJSON *index = cJSON_GetObjectItemCaseSensitive(message, "index");
+    const cJSON *index = json_field(message, "index");
     int page;
 
     if (!parse_integer(index, 0, DECK_MAX_PAGES - 1, &page)) {
@@ -790,7 +785,7 @@ static const char *handle_clean(
     size_t reply_capacity
 )
 {
-    const cJSON *active = cJSON_GetObjectItemCaseSensitive(message, "active");
+    const cJSON *active = json_field(message, "active");
 
     if (!cJSON_IsBool(active)) {
         return "clean-invalid";
@@ -821,7 +816,7 @@ static const char *handle_calibrate(
     size_t reply_capacity
 )
 {
-    const cJSON *action = cJSON_GetObjectItemCaseSensitive(message, "action");
+    const cJSON *action = json_field(message, "action");
 
     if (!cJSON_IsString(action) || action->valuestring == NULL) {
         return "calibrate-invalid";
@@ -851,64 +846,65 @@ static const char *handle_calibrate(
         : "reply-too-small";
 }
 
+/* Every optional display field validates the same way, and the count only
+   grows, so the "absent is fine" half is written once. */
+static bool optional_integer(const cJSON *item, int min, int max, int *out)
+{
+    return item == NULL || parse_integer(item, min, max, out);
+}
+
 static const char *handle_display(const cJSON *message)
 {
-    const cJSON *blank_now =
-        cJSON_GetObjectItemCaseSensitive(message, "blankNow");
-    const cJSON *awake = cJSON_GetObjectItemCaseSensitive(message, "awake");
-    const cJSON *idle_seconds =
-        cJSON_GetObjectItemCaseSensitive(message, "idleTimeoutSeconds");
-    const cJSON *brightness =
-        cJSON_GetObjectItemCaseSensitive(message, "brightness");
-    const cJSON *invert = cJSON_GetObjectItemCaseSensitive(message, "invert");
-    const cJSON *rotation =
-        cJSON_GetObjectItemCaseSensitive(message, "rotation");
-    const cJSON *icon_size =
-        cJSON_GetObjectItemCaseSensitive(message, "iconSize");
+    const cJSON *blank_now = json_field(message, "blankNow");
+    const cJSON *awake = json_field(message, "awake");
+    const cJSON *idle_seconds = json_field(message, "idleTimeoutSeconds");
+    const cJSON *brightness = json_field(message, "brightness");
+    const cJSON *invert = json_field(message, "invert");
+    const cJSON *rotation = json_field(message, "rotation");
+    const cJSON *icon_size = json_field(message, "iconSize");
+    const cJSON *label_lines = json_field(message, "labelLines");
     int idle_timeout;
     int brightness_percent = 0;
     int rotation_degrees = 0;
     int icon_percent = 0;
+    int label_line_count = 0;
 
     if (blank_now != NULL) {
         if (!cJSON_IsTrue(blank_now) || awake != NULL ||
             idle_seconds != NULL || brightness != NULL || invert != NULL ||
-            rotation != NULL || icon_size != NULL) {
+            rotation != NULL || icon_size != NULL || label_lines != NULL) {
             return "display-invalid";
         }
 
         return deck_ui_blank_display();
     }
 
-    if (invert != NULL && !cJSON_IsBool(invert)) {
-        return "display-invalid";
-    }
-
-    if (rotation != NULL &&
-        (!parse_integer(rotation, 0, 270, &rotation_degrees) ||
-         rotation_degrees % 90 != 0)) {
-        return "display-invalid";
-    }
-
-    if (icon_size != NULL &&
-        !parse_integer(icon_size, DECK_ICON_PERCENT_MIN, 100, &icon_percent)) {
-        return "display-invalid";
-    }
-
-    if (!cJSON_IsBool(awake) ||
-        !parse_integer(
-            idle_seconds,
-            0,
-            DECK_MAX_IDLE_SECONDS,
-            &idle_timeout
+    /* Absent leaves the board's stored value alone; present and out of range
+       is a bad message. rotation_degrees stays 0 when absent, so the quarter
+       turn check below passes without a special case. */
+    if ((invert != NULL && !cJSON_IsBool(invert)) ||
+        !optional_integer(rotation, 0, 270, &rotation_degrees) ||
+        rotation_degrees % 90 != 0 ||
+        !optional_integer(
+            icon_size,
+            DECK_ICON_PERCENT_MIN,
+            100,
+            &icon_percent
         ) ||
-        (brightness != NULL &&
-         !parse_integer(
-             brightness,
-             0,
-             DECK_MAX_BRIGHTNESS_PERCENT,
-             &brightness_percent
-         ))) {
+        !optional_integer(
+            label_lines,
+            1,
+            DECK_LABEL_LINES_MAX,
+            &label_line_count
+        ) ||
+        !optional_integer(
+            brightness,
+            0,
+            DECK_MAX_BRIGHTNESS_PERCENT,
+            &brightness_percent
+        ) ||
+        !cJSON_IsBool(awake) ||
+        !parse_integer(idle_seconds, 0, DECK_MAX_IDLE_SECONDS, &idle_timeout)) {
         return "display-invalid";
     }
 
@@ -921,6 +917,8 @@ static const char *handle_display(const cJSON *message)
         .rotation = (uint16_t)rotation_degrees,
         .has_icon_percent = icon_size != NULL,
         .icon_percent = (uint8_t)icon_percent,
+        .has_label_lines = label_lines != NULL,
+        .label_lines = (uint8_t)label_line_count,
         .idle_timeout_seconds = (uint32_t)idle_timeout,
         .brightness_percent = (uint8_t)brightness_percent,
     };
@@ -938,7 +936,7 @@ bool deck_protocol_dispatch(
     const char **error_out
 )
 {
-    const cJSON *type = cJSON_GetObjectItemCaseSensitive(message, "type");
+    const cJSON *type = json_field(message, "type");
 
     if (!cJSON_IsString(type) || type->valuestring == NULL) {
         return false;

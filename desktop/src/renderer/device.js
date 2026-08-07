@@ -930,6 +930,10 @@ class DeviceController {
     return session.hello?.features?.includes('display-icon-size') === true;
   }
 
+  displayLabelLinesSupported(session) {
+    return session.hello?.features?.includes('display-label-lines') === true;
+  }
+
   // A board keeps its own brightness when one is saved; otherwise it follows
   // the app-wide default from Settings.
   brightnessFor(session) {
@@ -1014,6 +1018,23 @@ class DeviceController {
 
     await this.applyDisplayPolicyToSession(session, { iconSize });
     this.deckRuntime?.applyDisplayState(deviceId, { iconSize });
+  }
+
+  // Longer labels wrap instead of ellipsizing, and the artwork gives up the
+  // room they need, so this moves keyPx and re-sends icons just like above.
+  async setDisplayLabelLines(deviceId, labelLines) {
+    const session = this.deckRuntime?.sessionFor(deviceId);
+
+    if (!session) {
+      throw new Error('The deck is not connected.');
+    }
+
+    if (!this.displayLabelLinesSupported(session)) {
+      throw new Error('Label lines require updated board firmware.');
+    }
+
+    await this.applyDisplayPolicyToSession(session, { labelLines });
+    this.deckRuntime?.applyDisplayState(deviceId, { labelLines });
   }
 
   async broadcastDisplayPolicy() {

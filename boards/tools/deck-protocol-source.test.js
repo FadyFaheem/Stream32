@@ -213,7 +213,23 @@ test('layout-ack reports the artwork size, not the key tile', () => {
   assert.match(ui, /lv_obj_set_size\(cell, key_px, key_px\)/);
   assert.match(ui, /lv_obj_set_width\(label_obj, key_px - 12\)/);
   assert.match(ui, /reload_artwork\(page, icon_px\)/);
-  assert.match(ui, /deck_artwork_attach\(cell, index, icon_px, image\)/);
+  assert.match(
+    ui,
+    /deck_artwork_attach\(cell, index, icon_px, label_h, image\)/,
+  );
+
+  // A label may wrap, but only inside a box whose height the layout chose.
+  // LONG_WRAP would grow with the text and push artwork out of its tile.
+  assert.match(ui, /lv_label_set_long_mode\(label_obj, LV_LABEL_LONG_DOT\)/);
+  assert.doesNotMatch(ui, /LV_LABEL_LONG_WRAP/);
+  assert.match(
+    ui,
+    /lv_obj_set_height\(\s*label_obj,\s*deck_layout_label_lines\(\)/,
+  );
+
+  // The reserved block is what the icon gives up, so the two have to agree.
+  assert.match(layout, /deck_layout_label_h\(\)/);
+  assert.match(artwork, /LV_ALIGN_CENTER, 0, -label_h \/ 2/);
 });
 
 test('settings and artwork sit outside the region a flash rewrites', () => {
@@ -484,7 +500,10 @@ test('the cleaning lock swallows the wipe and only a held exit lifts it', () => 
   }
 });
 
-test('key labels stay on one ellipsized line above artwork', () => {
+test('key labels stay inside a bounded box above artwork', () => {
+  // The label box is sized by the layout, never by the text. A label free to
+  // grow would overrun its key and cover the neighbours, so both the width
+  // and the height are set explicitly and the mode ellipsizes the remainder.
   const start = ui.lastIndexOf('static void build_page_locked(');
   const buildPage = ui.slice(start, ui.indexOf('static void build_page(', start));
 

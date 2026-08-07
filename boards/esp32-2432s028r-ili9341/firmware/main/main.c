@@ -97,8 +97,8 @@ static void send_hello(void)
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
         "\"features\":[\"display-control\",\"display-brightness\","
         "\"display-blank\",\"display-invert\",\"display-rotation\","
-        "\"display-icon-size\",\"key-update\",\"image-rle\",\"clean-mode\","
-        "\"touch-calibration\"]}",
+        "\"display-icon-size\",\"display-label-lines\",\"key-update\","
+        "\"image-rle\",\"clean-mode\",\"touch-calibration\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -161,18 +161,19 @@ static void handle_host_message(const char *line, size_t length)
                 serial_write_line("{\"type\":\"clean\",\"active\":true}");
             }
 
-            /* Inversion, rotation and icon size are stored on the board, so
-               the desktop has to be told where its controls actually sit. */
-            char state[96];
+            /* Every one of these is stored on the board, so the desktop has
+               to be told where its controls actually sit. */
+            char state[128];
 
             snprintf(
                 state,
                 sizeof(state),
                 "{\"type\":\"display\",\"invert\":%s,\"rotation\":%u,"
-                "\"iconSize\":%u}",
+                "\"iconSize\":%u,\"labelLines\":%u}",
                 bsp_display_invert() ? "true" : "false",
                 (unsigned)bsp_display_rotation(),
-                (unsigned)deck_layout_icon_percent()
+                (unsigned)deck_layout_icon_percent(),
+                (unsigned)deck_layout_label_lines()
             );
             serial_write_line(state);
         }

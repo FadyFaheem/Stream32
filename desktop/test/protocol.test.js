@@ -803,6 +803,54 @@ test('carries icon size on the display message in both directions', () => {
   );
 });
 
+test('carries label lines on the display message in both directions', () => {
+  for (const labelLines of [1, 2, 3]) {
+    assert.match(
+      new TextDecoder().decode(
+        encodeDisplayMessage({
+          awake: true,
+          idleTimeoutSeconds: 600,
+          labelLines,
+        }),
+      ),
+      new RegExp(`"labelLines":${labelLines}}`),
+    );
+  }
+
+  // Past three lines there is no tile left for the artwork being captioned.
+  for (const bad of [0, 4, -1, '2', 2.5]) {
+    assert.throws(
+      () =>
+        encodeDisplayMessage({
+          awake: true,
+          idleTimeoutSeconds: 600,
+          labelLines: bad,
+        }),
+      /display label lines/,
+    );
+  }
+
+  assert.doesNotMatch(
+    new TextDecoder().decode(
+      encodeDisplayMessage({ awake: true, idleTimeoutSeconds: 600 }),
+    ),
+    /labelLines/,
+  );
+
+  assert.deepEqual(
+    validateDisplayStateMessage({
+      type: 'display',
+      iconSize: 70,
+      labelLines: 2,
+    }),
+    { iconSize: 70, labelLines: 2 },
+  );
+  assert.throws(
+    () => validateDisplayStateMessage({ type: 'display', labelLines: 9 }),
+    /display label lines/,
+  );
+});
+
 test('encodes validated display policy messages', () => {
   assert.equal(
     new TextDecoder().decode(encodeDisplayBlankMessage()),

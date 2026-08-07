@@ -29,11 +29,13 @@ void deck_artwork_load(const uint32_t *crcs, int count, int key_px);
 // Resident pixels for one key, or NULL when it has none.
 const uint8_t *deck_artwork_pixels(int index);
 
-// Adds an image child showing `pixels` at `key_px`, below any label.
+// Adds an image child showing `pixels` at `key_px`, below any label and
+// centred in the space `label_h` leaves above the caption.
 void deck_artwork_attach(
     lv_obj_t *parent,
     int index,
     int key_px,
+    int label_h,
     const uint8_t *pixels
 );
 

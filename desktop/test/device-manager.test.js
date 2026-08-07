@@ -180,6 +180,7 @@ function managerFixture() {
     invertedTo: [],
     rotatedTo: [],
     iconSizedTo: [],
+    labelLinedTo: [],
   };
   const manager = Object.create(DeviceManager.prototype);
   const document = { createElement: (tag) => makeElement(tag) };
@@ -188,6 +189,7 @@ function managerFixture() {
   const inverted = new Map();
   const rotation = new Map();
   const iconSize = new Map();
+  const labelLines = new Map();
 
   manager.document = document;
   manager.companionSettings = { enabled: false, host: '127.0.0.1', port: 16622 };
@@ -214,6 +216,7 @@ function managerFixture() {
       inverted,
       rotation,
       iconSize,
+      labelLines,
       setCalibrating: async (deviceId, active) => {
         calls.calibrated.push([deviceId, active]);
         calibrating[active ? 'add' : 'delete'](deviceId);
@@ -254,6 +257,10 @@ function managerFixture() {
     setDisplayIconSize: async (deviceId, percent) => {
       calls.iconSizedTo.push([deviceId, percent]);
       iconSize.set(deviceId, percent);
+    },
+    setDisplayLabelLines: async (deviceId, lines) => {
+      calls.labelLinedTo.push([deviceId, lines]);
+      labelLines.set(deviceId, lines);
     },
   };
 
@@ -401,6 +408,33 @@ test('calibration and inversion appear only on boards that support them', async 
   await fire(toggle, 'change');
   assert.deepEqual(calls.invertedTo, [['bbbbbbbbbbbb', true]]);
   assert.equal(invertToggle().checked, true);
+});
+
+test('label lines appear only on firmware that can wrap them', async () => {
+  const { manager, calls } = managerFixture();
+  const sessions = manager.deck.runtime.sessions;
+
+  manager.render();
+  assert.equal(findByClass(manager.list, 'device-label-lines'), null);
+
+  sessions.get('bbbbbbbbbbbb').hello.features = ['display-label-lines'];
+  manager.render();
+
+  const picker = () =>
+    findByClass(manager.list, 'device-label-lines').children[1];
+
+  // Nothing announced yet means labels are still ellipsized on one line.
+  assert.equal(picker().value, '1');
+  assert.deepEqual(
+    picker().children.map((option) => option.value),
+    ['1', '2', '3'],
+  );
+
+  const select = picker();
+  select.value = '2';
+  await fire(select, 'change');
+  assert.deepEqual(calls.labelLinedTo, [['bbbbbbbbbbbb', 2]]);
+  assert.equal(picker().value, '2');
 });
 
 test('icon size appears only on firmware that can inset artwork', async () => {

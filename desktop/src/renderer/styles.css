@@ -1753,6 +1753,7 @@ progress::-webkit-progress-value {
 .device-invert,
 .device-rotation,
 .device-icon-size,
+.device-label-lines,
 .device-companion {
   display: flex;
   align-items: center;
@@ -1781,19 +1782,22 @@ progress::-webkit-progress-value {
 .device-brightness .helper,
 .device-invert .helper,
 .device-rotation .helper,
-.device-icon-size .helper {
+.device-icon-size .helper,
+.device-label-lines .helper {
   flex: 1 1 12rem;
   margin: 0;
 }
 
 .device-rotation .field-label,
-.device-icon-size .field-label {
+.device-icon-size .field-label,
+.device-label-lines .field-label {
   margin: 0;
   font-size: 0.8rem;
 }
 
 .device-rotation select,
-.device-icon-size select {
+.device-icon-size select,
+.device-label-lines select {
   min-height: 2.2rem;
   padding: 0 0.5rem;
   color: var(--ink);

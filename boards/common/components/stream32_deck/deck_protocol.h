@@ -54,6 +54,8 @@ typedef struct {
     uint16_t rotation;
     bool has_icon_percent;
     uint8_t icon_percent;
+    bool has_label_lines;
+    uint8_t label_lines;
     uint32_t idle_timeout_seconds;
     uint8_t brightness_percent;
 } deck_protocol_display_t;

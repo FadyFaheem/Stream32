@@ -103,6 +103,7 @@ class DeckRuntime {
     this.inverted = new Map();
     this.rotation = new Map();
     this.iconSize = new Map();
+    this.labelLines = new Map();
     this.liveValues = new Map();
     this.liveQueues = new Map();
     this.liveTimers = new Map();
@@ -527,6 +528,7 @@ class DeckRuntime {
       this.inverted.delete(deviceId);
       this.rotation.delete(deviceId);
       this.iconSize.delete(deviceId);
+      this.labelLines.delete(deviceId);
       this.clearLiveRuntime(deviceId);
       this.onRenderAll();
     }
@@ -869,7 +871,7 @@ class DeckRuntime {
 
   // The board persists these and re-announces them after the next hello, so
   // this only records what it last told us.
-  applyDisplayState(deviceId, { invert, rotation, iconSize }) {
+  applyDisplayState(deviceId, { invert, rotation, iconSize, labelLines }) {
     if (invert !== undefined) {
       this.inverted.set(deviceId, invert);
     }
@@ -880,6 +882,10 @@ class DeckRuntime {
 
     if (iconSize !== undefined) {
       this.iconSize.set(deviceId, iconSize);
+    }
+
+    if (labelLines !== undefined) {
+      this.labelLines.set(deviceId, labelLines);
     }
 
     this.onRenderAll();

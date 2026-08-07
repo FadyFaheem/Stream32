@@ -70,16 +70,21 @@ community rule of thumb is that a single-connector board is ILI9341 while a
 two-connector board is ST7789. Treat that as a hint, not a guarantee: a
 dual-connector board has been confirmed working on the Stream32 profile.
 
+- **Buy it:** [MELIFE ESP32-2432S028R 2-pack on Amazon](https://amzn.to/4wF7trj)
 - **Confirm before ordering:**
+  - That listing sells several sizes under one page. Choose the **2.8 inch**
+    option; the 2.4", 3.5", and 4" variants are different devices.
   - The trailing **R** means resistive touch (XPT2046), which is what this
     profile expects. The **C** variants use capacitive GT911 touch and are
     different devices.
   - Either connector count is worth trying. If the screen lights up but the
     colours look wrong, that is adjustable from the Devices page. If it stays
     lit but blank, the panel controller really is a different one.
-- **Expect to calibrate the touch panel.** Resistive panels vary between
-  units. The firmware's self-test screen shows the raw touch values needed
-  to adjust the calibration window in the board's BSP.
+- **Expect to calibrate the touch panel once.** Resistive panels vary between
+  units, and an uncalibrated one can leave part of the screen unreachable.
+  **Calibrate touch** on the Devices page walks through four markers and
+  stores the result on the board, where it survives both unplugging and
+  firmware updates.
 - Some USB-C revisions omit the CC resistors, so a USB-C-to-USB-C cable may
   not power the board. A USB-A-to-USB-C cable avoids the problem.
 

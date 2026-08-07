@@ -135,7 +135,17 @@ lv_obj_t *deck_calibrate_screen(void)
 
     s_prompt = lv_label_create(s_screen);
     lv_obj_set_style_text_color(s_prompt, lv_color_hex(0x91a6b5), LV_PART_MAIN);
-    lv_obj_align_to(s_prompt, title, LV_ALIGN_OUT_BOTTOM_MID, 0, 10);
+    /* Full width with centred text, because the prompt changes length between
+       targets. Aligning the label itself would leave it sitting at the offset
+       worked out for whichever string happened to be there first. */
+    lv_obj_set_width(s_prompt, lv_pct(100));
+    lv_obj_set_style_text_align(s_prompt, LV_TEXT_ALIGN_CENTER, LV_PART_MAIN);
+    lv_obj_align(
+        s_prompt,
+        LV_ALIGN_TOP_MID,
+        0,
+        short_edge() / 10 + lv_font_get_line_height(LV_FONT_DEFAULT) + 10
+    );
 
     /* A cross rather than a filled dot: a fingertip covers the marker, and
        the arms stay visible around it. */

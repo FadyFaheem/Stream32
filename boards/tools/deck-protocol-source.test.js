@@ -129,6 +129,15 @@ test('the calibration overlay owns only its own screen', () => {
     /DECK_CALIBRATE_DONE[\s\S]{0,200}bsp_touch_set_calibration\([\s\S]{0,80}deck_settings_set_calibration/,
   );
 
+  // The prompt changes length between targets, so it is centred by being
+  // full width rather than by a one-shot align that would strand it at the
+  // offset worked out for the previous string.
+  assert.doesNotMatch(calibrate, /lv_obj_align_to\(s_prompt/);
+  assert.match(
+    calibrate,
+    /lv_obj_set_width\(s_prompt, lv_pct\(100\)\)[\s\S]{0,200}LV_TEXT_ALIGN_CENTER/,
+  );
+
   // Markers are unrotated before solving so turning the screen afterwards
   // does not silently invalidate the calibration.
   assert.match(calibrate, /deck_affine_unrotate\(/);

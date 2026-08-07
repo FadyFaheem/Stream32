@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "cJSON.h"
+#include "deck_settings.h"
 #include "deck_storage.h"
 #include "deck_ui.h"
 #include "esp_heap_caps.h"
@@ -862,14 +863,17 @@ static const char *handle_display(const cJSON *message)
     const cJSON *invert = cJSON_GetObjectItemCaseSensitive(message, "invert");
     const cJSON *rotation =
         cJSON_GetObjectItemCaseSensitive(message, "rotation");
+    const cJSON *icon_size =
+        cJSON_GetObjectItemCaseSensitive(message, "iconSize");
     int idle_timeout;
     int brightness_percent = 0;
     int rotation_degrees = 0;
+    int icon_percent = 0;
 
     if (blank_now != NULL) {
         if (!cJSON_IsTrue(blank_now) || awake != NULL ||
             idle_seconds != NULL || brightness != NULL || invert != NULL ||
-            rotation != NULL) {
+            rotation != NULL || icon_size != NULL) {
             return "display-invalid";
         }
 
@@ -883,6 +887,11 @@ static const char *handle_display(const cJSON *message)
     if (rotation != NULL &&
         (!parse_integer(rotation, 0, 270, &rotation_degrees) ||
          rotation_degrees % 90 != 0)) {
+        return "display-invalid";
+    }
+
+    if (icon_size != NULL &&
+        !parse_integer(icon_size, DECK_ICON_PERCENT_MIN, 100, &icon_percent)) {
         return "display-invalid";
     }
 
@@ -910,6 +919,8 @@ static const char *handle_display(const cJSON *message)
         .invert = cJSON_IsTrue(invert),
         .has_rotation = rotation != NULL,
         .rotation = (uint16_t)rotation_degrees,
+        .has_icon_percent = icon_size != NULL,
+        .icon_percent = (uint8_t)icon_percent,
         .idle_timeout_seconds = (uint32_t)idle_timeout,
         .brightness_percent = (uint8_t)brightness_percent,
     };

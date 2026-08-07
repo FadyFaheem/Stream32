@@ -102,6 +102,7 @@ class DeckRuntime {
     // Reported by the board after every hello, since it stores the settings.
     this.inverted = new Map();
     this.rotation = new Map();
+    this.iconSize = new Map();
     this.liveValues = new Map();
     this.liveQueues = new Map();
     this.liveTimers = new Map();
@@ -525,6 +526,7 @@ class DeckRuntime {
       this.calibrating.delete(deviceId);
       this.inverted.delete(deviceId);
       this.rotation.delete(deviceId);
+      this.iconSize.delete(deviceId);
       this.clearLiveRuntime(deviceId);
       this.onRenderAll();
     }
@@ -867,13 +869,17 @@ class DeckRuntime {
 
   // The board persists these and re-announces them after the next hello, so
   // this only records what it last told us.
-  applyDisplayState(deviceId, { invert, rotation }) {
+  applyDisplayState(deviceId, { invert, rotation, iconSize }) {
     if (invert !== undefined) {
       this.inverted.set(deviceId, invert);
     }
 
     if (rotation !== undefined) {
       this.rotation.set(deviceId, rotation);
+    }
+
+    if (iconSize !== undefined) {
+      this.iconSize.set(deviceId, iconSize);
     }
 
     this.onRenderAll();

@@ -31,6 +31,7 @@ const ui = read(componentPath('deck_ui.c'));
 const clean = read(componentPath('deck_clean.c'));
 const storage = read(componentPath('deck_storage.c'));
 const calibrate = read(componentPath('deck_calibrate.c'));
+const layout = read(componentPath('deck_layout.c'));
 const artwork = read(componentPath('deck_artwork.c'));
 
 test('protocol decoding and image sequencing stay outside the LVGL UI', () => {
@@ -176,19 +177,43 @@ test('every bsp_ call in a board main.c is declared by that board BSP', () => {
   }
 });
 
-test('screen geometry is read live, not from Kconfig', () => {
+test('screen geometry is read live, from one place', () => {
   // The screen size changes with rotation, so a compile-time value would lay
-  // the grid out for the wrong shape the moment the panel is turned.
+  // the grid out for the wrong shape the moment the panel is turned. Asking
+  // LVGL is cheap, so the only rule is that everyone asks the same helper
+  // rather than keeping a copy that can drift.
+  assert.match(layout, /lv_display_get_horizontal_resolution\(/);
+  assert.match(layout, /lv_display_get_vertical_resolution\(/);
+
   for (const source of [ui, clean, calibrate]) {
     assert.doesNotMatch(source, /CONFIG_STREAM32_DECK_SCREEN_/);
-    assert.match(source, /lv_display_get_horizontal_resolution\(/);
-    assert.match(source, /lv_display_get_vertical_resolution\(/);
+    assert.doesNotMatch(source, /lv_display_get_(horizontal|vertical)_res/);
+    assert.match(source, /deck_layout_/);
   }
 
   assert.doesNotMatch(
     read(componentPath('Kconfig')),
     /config STREAM32_DECK_SCREEN_/,
   );
+});
+
+test('layout-ack reports the artwork size, not the key tile', () => {
+  // The host renders pixels at whatever keyPx says. Once artwork is inset in
+  // its tile, reporting the tile would make every icon arrive oversized and
+  // then fail the dimension check on the way back in.
+  assert.match(
+    ui,
+    /int deck_ui_key_px\([^)]*\)\s*\{\s*return deck_layout_icon_px\(/,
+  );
+  assert.match(ui, /\*key_px = \(uint16_t\)deck_layout_icon_px\(/);
+
+  // The tile and its label keep the size the grid gives them; only the
+  // picture shrinks, which is the whole point of insetting rather than
+  // shrinking the key.
+  assert.match(ui, /lv_obj_set_size\(cell, key_px, key_px\)/);
+  assert.match(ui, /lv_obj_set_width\(label_obj, key_px - 12\)/);
+  assert.match(ui, /reload_artwork\(page, icon_px\)/);
+  assert.match(ui, /deck_artwork_attach\(cell, index, icon_px, image\)/);
 });
 
 test('settings and artwork sit outside the region a flash rewrites', () => {

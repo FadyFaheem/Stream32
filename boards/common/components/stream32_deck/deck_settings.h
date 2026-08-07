@@ -13,6 +13,10 @@
 #include "deck_affine.h"
 #include "esp_err.h"
 
+// Artwork may shrink to a quarter of its tile but no further: below that the
+// picture is unreadable, and layout-ack's keyPx has a floor of 16 px.
+#define DECK_ICON_PERCENT_MIN 25
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -43,6 +47,12 @@ esp_err_t deck_settings_set_invert(bool invert);
 // invert; nothing stored leaves the board's own orientation alone.
 bool deck_settings_get_rotation(uint16_t *degrees);
 esp_err_t deck_settings_set_rotation(uint16_t degrees);
+
+// Artwork size as a percentage of the key tile, from DECK_ICON_PERCENT_MIN to
+// 100. Unlike the others this is not a BSP setting, so deck_ui reads it at
+// startup rather than deck_settings_apply pushing it anywhere.
+bool deck_settings_get_icon_percent(uint8_t *percent);
+esp_err_t deck_settings_set_icon_percent(uint8_t percent);
 
 #ifdef __cplusplus
 }

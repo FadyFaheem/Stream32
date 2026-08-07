@@ -926,6 +926,10 @@ class DeviceController {
     return session.hello?.features?.includes('display-rotation') === true;
   }
 
+  displayIconSizeSupported(session) {
+    return session.hello?.features?.includes('display-icon-size') === true;
+  }
+
   // A board keeps its own brightness when one is saved; otherwise it follows
   // the app-wide default from Settings.
   brightnessFor(session) {
@@ -992,6 +996,24 @@ class DeviceController {
 
     await this.applyDisplayPolicyToSession(session, { rotation });
     this.deckRuntime?.applyDisplayState(deviceId, { rotation });
+  }
+
+  // Only the artwork shrinks; the tiles and their labels keep the size the
+  // grid gives them. The board reports the smaller keyPx on the next
+  // layout-ack, which is what pulls a fresh copy of every icon.
+  async setDisplayIconSize(deviceId, iconSize) {
+    const session = this.deckRuntime?.sessionFor(deviceId);
+
+    if (!session) {
+      throw new Error('The deck is not connected.');
+    }
+
+    if (!this.displayIconSizeSupported(session)) {
+      throw new Error('Icon size requires updated board firmware.');
+    }
+
+    await this.applyDisplayPolicyToSession(session, { iconSize });
+    this.deckRuntime?.applyDisplayState(deviceId, { iconSize });
   }
 
   async broadcastDisplayPolicy() {

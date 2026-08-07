@@ -298,6 +298,18 @@ negative is fixed from the Devices page rather than by rebuilding. Because the
 board owns the stored value, it announces `{"type":"display","invert":...}`
 after every hello so the desktop toggle shows the real position.
 
+The optional `iconSize` field on `display` insets artwork inside its key, as a
+percentage of the tile from 25 to 100, for firmware advertising
+`display-icon-size`. Tiles always stretch to fill the screen, so a sparse page
+on a small panel gives every key a large icon; this shrinks the picture while
+the tile and its label stay where the grid put them. `layout-ack` reports the
+inset size rather than the tile, because the host renders pixels at the size
+they are drawn, so changing it re-sends every icon the same way rotation does.
+
+All three of these live in NVS, which sits past the app partition so a
+firmware update cannot erase it. A single raw image is written from offset 0,
+and everything below the end of the app is overwritten, gaps included.
+
 ### Display protection
 
 Firmware turns the display off after 10 minutes without touch activity by

@@ -52,6 +52,8 @@ typedef struct {
     bool invert;
     bool has_rotation;
     uint16_t rotation;
+    bool has_icon_percent;
+    uint8_t icon_percent;
     uint32_t idle_timeout_seconds;
     uint8_t brightness_percent;
 } deck_protocol_display_t;

@@ -748,6 +748,61 @@ test('carries screen rotation on the display message in both directions', () => 
   );
 });
 
+test('carries icon size on the display message in both directions', () => {
+  for (const iconSize of [25, 55, 100]) {
+    assert.match(
+      new TextDecoder().decode(
+        encodeDisplayMessage({
+          awake: true,
+          idleTimeoutSeconds: 600,
+          iconSize,
+        }),
+      ),
+      new RegExp(`"iconSize":${iconSize}}`),
+    );
+  }
+
+  // Below a quarter the artwork stops being legible, and the board's own
+  // keyPx floor would clamp it anyway.
+  for (const bad of [24, 101, 0, '70', 70.5]) {
+    assert.throws(
+      () =>
+        encodeDisplayMessage({
+          awake: true,
+          idleTimeoutSeconds: 600,
+          iconSize: bad,
+        }),
+      /display icon size/,
+    );
+  }
+
+  // Absent means "leave it alone", which every routine policy push sends.
+  assert.doesNotMatch(
+    new TextDecoder().decode(
+      encodeDisplayMessage({ awake: true, idleTimeoutSeconds: 600 }),
+    ),
+    /iconSize/,
+  );
+
+  assert.deepEqual(
+    validateDisplayStateMessage({
+      type: 'display',
+      invert: false,
+      rotation: 90,
+      iconSize: 70,
+    }),
+    { invert: false, rotation: 90, iconSize: 70 },
+  );
+  assert.deepEqual(
+    validateDisplayStateMessage({ type: 'display', iconSize: 100 }),
+    { iconSize: 100 },
+  );
+  assert.throws(
+    () => validateDisplayStateMessage({ type: 'display', iconSize: 10 }),
+    /display icon size/,
+  );
+});
+
 test('encodes validated display policy messages', () => {
   assert.equal(
     new TextDecoder().decode(encodeDisplayBlankMessage()),

@@ -36,6 +36,7 @@ function deviceInventory({
   calibrating,
   inverted,
   rotation,
+  iconSize,
 } = {}) {
   const sessionFor = (id) => (sessions && sessions.get ? sessions.get(id) : undefined);
   const boardFor = (id) => (boards && boards.get ? boards.get(id) : undefined);
@@ -90,6 +91,10 @@ function deviceInventory({
         ? (session.hello?.features ?? []).includes('display-rotation')
         : false,
       rotation: connected && rotation ? rotation.get(deviceId) ?? 0 : 0,
+      supportsIconSize: connected
+        ? (session.hello?.features ?? []).includes('display-icon-size')
+        : false,
+      iconSize: connected && iconSize ? iconSize.get(deviceId) ?? 100 : 100,
       deckLimits: board?.deck ?? {
         maxRows: MAX_ROWS,
         maxCols: MAX_COLS,
@@ -311,6 +316,7 @@ class DeviceManager {
       calibrating: this.deck.runtime.calibrating,
       inverted: this.deck.runtime.inverted,
       rotation: this.deck.runtime.rotation,
+      iconSize: this.deck.runtime.iconSize,
     });
   }
 
@@ -440,6 +446,10 @@ class DeviceManager {
 
     if (row.supportsRotation) {
       card.append(this.renderRotation(row));
+    }
+
+    if (row.supportsIconSize) {
+      card.append(this.renderIconSize(row));
     }
 
     if (this.companionSettings.enabled) {
@@ -614,6 +624,61 @@ class DeviceManager {
 
     section.append(label, select, helper);
     return section;
+  }
+
+  // Small panels give every key a large tile, and artwork drawn to fill it
+  // looks oversized. Only the picture shrinks; the tile and label stay put.
+  renderIconSize(row) {
+    const { document } = this;
+    const section = document.createElement('div');
+    const label = document.createElement('label');
+    const select = document.createElement('select');
+
+    section.className = 'device-icon-size';
+    label.className = 'field-label';
+    label.textContent = 'Icon size';
+    label.htmlFor = `icon-size-${row.deviceId}`;
+    select.id = label.htmlFor;
+
+    for (const percent of [100, 85, 70, 55, 40]) {
+      const option = document.createElement('option');
+      option.value = String(percent);
+      option.textContent = percent === 100 ? 'Fill the key' : `${percent}%`;
+      select.append(option);
+    }
+
+    select.value = String(row.iconSize);
+    select.addEventListener('change', () => this.saveIconSize(row, select));
+
+    const helper = document.createElement('p');
+    helper.className = 'helper';
+    helper.textContent =
+      'Artwork is re-sent at the new size. Keys and labels do not move.';
+
+    section.append(label, select, helper);
+    return section;
+  }
+
+  async saveIconSize(row, select) {
+    const percent = Number(select.value);
+    let status;
+
+    select.disabled = true;
+
+    try {
+      await this.deviceController.setDisplayIconSize(row.deviceId, percent);
+      status = [
+        `${row.name} icons set to ${percent}%. The artwork is on its way ` +
+          'again at the new size.',
+        'working',
+      ];
+    } catch (error) {
+      status = [`Could not change the icon size: ${error.message}`, 'error'];
+    }
+
+    // render() rewrites the status line, so the outcome has to follow it.
+    this.render();
+    this.setStatus(...status);
   }
 
   async saveRotation(row, select) {

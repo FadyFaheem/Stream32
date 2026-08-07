@@ -7,6 +7,7 @@
 #include "deck_artwork.h"
 #include "deck_calibrate.h"
 #include "deck_clean.h"
+#include "deck_layout.h"
 #include "deck_settings.h"
 #include "deck_storage.h"
 #include "esp_heap_caps.h"
@@ -37,8 +38,6 @@ extern esp_err_t bsp_touch_set_calibration(
    read from LVGL, which reports the post-rotation size. */
 #define DECK_MAX_ROWS CONFIG_STREAM32_DECK_MAX_ROWS
 #define DECK_MAX_COLS CONFIG_STREAM32_DECK_MAX_COLS
-#define DECK_KEY_GAP 8
-#define DECK_KEY_MAX_PX CONFIG_STREAM32_DECK_KEY_MAX_PX
 #define DECK_LINE_CAPACITY 128
 #define DECK_DEFAULT_IDLE_SECONDS 600
 #define DECK_OVERLAY_LEASE_MS 30000
@@ -110,25 +109,6 @@ static bool overlays_active(void)
     }
 
     return false;
-}
-
-static int32_t screen_w(void)
-{
-    return lv_display_get_horizontal_resolution(lv_display_get_default());
-}
-
-static int32_t screen_h(void)
-{
-    return lv_display_get_vertical_resolution(lv_display_get_default());
-}
-
-static int compute_key_px(int rows, int cols)
-{
-    const int width = (screen_w() - DECK_KEY_GAP * (cols + 1)) / cols;
-    const int height = (screen_h() - DECK_KEY_GAP * (rows + 1)) / rows;
-    const int size = width < height ? width : height;
-
-    return size > DECK_KEY_MAX_PX ? DECK_KEY_MAX_PX : size;
 }
 
 static void notify_line(const char *line)
@@ -281,13 +261,12 @@ static void build_page_locked(uint8_t page_index)
     }
 
     const deck_page_t *page = &s_pages[page_index];
-    const int key_px = compute_key_px(page->rows, page->cols);
-    const int grid_width =
-        page->cols * key_px + (page->cols - 1) * DECK_KEY_GAP;
-    const int grid_height =
-        page->rows * key_px + (page->rows - 1) * DECK_KEY_GAP;
-    const int origin_x = (screen_w() - grid_width) / 2;
-    const int origin_y = (screen_h() - grid_height) / 2;
+    const int key_px = deck_layout_key_px(page->rows, page->cols);
+    const int icon_px = deck_layout_icon_px(page->rows, page->cols);
+    int origin_x;
+    int origin_y;
+
+    deck_layout_grid_origin(page->rows, page->cols, &origin_x, &origin_y);
 
     if (s_deck_screen == NULL) {
         s_deck_screen = lv_obj_create(NULL);
@@ -313,7 +292,7 @@ static void build_page_locked(uint8_t page_index)
     lv_obj_clean(s_deck_screen);
     s_visible_page = page_index;
 
-    reload_artwork(page, key_px);
+    reload_artwork(page, icon_px);
 
     for (int index = 0; index < page->rows * page->cols; index++) {
         const deck_key_t *key = &page->keys[index];
@@ -403,7 +382,7 @@ static void build_page_locked(uint8_t page_index)
         }
 
         if (image != NULL) {
-            deck_artwork_attach(cell, index, key_px, image);
+            deck_artwork_attach(cell, index, icon_px, image);
         }
     }
 
@@ -440,7 +419,15 @@ esp_err_t deck_ui_init(deck_notify_fn notify)
     /* Device settings apply before any host connects, so a standalone board
        boots with the touch and colours it was last given. */
     if (deck_settings_init() == ESP_OK) {
+        uint8_t icon_percent;
+
         deck_settings_apply();
+
+        /* Read here rather than in deck_settings_apply, which only pushes
+           settings the BSP owns. */
+        if (deck_settings_get_icon_percent(&icon_percent)) {
+            deck_layout_set_icon_percent(icon_percent);
+        }
     }
 
     const esp_err_t error = deck_storage_init();
@@ -596,7 +583,7 @@ void deck_ui_restore_layout(const deck_protocol_layout_t *layout)
 
 int deck_ui_key_px(uint8_t rows, uint8_t cols)
 {
-    return compute_key_px(rows, cols);
+    return deck_layout_icon_px(rows, cols);
 }
 
 bool deck_ui_image_needed(uint32_t crc, uint32_t expected_size)
@@ -744,7 +731,7 @@ const char *deck_ui_get_image_target(
         return "image-invalid";
     }
 
-    *key_px = (uint16_t)compute_key_px(
+    *key_px = (uint16_t)deck_layout_icon_px(
         s_pages[page].rows,
         s_pages[page].cols
     );
@@ -939,6 +926,18 @@ const char *deck_ui_apply_display(const deck_protocol_display_t *display)
         /* The screen is a different shape now, so the grid has to re-flow.
            That changes keyPx, which the desktop notices on the next
            layout-ack and answers by re-sending the artwork. */
+        if (s_active) {
+            build_page(s_visible_page);
+        }
+    }
+
+    if (display->has_icon_percent &&
+        display->icon_percent != deck_layout_icon_percent()) {
+        deck_layout_set_icon_percent(display->icon_percent);
+        deck_settings_set_icon_percent(display->icon_percent);
+
+        /* Same re-sync path as rotation: the artwork is a different size, so
+           keyPx moves and the desktop re-sends every icon. */
         if (s_active) {
             build_page(s_visible_page);
         }

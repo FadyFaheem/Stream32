@@ -179,6 +179,7 @@ function managerFixture() {
     calibrated: [],
     invertedTo: [],
     rotatedTo: [],
+    iconSizedTo: [],
   };
   const manager = Object.create(DeviceManager.prototype);
   const document = { createElement: (tag) => makeElement(tag) };
@@ -186,6 +187,7 @@ function managerFixture() {
   const calibrating = new Set();
   const inverted = new Map();
   const rotation = new Map();
+  const iconSize = new Map();
 
   manager.document = document;
   manager.companionSettings = { enabled: false, host: '127.0.0.1', port: 16622 };
@@ -211,6 +213,7 @@ function managerFixture() {
       calibrating,
       inverted,
       rotation,
+      iconSize,
       setCalibrating: async (deviceId, active) => {
         calls.calibrated.push([deviceId, active]);
         calibrating[active ? 'add' : 'delete'](deviceId);
@@ -247,6 +250,10 @@ function managerFixture() {
     setDisplayRotation: async (deviceId, degrees) => {
       calls.rotatedTo.push([deviceId, degrees]);
       rotation.set(deviceId, degrees);
+    },
+    setDisplayIconSize: async (deviceId, percent) => {
+      calls.iconSizedTo.push([deviceId, percent]);
+      iconSize.set(deviceId, percent);
     },
   };
 
@@ -394,6 +401,33 @@ test('calibration and inversion appear only on boards that support them', async 
   await fire(toggle, 'change');
   assert.deepEqual(calls.invertedTo, [['bbbbbbbbbbbb', true]]);
   assert.equal(invertToggle().checked, true);
+});
+
+test('icon size appears only on firmware that can inset artwork', async () => {
+  const { manager, calls } = managerFixture();
+  const sessions = manager.deck.runtime.sessions;
+
+  manager.render();
+  assert.equal(findByClass(manager.list, 'device-icon-size'), null);
+
+  sessions.get('bbbbbbbbbbbb').hello.features = ['display-icon-size'];
+  manager.render();
+
+  const picker = () =>
+    findByClass(manager.list, 'device-icon-size').children[1];
+
+  // Nothing announced yet means the board is still filling its keys.
+  assert.equal(picker().value, '100');
+  assert.deepEqual(
+    picker().children.map((option) => option.value),
+    ['100', '85', '70', '55', '40'],
+  );
+
+  const select = picker();
+  select.value = '70';
+  await fire(select, 'change');
+  assert.deepEqual(calls.iconSizedTo, [['bbbbbbbbbbbb', 70]]);
+  assert.equal(picker().value, '70');
 });
 
 test('screen rotation appears only on boards that can turn the panel', async () => {

@@ -3,6 +3,7 @@
 #include <stdio.h>
 
 #include "deck_affine.h"
+#include "deck_layout.h"
 #include "esp_err.h"
 #include "esp_timer.h"
 
@@ -61,32 +62,20 @@ static int64_t now_ms(void)
     return esp_timer_get_time() / 1000;
 }
 
-/* Read from LVGL, not Kconfig: the targets have to land on the screen as it
-   is oriented right now, and deck_calibrate_reset re-places them on entry. */
-static int32_t screen_w(void)
-{
-    return lv_display_get_horizontal_resolution(lv_display_get_default());
-}
-
-static int32_t screen_h(void)
-{
-    return lv_display_get_vertical_resolution(lv_display_get_default());
-}
-
 static int32_t target_x(uint8_t index)
 {
-    return screen_w() * TARGET_PERCENT[index][0] / 100;
+    return deck_layout_screen_w() * TARGET_PERCENT[index][0] / 100;
 }
 
 static int32_t target_y(uint8_t index)
 {
-    return screen_h() * TARGET_PERCENT[index][1] / 100;
+    return deck_layout_screen_h() * TARGET_PERCENT[index][1] / 100;
 }
 
 static int32_t short_edge(void)
 {
-    const int32_t width = screen_w();
-    const int32_t height = screen_h();
+    const int32_t width = deck_layout_screen_w();
+    const int32_t height = deck_layout_screen_h();
 
     return width < height ? width : height;
 }
@@ -185,8 +174,10 @@ static void unrotated_target(uint8_t index, int32_t *x, int32_t *y)
 {
     const uint16_t degrees = bsp_display_rotation();
     const bool quarter_turn = degrees == 90 || degrees == 270;
-    const int32_t base_w = quarter_turn ? screen_h() : screen_w();
-    const int32_t base_h = quarter_turn ? screen_w() : screen_h();
+    const int32_t width = deck_layout_screen_w();
+    const int32_t height = deck_layout_screen_h();
+    const int32_t base_w = quarter_turn ? height : width;
+    const int32_t base_h = quarter_turn ? width : height;
 
     deck_affine_unrotate(
         degrees,

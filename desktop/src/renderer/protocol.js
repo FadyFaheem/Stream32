@@ -538,6 +538,9 @@ function encodePageMessage(index) {
 }
 
 const DISPLAY_ROTATIONS = new Set([0, 90, 180, 270]);
+// Artwork size as a percentage of the key tile. The floor matches
+// DECK_ICON_PERCENT_MIN in the firmware's deck_settings.h.
+const MIN_ICON_SIZE = 25;
 
 function encodeDisplayMessage({
   awake,
@@ -545,6 +548,7 @@ function encodeDisplayMessage({
   brightness,
   invert,
   rotation,
+  iconSize,
 }) {
   if (typeof awake !== 'boolean') {
     throw new TypeError('Display awake state must be a boolean.');
@@ -584,12 +588,21 @@ function encodeDisplayMessage({
     message.rotation = rotation;
   }
 
+  if (iconSize !== undefined) {
+    message.iconSize = requireProtocolInteger(
+      iconSize,
+      'display icon size',
+      MIN_ICON_SIZE,
+      100,
+    );
+  }
+
   return encodeLine(message);
 }
 
-// The board stores inversion and rotation itself and announces them after
-// each hello, so this reads the same shape the desktop sends. Either field
-// may be absent on firmware that supports only one of them.
+// The board stores inversion, rotation and icon size itself and announces
+// them after each hello, so this reads the same shape the desktop sends. Any
+// field may be absent on firmware that supports only some of them.
 function validateDisplayStateMessage(message) {
   const state = {};
 
@@ -607,6 +620,15 @@ function validateDisplayStateMessage(message) {
     }
 
     state.rotation = message.rotation;
+  }
+
+  if (message.iconSize !== undefined) {
+    state.iconSize = requireProtocolInteger(
+      message.iconSize,
+      'display icon size',
+      MIN_ICON_SIZE,
+      100,
+    );
   }
 
   if (Object.keys(state).length === 0) {

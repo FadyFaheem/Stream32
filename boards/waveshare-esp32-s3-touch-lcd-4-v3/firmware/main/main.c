@@ -5,6 +5,7 @@
 
 #include "bsp/esp-bsp.h"
 #include "cJSON.h"
+#include "deck_layout.h"
 #include "deck_protocol.h"
 #include "deck_ui.h"
 #include "driver/usb_serial_jtag.h"
@@ -93,7 +94,8 @@ static void send_hello(void)
         "{\"type\":\"hello\",\"protocol\":%d,\"boardId\":\"%s\","
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
         "\"features\":[\"display-control\",\"display-blank\","
-        "\"display-invert\",\"key-update\",\"image-rle\",\"clean-mode\"]}",
+        "\"display-invert\",\"display-icon-size\",\"key-update\","
+        "\"image-rle\",\"clean-mode\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -156,11 +158,16 @@ static void handle_host_message(const char *line, size_t length)
 
             /* Inversion is stored on the board, so the desktop has to be told
                where the toggle actually sits. */
-            usb_write_line(
-                bsp_display_invert()
-                    ? "{\"type\":\"display\",\"invert\":true}"
-                    : "{\"type\":\"display\",\"invert\":false}"
+            char state[96];
+
+            snprintf(
+                state,
+                sizeof(state),
+                "{\"type\":\"display\",\"invert\":%s,\"iconSize\":%u}",
+                bsp_display_invert() ? "true" : "false",
+                (unsigned)deck_layout_icon_percent()
             );
+            usb_write_line(state);
         }
     } else if (strcmp(type->valuestring, "ping") == 0) {
         const cJSON *id = cJSON_GetObjectItemCaseSensitive(message, "id");

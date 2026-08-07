@@ -13,9 +13,11 @@
  */
 #include "bsp/esp-bsp.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #include "driver/gpio.h"
+#include "esp_heap_caps.h"
 #include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
@@ -55,6 +57,8 @@ static esp_lcd_panel_io_handle_t s_panel_io;
 static esp_lcd_panel_handle_t s_panel;
 static esp_lcd_touch_handle_t s_touch;
 static const char *s_status = "display-not-started";
+/* Holds a status that carries numbers with it; s_status points here then. */
+static char s_status_detail[64];
 static uint32_t s_brightness_percent = 100;
 static bool s_display_awake;
 /* ST7789 panels are normally wired so that INVON is the correct state.
@@ -350,6 +354,18 @@ lv_display_t *bsp_display_start(void)
     lv_display_t *display = lvgl_port_add_disp(&display_config);
 
     if (display == NULL) {
+        /* Almost always the DMA-capable draw buffers on a board with no
+           PSRAM, and the console is off here, so the numbers travel back in
+           the status the desktop already shows. Guessing at this from the
+           stage name alone cost several flashes. */
+        snprintf(
+            s_status_detail,
+            sizeof(s_status_detail),
+            "display-lvgl-register-dma-%u-max-%u",
+            (unsigned)heap_caps_get_free_size(MALLOC_CAP_DMA),
+            (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA)
+        );
+        s_status = s_status_detail;
         ESP_LOGE(TAG, "Could not register the display with LVGL");
         return NULL;
     }

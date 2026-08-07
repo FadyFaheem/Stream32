@@ -74,8 +74,10 @@ esp_err_t deck_storage_slot_write(
     uint32_t size
 );
 
-// Drops pool slots whose CRC is not in the live set (runs after a full
-// sync so replaced artwork stops occupying slots).
+// Drops pool slots whose CRC is not in the live set, which normally runs
+// after a full sync so replaced artwork stops occupying slots. An empty set
+// (NULL, 0) empties the pool, which is what a change of key size wants: every
+// stored image is the wrong size and can never be read back again.
 void deck_storage_gc(const uint32_t *live_crcs, size_t live_count);
 
 #ifdef __cplusplus

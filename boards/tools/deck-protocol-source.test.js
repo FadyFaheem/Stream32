@@ -232,6 +232,29 @@ test('layout-ack reports the artwork size, not the key tile', () => {
   assert.match(artwork, /LV_ALIGN_CENTER, 0, -label_h \/ 2/);
 });
 
+test('a change of key size empties the artwork pool before re-syncing', () => {
+  // Rotation, icon size and label lines all redraw artwork at a new size, so
+  // everything stored is unreadable the moment one of them changes. Leaving
+  // it for the end-of-sync collection made the board hold both the old and
+  // the new copies at once, and a deck partition with 68 slots ran out
+  // partway through the re-send and answered storage-failed.
+  const applyDisplay = ui.slice(ui.indexOf('const char *deck_ui_apply_display('));
+  const restyle = applyDisplay.slice(0, applyDisplay.indexOf('has_invert'));
+
+  for (const setter of [
+    /bsp_display_set_rotation\(/,
+    /deck_layout_set_icon_percent\(/,
+    /deck_layout_set_label_lines\(/,
+  ]) {
+    assert.match(restyle, setter);
+  }
+
+  assert.match(
+    restyle,
+    /if \(restyled\) \{[\s\S]{0,400}deck_storage_gc\(NULL, 0\);[\s\S]{0,200}build_page\(/,
+  );
+});
+
 test('settings and artwork sit outside the region a flash rewrites', () => {
   // Published firmware is a single raw image written from offset 0, so
   // esptool rewrites every byte below the end of the app partition, and

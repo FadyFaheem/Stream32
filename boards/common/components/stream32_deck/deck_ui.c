@@ -909,6 +909,9 @@ static const char *setting_error(
 const char *deck_ui_apply_display(const deck_protocol_display_t *display)
 {
     const char *error;
+    /* Rotation, icon size and label lines all change the size artwork is
+       drawn at, so they share one re-flow below. */
+    bool restyled = false;
 
     if (display->has_rotation && display->rotation != bsp_display_rotation()) {
         error = setting_error(
@@ -922,27 +925,32 @@ const char *deck_ui_apply_display(const deck_protocol_display_t *display)
         }
 
         deck_settings_set_rotation(display->rotation);
-
-        /* The screen is a different shape now, so the grid has to re-flow.
-           That changes keyPx, which the desktop notices on the next
-           layout-ack and answers by re-sending the artwork. */
-        if (s_active) {
-            build_page(s_visible_page);
-        }
+        restyled = true;
     }
 
-    /* Both resize the artwork, so they take the same route as rotation: the
-       grid re-flows, keyPx moves, and the desktop re-sends every icon. */
-    bool restyled = display->has_icon_percent &&
-        deck_layout_set_icon_percent(display->icon_percent);
+    if (display->has_icon_percent &&
+        deck_layout_set_icon_percent(display->icon_percent)) {
+        restyled = true;
+    }
 
     if (display->has_label_lines &&
         deck_layout_set_label_lines(display->label_lines)) {
         restyled = true;
     }
 
-    if (restyled && s_active) {
-        build_page(s_visible_page);
+    if (restyled) {
+        /* Every stored image is the wrong size now and can never be read
+           back, so the pool goes here rather than at the end of the re-sync.
+           Waiting made the board hold the old artwork and the new artwork at
+           once, which is more slots than a small deck partition has, and the
+           re-sync died partway through with a storage error. */
+        deck_storage_gc(NULL, 0);
+
+        /* Re-flowing moves keyPx, which is how the desktop is told to send
+           the artwork again at the new size. */
+        if (s_active) {
+            build_page(s_visible_page);
+        }
     }
 
     if (display->has_invert && display->invert != bsp_display_invert()) {

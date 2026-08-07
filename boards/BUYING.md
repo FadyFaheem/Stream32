@@ -64,21 +64,19 @@ A 2.8-inch, 320x240 resistive touch panel on a classic ESP32, widely sold as
 the "CYD". It is by far the cheapest supported board, and the compromise is
 size: 12 keys per page instead of 25 or 40.
 
-This model number is sold by many sellers and covers several incompatible
-boards, and **the number of USB connectors tells you which panel is inside**.
-Listings routinely claim ILI9341 regardless of what ships, so trust the
-connectors and not the description.
+This model number is sold by many sellers and covers boards whose panels
+differ. Listings routinely claim ILI9341 regardless of what ships, and the
+community rule of thumb is that a single-connector board is ILI9341 while a
+two-connector board is ST7789. Treat that as a hint, not a guarantee: a
+dual-connector board has been confirmed working on the Stream32 profile.
 
 - **Confirm before ordering:**
-  - **One USB-C connector**: the ILI9341 panel this profile targets.
-  - **One micro-USB connector**: also ILI9341, but an older revision that
-    has not been tested with Stream32.
-  - **Two connectors (USB-C and micro-USB)**: usually an **ST7789** panel.
-    This is a different display controller and the current profile will not
-    drive it correctly.
   - The trailing **R** means resistive touch (XPT2046), which is what this
     profile expects. The **C** variants use capacitive GT911 touch and are
     different devices.
+  - Either connector count is worth trying. If the screen lights up but the
+    colours look wrong, that is adjustable from the Devices page. If it stays
+    lit but blank, the panel controller really is a different one.
 - **Expect to calibrate the touch panel.** Resistive panels vary between
   units. The firmware's self-test screen shows the raw touch values needed
   to adjust the calibration window in the board's BSP.

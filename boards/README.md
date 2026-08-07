@@ -53,11 +53,17 @@ Elecrow `CrowPanel Advanced 10.1"` (profile
 `ESP32-2432S028R`, the "Cheap Yellow Display" (profile
 `esp32-2432s028r-ili9341`):
 
-- The revision with a **single USB-C connector** and an ILI9341 panel.
-  This model number also ships as a single micro-USB board and as a
-  two-connector board whose panel is an ST7789, and the display controller
-  cannot be detected from the chip ID. Flashing the wrong profile leaves a
-  blank or garbled screen, so count the connectors before choosing.
+- This model number covers several boards whose panels differ, and the
+  display controller cannot be detected from the chip ID. Community guidance
+  maps a single micro-USB or USB-C board to ILI9341 and a two-connector board
+  to ST7789, but that is a rule of thumb rather than a rule: a dual-connector
+  board has been confirmed working on this profile. Try it and look at the
+  screen. A panel driving with wrong colours is a settings problem, whereas a
+  lit but blank panel means the init sequence did not take and the controller
+  really is different.
+- Colour inversion is off by default and switchable from the Devices page. A
+  dark deck rendered as a white wash means inversion is on when this panel
+  does not want it, which is the usual first thing to check.
 - ESP32-WROOM-32 (4 MB flash, 520 KB SRAM, **no PSRAM**), ILI9341 240x320
   SPI panel rotated to 320x240 landscape, XPT2046 resistive touch, and a PWM
   backlight on GPIO21.

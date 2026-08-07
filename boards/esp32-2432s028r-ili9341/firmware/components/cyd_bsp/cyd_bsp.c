@@ -47,10 +47,11 @@ static esp_lcd_touch_handle_t s_touch;
 static const char *s_status = "display-not-started";
 static uint32_t s_brightness_percent = 100;
 static bool s_display_awake;
-/* This revision ships an inverted panel; without this the image is a
-   photographic negative. Overridable at runtime because the same model
-   number ships with panels that disagree. */
-static bool s_invert = true;
+/* Off by default: a dual-connector board rendered the deck's dark theme as a
+   white wash with this on, which is what an unnecessary INVON does to a dark
+   UI. Overridable at runtime because the same model number ships with panels
+   that disagree. */
+static bool s_invert;
 static uint16_t s_last_raw_x;
 static uint16_t s_last_raw_y;
 static bool s_touch_down;
@@ -146,15 +147,9 @@ static esp_err_t panel_init(void)
     s_status = "display-controller-init";
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(s_panel), TAG, "panel init");
 
-    /* The 240x320 portrait panel is rotated into the 320x240 landscape the
-       deck grid is laid out for. Swap the mirror arguments to turn the image
-       180 degrees if the board is mounted the other way up. */
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_swap_xy(s_panel, true), TAG, "swap xy");
-    ESP_RETURN_ON_ERROR(
-        esp_lcd_panel_mirror(s_panel, true, false),
-        TAG,
-        "mirror"
-    );
+    /* Rotation is deliberately not set here. esp_lvgl_port rewrites MADCTL
+       from its own rotation config when the display is registered, so
+       anything set now is discarded; see the rotation field below. */
     ESP_RETURN_ON_ERROR(
         esp_lcd_panel_invert_color(s_panel, s_invert),
         TAG,
@@ -306,11 +301,14 @@ lv_display_t *bsp_display_start(void)
         .vres = BSP_LCD_V_RES,
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
-        /* Rotation is already applied in the panel's MADCTL, which costs
-           nothing per frame, so LVGL renders straight into landscape. */
+        /* The only place rotation may be set: lvgl_port applies these to the
+           panel's MADCTL itself, so it costs nothing per frame but silently
+           overrides anything panel_init did. Turning the 240x320 portrait
+           glass into the 320x240 landscape the deck grid expects. Flip
+           mirror_x to rotate the image 180 degrees. */
         .rotation = {
-            .swap_xy = false,
-            .mirror_x = false,
+            .swap_xy = true,
+            .mirror_x = true,
             .mirror_y = false,
         },
         .flags = {

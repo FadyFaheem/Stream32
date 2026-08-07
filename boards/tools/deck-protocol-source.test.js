@@ -158,6 +158,29 @@ test('every bsp_ call in a board main.c is declared by that board BSP', () => {
   }
 });
 
+test('no board sets panel rotation behind esp_lvgl_port', () => {
+  // lvgl_port_add_disp applies its own rotation config to the panel's MADCTL
+  // ("Apply rotation from initial display configuration"), so a swap_xy or
+  // mirror call in a BSP's own init is silently discarded. A board that set
+  // rotation there came up in portrait with no error to show for it.
+  for (const board of BOARDS) {
+    const components = path.join(ROOT, 'boards', board, 'firmware', 'components');
+
+    for (const component of readdirSync(components)) {
+      const directory = path.join(components, component);
+      const sources = readdirSync(directory).filter((f) => f.endsWith('.c'));
+
+      for (const file of sources) {
+        assert.doesNotMatch(
+          read(path.join(directory, file)),
+          /esp_lcd_panel_(swap_xy|mirror)\s*\(/,
+          `${board}/${component}/${file} sets rotation that lvgl_port overwrites`,
+        );
+      }
+    }
+  }
+});
+
 test('every board answers the calibration and invert BSP contract', () => {
   const bsps = [
     ['waveshare-esp32-s3-touch-lcd-4-v3', 'waveshare_bsp/waveshare_bsp.c'],

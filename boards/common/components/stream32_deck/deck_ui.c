@@ -695,7 +695,9 @@ const char *deck_ui_apply_key_update(
     }
 
     if (overlay->image != NULL && overlay->image != parsed.image) {
-        heap_caps_free(overlay->image);
+        void *old_image = overlay->image;
+        overlay->image = NULL;  /* Clear before free to prevent double-free if lease expires concurrently. */
+        heap_caps_free(old_image);
     }
 
     *overlay = parsed;

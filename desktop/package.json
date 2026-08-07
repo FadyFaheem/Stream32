@@ -1,6 +1,6 @@
 {
   "name": "stream32-desktop",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Desktop companion for the Stream32 open-source stream deck",
   "main": "src/main.js",
   "author": {

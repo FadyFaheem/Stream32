@@ -1749,6 +1749,56 @@ progress::-webkit-progress-value {
   background: rgba(10, 18, 23, 0.52);
 }
 
+.device-sync {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  color: var(--accent-strong);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.device-sync::before {
+  content: "";
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 2px solid currentcolor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: device-sync-spin 700ms linear infinite;
+}
+
+@keyframes device-sync-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .device-sync::before {
+    animation: none;
+  }
+}
+
+.device-settings {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(4, 10, 14, 0.4);
+}
+
+.device-settings > summary {
+  padding: 0.5rem 0.7rem;
+  cursor: pointer;
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.device-settings > :last-child {
+  padding-bottom: 0.7rem;
+}
+
 .device-brightness,
 .device-invert,
 .device-rotation,
@@ -1759,7 +1809,7 @@ progress::-webkit-progress-value {
   align-items: center;
   gap: 0.5rem;
   flex-wrap: wrap;
-  padding-top: 0.55rem;
+  padding: 0.55rem 0.7rem 0;
   border-top: 1px solid var(--line);
 }
 

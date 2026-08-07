@@ -96,6 +96,9 @@ class DeckRuntime {
     this.pending = new Map();
     this.syncTimers = new Map();
     this.syncRunning = new Map();
+    // What a sync is up to, for the cards to show. Kept apart from
+    // syncRunning so the re-entrancy sentinel stays a plain flag.
+    this.syncProgress = new Map();
     this.multiRuns = new Set();
     this.cleaning = new Set();
     this.calibrating = new Set();
@@ -168,12 +171,21 @@ class DeckRuntime {
   async setCompanionSurface(deviceId, companion) {
     const device = await this.api.setDeckCompanion(deviceId, companion);
     this.setDevice(deviceId, device);
+    await this.relayoutDevice(deviceId);
+    this.onRenderAll();
+    return device;
+  }
+
+  // Lays a board out again from nothing, through whichever owner drives it.
+  // Needed when ownership changes hands, and when the board has thrown away
+  // what it was showing. Companion caches keyPx and registers a bitmap size,
+  // so its surface has to be rebuilt rather than merely redrawn.
+  async relayoutDevice(deviceId) {
     await this.companion.detach(deviceId);
     const session = this.sessions.get(deviceId);
 
     if (!session) {
-      this.onRenderAll();
-      return device;
+      return;
     }
 
     if (this.companionEnabled(deviceId)) {
@@ -182,9 +194,6 @@ class DeckRuntime {
     } else {
       this.scheduleSync(deviceId, 0);
     }
-
-    this.onRenderAll();
-    return device;
   }
 
   sessionFor(deviceId) {
@@ -1030,6 +1039,22 @@ class DeckRuntime {
     );
   }
 
+  // Streaming a deck takes long enough to look like nothing is happening,
+  // which is most of why a re-flow felt broken. Fields merge, so a caller can
+  // move the image count without restating which page it is on.
+  setSyncProgress(deviceId, progress) {
+    if (progress === null) {
+      this.syncProgress.delete(deviceId);
+    } else {
+      this.syncProgress.set(deviceId, {
+        ...this.syncProgress.get(deviceId),
+        ...progress,
+      });
+    }
+
+    this.onRenderSyncStatus();
+  }
+
   async syncDevice(deviceId) {
     if (this.syncRunning.get(deviceId)) {
       this.syncRunning.set(deviceId, 'again');
@@ -1056,9 +1081,18 @@ class DeckRuntime {
 
     const leadPage = profile.activePage;
     let streamedArtwork = false;
+    let pagesDone = 0;
 
     try {
       for (const pageIndex of syncOrder(profile.pages.length, leadPage)) {
+        // Counted in the order they are sent rather than by page number,
+        // because syncOrder leads with whichever page is on screen.
+        this.setSyncProgress(deviceId, {
+          page: ++pagesDone,
+          pages: profile.pages.length,
+          sent: 0,
+          images: 0,
+        });
         streamedArtwork = await this.syncPage(
           deviceId,
           session,
@@ -1131,6 +1165,7 @@ class DeckRuntime {
       session.profileSyncInProgress = false;
       const runAgain = this.syncRunning.get(deviceId) === 'again';
       this.syncRunning.delete(deviceId);
+      this.setSyncProgress(deviceId, null);
 
       if (runAgain) {
         this.scheduleSync(deviceId, 0);
@@ -1179,6 +1214,10 @@ class DeckRuntime {
     }
 
     let streamed = false;
+    let sent = 0;
+
+    // Artwork is the slow part of a sync, so it is what the cards count.
+    this.setSyncProgress(deviceId, { sent, images: ack.needImages.length });
 
     for (const index of ack.needImages) {
       const render = renders.get(index);
@@ -1194,6 +1233,8 @@ class DeckRuntime {
         );
         streamed = true;
       }
+
+      this.setSyncProgress(deviceId, { sent: ++sent });
     }
 
     return streamed;

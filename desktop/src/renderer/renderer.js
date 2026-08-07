@@ -577,6 +577,8 @@ const deviceManager = new DeviceManager({
 });
 // Mirror device and session changes into the Device Manager view live.
 deckController.onRender = () => deviceManager.render();
+// Sync progress ticks once per image, far too often to rebuild the cards.
+deckController.onSyncProgress = () => deviceManager.renderSyncProgress();
 deviceManager.initialize().catch((error) => {
   showUpdateStatus({
     message: `Device manager setup failed: ${error.message}`,

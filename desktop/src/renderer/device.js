@@ -922,18 +922,6 @@ class DeviceController {
     return session.hello?.features?.includes('display-invert') === true;
   }
 
-  displayRotationSupported(session) {
-    return session.hello?.features?.includes('display-rotation') === true;
-  }
-
-  displayIconSizeSupported(session) {
-    return session.hello?.features?.includes('display-icon-size') === true;
-  }
-
-  displayLabelLinesSupported(session) {
-    return session.hello?.features?.includes('display-label-lines') === true;
-  }
-
   // A board keeps its own brightness when one is saved; otherwise it follows
   // the app-wide default from Settings.
   brightnessFor(session) {
@@ -985,56 +973,55 @@ class DeviceController {
     this.deckRuntime?.applyDisplayState(deviceId, { invert });
   }
 
-  // The board re-flows its grid at the new shape, which changes keyPx and
-  // makes the next layout-ack pull a fresh copy of every icon.
-  async setDisplayRotation(deviceId, rotation) {
+  // Rotation, icon size and label lines all re-flow the board's grid, so it
+  // drops every stored image and comes back with a different keyPx. Nothing
+  // on the wire announces that, so the deck has to be laid out again from
+  // here; without it the board sits on blank keys until it is reconnected.
+  async setDisplayGeometry(deviceId, feature, refusal, override) {
     const session = this.deckRuntime?.sessionFor(deviceId);
 
     if (!session) {
       throw new Error('The deck is not connected.');
     }
 
-    if (!this.displayRotationSupported(session)) {
-      throw new Error('Screen rotation requires updated board firmware.');
+    if (session.hello?.features?.includes(feature) !== true) {
+      throw new Error(refusal);
     }
 
-    await this.applyDisplayPolicyToSession(session, { rotation });
-    this.deckRuntime?.applyDisplayState(deviceId, { rotation });
+    await this.applyDisplayPolicyToSession(session, override);
+    this.deckRuntime.applyDisplayState(deviceId, override);
+    await this.deckRuntime.relayoutDevice(deviceId);
+  }
+
+  setDisplayRotation(deviceId, rotation) {
+    return this.setDisplayGeometry(
+      deviceId,
+      'display-rotation',
+      'Screen rotation requires updated board firmware.',
+      { rotation },
+    );
   }
 
   // Only the artwork shrinks; the tiles and their labels keep the size the
-  // grid gives them. The board reports the smaller keyPx on the next
-  // layout-ack, which is what pulls a fresh copy of every icon.
-  async setDisplayIconSize(deviceId, iconSize) {
-    const session = this.deckRuntime?.sessionFor(deviceId);
-
-    if (!session) {
-      throw new Error('The deck is not connected.');
-    }
-
-    if (!this.displayIconSizeSupported(session)) {
-      throw new Error('Icon size requires updated board firmware.');
-    }
-
-    await this.applyDisplayPolicyToSession(session, { iconSize });
-    this.deckRuntime?.applyDisplayState(deviceId, { iconSize });
+  // grid gives them.
+  setDisplayIconSize(deviceId, iconSize) {
+    return this.setDisplayGeometry(
+      deviceId,
+      'display-icon-size',
+      'Icon size requires updated board firmware.',
+      { iconSize },
+    );
   }
 
   // Longer labels wrap instead of ellipsizing, and the artwork gives up the
-  // room they need, so this moves keyPx and re-sends icons just like above.
-  async setDisplayLabelLines(deviceId, labelLines) {
-    const session = this.deckRuntime?.sessionFor(deviceId);
-
-    if (!session) {
-      throw new Error('The deck is not connected.');
-    }
-
-    if (!this.displayLabelLinesSupported(session)) {
-      throw new Error('Label lines require updated board firmware.');
-    }
-
-    await this.applyDisplayPolicyToSession(session, { labelLines });
-    this.deckRuntime?.applyDisplayState(deviceId, { labelLines });
+  // room they need.
+  setDisplayLabelLines(deviceId, labelLines) {
+    return this.setDisplayGeometry(
+      deviceId,
+      'display-label-lines',
+      'Label lines require updated board firmware.',
+      { labelLines },
+    );
   }
 
   async broadcastDisplayPolicy() {

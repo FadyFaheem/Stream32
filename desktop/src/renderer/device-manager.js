@@ -147,6 +147,24 @@ function firmwareStatus(row) {
   return { state: 'current', label: `Up to date · ${row.firmwareVersion}` };
 }
 
+// A settling count rather than a spinner, so a long re-flow visibly gets
+// somewhere. Artwork is the slow part, which is why icons are what it counts.
+function syncProgressText({ page, pages, sent, images }) {
+  const parts = [];
+
+  if (pages > 1) {
+    parts.push(`page ${page} of ${pages}`);
+  }
+
+  // sent is what has landed, so the count names the one in flight and stops
+  // at the total rather than reading "icon 7 of 6" as the last one lands.
+  if (images > 0) {
+    parts.push(`icon ${Math.min(sent + 1, images)} of ${images}`);
+  }
+
+  return `Resyncing${parts.length > 0 ? ` ${parts.join(' \u00b7 ')}` : ''}\u2026`;
+}
+
 function deviceMetaText(row) {
   const parts = [row.boardName, `#${row.deviceId.slice(-4)}`];
 
@@ -204,6 +222,11 @@ class DeviceManager {
     this.companionSettings = { enabled: false, host: '127.0.0.1', port: 16622 };
     this.companionLink = null;
     this.defaultBrightness = 100;
+    // Device ids whose settings panel the person left open.
+    this.expanded = new Set();
+    // Each card's progress line, kept by device id so a sync can tick it
+    // without rebuilding the list under the person's cursor.
+    this.syncNodes = new Map();
   }
 
   async initialize() {
@@ -331,10 +354,14 @@ class DeviceManager {
     const rows = this.inventory();
 
     this.list.replaceChildren();
+    this.syncNodes.clear();
 
     for (const row of rows) {
       this.list.append(this.renderCard(row));
     }
+
+    // A card rebuilt mid-sync has to pick the count back up.
+    this.renderSyncProgress();
 
     if (this.empty) {
       this.empty.hidden = rows.length > 0;
@@ -441,34 +468,59 @@ class DeviceManager {
     toggle.addEventListener('click', () => this.toggleConnection(row, toggle));
     actions.append(toggle);
 
-    card.append(head, meta, firmware);
+    const sync = document.createElement('p');
+    sync.className = 'device-sync';
+    this.syncNodes.set(row.deviceId, sync);
 
-    if (row.supportsBrightness) {
-      card.append(this.renderBrightness(row));
-    }
+    card.append(head, meta, firmware, sync);
 
-    if (row.supportsInvert) {
-      card.append(this.renderInvert(row));
-    }
+    const settings = [
+      row.supportsBrightness && this.renderBrightness(row),
+      row.supportsInvert && this.renderInvert(row),
+      row.supportsRotation && this.renderRotation(row),
+      row.supportsIconSize && this.renderIconSize(row),
+      row.supportsLabelLines && this.renderLabelLines(row),
+      this.companionSettings.enabled && this.renderCompanion(row),
+    ].filter(Boolean);
 
-    if (row.supportsRotation) {
-      card.append(this.renderRotation(row));
-    }
-
-    if (row.supportsIconSize) {
-      card.append(this.renderIconSize(row));
-    }
-
-    if (row.supportsLabelLines) {
-      card.append(this.renderLabelLines(row));
-    }
-
-    if (this.companionSettings.enabled) {
-      card.append(this.renderCompanion(row));
+    if (settings.length > 0) {
+      card.append(this.renderSettings(row, settings));
     }
 
     card.append(actions);
     return card;
+  }
+
+  // Ticks once per streamed icon, so it only touches the text it changes
+  // rather than going through render().
+  renderSyncProgress() {
+    for (const [deviceId, node] of this.syncNodes) {
+      const progress = this.deck.runtime.syncProgress.get(deviceId);
+      node.hidden = !progress;
+      node.textContent = progress ? syncProgressText(progress) : '';
+    }
+  }
+
+  // Most of a card is settings a board is set up with once, so they stay
+  // folded away and the everyday actions stay in reach.
+  renderSettings(row, sections) {
+    const { document } = this;
+    const details = document.createElement('details');
+    const summary = document.createElement('summary');
+
+    details.className = 'device-settings';
+    summary.textContent = `Settings (${sections.length})`;
+    // Every card has one, so the board's name is what tells them apart.
+    summary.setAttribute('aria-label', `Settings for ${row.name}`);
+    // Every change re-renders the whole list, so the panel has to be told
+    // again that it was open.
+    details.open = this.expanded.has(row.deviceId);
+    details.addEventListener('toggle', () => {
+      this.expanded[details.open ? 'add' : 'delete'](row.deviceId);
+    });
+
+    details.append(summary, ...sections);
+    return details;
   }
 
   renderBrightness(row) {
@@ -974,4 +1026,5 @@ module.exports = {
   deviceMetaText,
   firmwareStatus,
   summarizeInventory,
+  syncProgressText,
 };

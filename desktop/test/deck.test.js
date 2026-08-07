@@ -628,6 +628,51 @@ test('sync resolves the active named profile for a device', async () => {
   assert.equal(session.profileInputBlocked, false);
 });
 
+test('a sync publishes per-device progress and clears it when it finishes', async () => {
+  const controller = createRuntime();
+  const seen = [];
+  const session = { send: async () => {} };
+  controller.devices = {
+    aaaa11112222: {
+      name: 'Desk',
+      boardId: 'test-board',
+      activeProfileId: 'default',
+      defaultProfileId: 'default',
+      profiles: {
+        default: {
+          name: 'Default',
+          boardId: 'test-board',
+          activePage: 0,
+          keyPx: {},
+          pages: [
+            { name: 'One', rows: 1, cols: 1, keys: [] },
+            { name: 'Two', rows: 1, cols: 1, keys: [] },
+          ],
+        },
+      },
+    },
+  };
+  controller.sessions = new Map([['aaaa11112222', session]]);
+  controller.syncRunning = new Map();
+  controller.liveRunning = new Set();
+  controller.pending = new Map();
+  controller.setSyncStatus = () => {};
+  controller.refreshLiveStates = () => {};
+  controller.syncPage = async (deviceId) => {
+    seen.push({ ...controller.syncProgress.get(deviceId) });
+  };
+
+  await controller.syncDevice('aaaa11112222');
+
+  // Pages are counted in the order they are sent, not by page number.
+  assert.deepEqual(seen, [
+    { page: 1, pages: 2, sent: 0, images: 0 },
+    { page: 2, pages: 2, sent: 0, images: 0 },
+  ]);
+  // Anything left behind leaves a card claiming to resync forever.
+  assert.equal(controller.syncProgress.has('aaaa11112222'), false);
+});
+
 test('the visible page accepts input before the other pages finish', async () => {
   const controller = createRuntime();
   const order = [];

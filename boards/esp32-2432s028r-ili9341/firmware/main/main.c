@@ -82,7 +82,9 @@ static void update_connection_label(const char *text)
 static void send_hello(void)
 {
     uint8_t mac[6];
-    char message[288];
+    /* Sized for the worst case the compiler has to assume: esp_app_desc_t
+       carries a 32-byte version, and the feature list grows over time. */
+    char message[384];
     const esp_app_desc_t *app = esp_app_get_description();
 
     /* Reads the efuse MAC; the radio is never started. */
@@ -328,9 +330,9 @@ static void touch_event_handler(lv_event_t *event)
     uint16_t raw_y = 0;
 
     lv_indev_get_point(input, &point);
-    bsp_touch_last_raw(&raw_x, &raw_y);
-    /* The raw pair is the only way to calibrate this resistive panel: the
-       console is disabled because UART0 carries the protocol. */
+    (void)bsp_touch_read_raw(&raw_x, &raw_y);
+    /* Showing the raw pair beside the mapped one makes a bad calibration
+       obvious without a console, which UART0 rules out here. */
     lv_label_set_text_fmt(
         touch_label,
         "Touch %s\nX %ld   Y %ld\nraw %u / %u",

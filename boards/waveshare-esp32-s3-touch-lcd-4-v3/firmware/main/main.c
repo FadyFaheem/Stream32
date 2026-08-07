@@ -79,7 +79,11 @@ static void update_connection_label(const char *text)
 static void send_hello(void)
 {
     uint8_t mac[6];
-    char message[256];
+    /* Sized for the worst case the compiler has to assume: esp_app_desc_t
+       carries a 32-byte version, and the feature list grows over time. This
+       build fit 256 with nothing to spare, which the next feature would
+       have broken. */
+    char message[384];
     const esp_app_desc_t *app = esp_app_get_description();
 
     ESP_ERROR_CHECK(esp_read_mac(mac, ESP_MAC_WIFI_STA));

@@ -1,7 +1,19 @@
 const assert = require('node:assert/strict');
-const { readFileSync } = require('node:fs');
+const { existsSync, readdirSync, readFileSync, statSync } = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+
+function headerFiles(directory) {
+  return readdirSync(directory).flatMap((entry) => {
+    const full = path.join(directory, entry);
+
+    if (statSync(full).isDirectory()) {
+      return headerFiles(full);
+    }
+
+    return entry.endsWith('.h') ? [full] : [];
+  });
+}
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const componentPath = (...parts) =>
@@ -115,6 +127,35 @@ test('the calibration overlay owns only its own screen', () => {
     calibrate,
     /DECK_CALIBRATE_DONE[\s\S]{0,200}bsp_touch_set_calibration\([\s\S]{0,80}deck_settings_set_calibration/,
   );
+});
+
+test('every bsp_ call in a board main.c is declared by that board BSP', () => {
+  // A renamed BSP function is otherwise only caught by the ESP-IDF build,
+  // which needs a toolchain most contributors will not have to hand.
+  for (const board of BOARDS) {
+    const firmware = path.join(ROOT, 'boards', board, 'firmware');
+    const main = read(path.join(firmware, 'main', 'main.c'));
+    const headers = readdirSync(path.join(firmware, 'components'))
+      .flatMap((component) => {
+        const include = path.join(firmware, 'components', component, 'include');
+
+        return existsSync(include) ? headerFiles(include) : [];
+      })
+      .map(read)
+      .join('\n');
+    const called = new Set(
+      [...main.matchAll(/\b(bsp_[a-z0-9_]+)\s*\(/g)].map((hit) => hit[1]),
+    );
+
+    assert.ok(called.size > 0, `${board} calls no BSP functions`);
+
+    for (const name of called) {
+      assert.ok(
+        headers.includes(name),
+        `${board} main.c calls ${name}, which its BSP headers do not declare`,
+      );
+    }
+  }
 });
 
 test('every board answers the calibration and invert BSP contract', () => {

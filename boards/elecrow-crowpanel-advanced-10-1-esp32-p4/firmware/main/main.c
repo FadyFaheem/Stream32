@@ -160,7 +160,9 @@ static void update_connection_label(const char *text)
 static void send_hello(void)
 {
     uint8_t mac[6];
-    char message[288];
+    /* Sized for the worst case the compiler has to assume: esp_app_desc_t
+       carries a 32-byte version, and the feature list grows over time. */
+    char message[384];
     const esp_app_desc_t *app = esp_app_get_description();
 
     /* The ESP32-P4 has no radio; the efuse base MAC is its identity. */

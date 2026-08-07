@@ -1,9 +1,15 @@
 /*
  * ESP32-2432S028R "Cheap Yellow Display" BSP implementation.
  *
- * Pins follow the board's published Arduino/TFT_eSPI setup: ILI9341 on SPI2
+ * Pins follow the board's published Arduino/TFT_eSPI setup: the panel on SPI2
  * and XPT2046 on SPI3, with a PWM backlight on GPIO21. There is no PSRAM, so
  * LVGL draws through small DMA-capable line buffers in internal RAM.
+ *
+ * The panel is driven as an ST7789 even though listings and the profile id
+ * say ILI9341. The ILI9341 init does light this screen, because the two share
+ * the standard DCS subset, but its chip-specific power and gamma commands
+ * leave an ST7789 half-configured: wrong colours, and MADCTL addressing
+ * corrupt enough that an axis swap put pixels outside the visible window.
  */
 #include "bsp/esp-bsp.h"
 
@@ -13,9 +19,9 @@
 #include "driver/ledc.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
-#include "esp_lcd_ili9341.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
+#include "esp_lcd_panel_vendor.h"
 #include "esp_lcd_touch.h"
 #include "esp_lcd_touch_xpt2046.h"
 #include "esp_log.h"
@@ -51,11 +57,10 @@ static esp_lcd_touch_handle_t s_touch;
 static const char *s_status = "display-not-started";
 static uint32_t s_brightness_percent = 100;
 static bool s_display_awake;
-/* Off by default: a dual-connector board rendered the deck's dark theme as a
-   white wash with this on, which is what an unnecessary INVON does to a dark
-   UI. Overridable at runtime because the same model number ships with panels
-   that disagree. */
-static bool s_invert;
+/* ST7789 panels are normally wired so that INVON is the correct state.
+   Overridable at runtime because the same model number ships with panels
+   that disagree, and the board remembers the answer. */
+static bool s_invert = true;
 static uint16_t s_last_raw_x;
 static uint16_t s_last_raw_y;
 static bool s_touch_down;
@@ -143,9 +148,9 @@ static esp_err_t panel_init(void)
     );
     s_status = "display-panel-create";
     ESP_RETURN_ON_ERROR(
-        esp_lcd_new_panel_ili9341(s_panel_io, &panel_config, &s_panel),
+        esp_lcd_new_panel_st7789(s_panel_io, &panel_config, &s_panel),
         TAG,
-        "ili9341"
+        "st7789"
     );
     s_status = "display-panel-reset";
     /* No reset GPIO on this board, so the driver issues a software reset. */
@@ -324,10 +329,9 @@ lv_display_t *bsp_display_start(void)
         .vres = BSP_LCD_V_RES,
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
-        /* Left at the panel's own orientation. Asking MADCTL to swap the
-           axes sent pixel writes outside the visible window on this
-           controller: commands still landed, so the screen simply froze on
-           whatever it last held. */
+        /* The panel's own orientation is the base; turning it is a rotation
+           on top, applied to MADCTL by lvgl_port. Setting anything here would
+           be overwritten by that, so this is the one place it may be set. */
         .rotation = {
             .swap_xy = false,
             .mirror_x = false,
@@ -339,9 +343,6 @@ lv_display_t *bsp_display_start(void)
             /* An SPI panel takes RGB565 big-endian; LVGL renders it little-
                endian. Without this every color comes out wrong. */
             .swap_bytes = true,
-            /* Costs one extra buffer and some CPU per flush, and in exchange
-               works whatever this batch's controller does with MADCTL. */
-            .sw_rotate = true,
         },
     };
 

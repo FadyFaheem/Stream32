@@ -1,8 +1,12 @@
 /*
  * ESP32-2432S028R "Cheap Yellow Display" BSP.
  *
- * ILI9341 240x320 panel driven over SPI2 and rotated to 320x240 landscape,
+ * ST7789 240x320 panel driven over SPI2 and rotated to 320x240 landscape,
  * XPT2046 resistive touch on its own SPI3 bus, and a PWM backlight.
+ *
+ * The profile id still says ILI9341, which is what these boards are sold as.
+ * The panel in this batch is an ST7789, and its driver is what actually
+ * initialises the glass correctly.
  *
  * The display and touch controllers sit on separate buses on this board, so
  * neither needs bus sharing. The micro-SD slot shares nothing with either and
@@ -22,13 +26,13 @@
 #define BSP_TOUCH_CALIBRATION_COEFFICIENTS 6
 
 /* The panel's own orientation, which is also the space touch calibration is
-   stored in. Turning the deck to landscape is a rotation applied on top, not
-   a different base: this controller mis-addresses its memory when MADCTL is
-   asked to swap the axes, so rotation is done in software instead. */
+   stored in. Turning the deck to landscape is a rotation applied on top of
+   this rather than a different base, so a calibration outlives a change of
+   orientation. */
 #define BSP_LCD_H_RES (240)
 #define BSP_LCD_V_RES (320)
 
-/* ILI9341 on SPI2 ("HSPI" in the board's Arduino documentation). The panel's
+/* Panel on SPI2 ("HSPI" in the board's Arduino documentation). Its
    reset line is tied to the board reset, so there is no GPIO for it, and the
    driver falls back to a software reset.
 

@@ -55,7 +55,7 @@ including the USB and power requirements for each board.
 | --- | --- | --- | --- |
 | Waveshare `ESP32-S3-Touch-LCD-4` | 480x480, 4" | up to 5x5, 8 pages | **Rev 3.0 only** (not Rev 4 or the 4.3" board) |
 | Elecrow `CrowPanel Advanced 10.1"` ESP32-P4 | 1024x600, 10.1" | up to 40 keys/page, 8 pages | UART0 carries power, data, and flashing; USB 2.0 adds power and a much faster sync link |
-| `ESP32-2432S028R` "Cheap Yellow Display" | 320x240, 2.8" | up to 12 keys/page, 8 pages | **Single USB-C / ILI9341 revision only**; the two-connector board uses a different panel controller |
+| `ESP32-2432S028R` "Cheap Yellow Display" | 320x240, 2.8" | up to 12 keys/page, 8 pages | Sold with more than one panel controller; see the buying notes before picking a profile |
 
 Purchase links and buying tips are in [Buying a display](./boards/BUYING.md).
 Firmware, flashing, and the USB protocol are documented in

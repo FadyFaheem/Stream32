@@ -3,7 +3,7 @@
   "id": "esp32-2432s028r-ili9341",
   "name": "ESP32-2432S028R (Cheap Yellow Display)",
   "vendor": "Generic",
-  "hardwareRevision": "Single USB-C, ILI9341",
+  "hardwareRevision": "ILI9341",
   "chip": "ESP32",
   "protocolVersion": 1,
   "minimumDesktopVersion": "1.4.0",
@@ -26,9 +26,9 @@
     "maxPages": 8
   },
   "firmware": {
-    "version": "0.1.3",
+    "version": "0.1.4",
     "projectPath": "firmware",
-    "imageName": "esp32-2432s028r-ili9341-0.1.3.bin",
+    "imageName": "esp32-2432s028r-ili9341-0.1.4.bin",
     "offset": 0
   },
   "capabilities": [

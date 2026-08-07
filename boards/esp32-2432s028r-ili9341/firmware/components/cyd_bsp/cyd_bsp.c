@@ -40,6 +40,8 @@
 #define BSP_TOUCH_RAW_MIN 300
 #define BSP_TOUCH_RAW_MAX 3800
 #define BSP_TOUCH_ADC_MAX 4095
+/* Landscape, because that is the shape the deck grid is laid out for. */
+#define BSP_DEFAULT_ROTATION 90
 
 static const char *TAG = "cyd_bsp";
 
@@ -59,7 +61,7 @@ static uint16_t s_last_raw_y;
 static bool s_touch_down;
 static bool s_calibrated;
 static float s_calibration[BSP_TOUCH_CALIBRATION_COEFFICIENTS];
-static uint16_t s_rotation;
+static uint16_t s_rotation = BSP_DEFAULT_ROTATION;
 static lv_display_t *s_display;
 
 static esp_err_t backlight_init(void)
@@ -231,10 +233,11 @@ static int32_t map_fallback(uint16_t raw, int32_t span)
 static void apply_calibration(uint16_t raw_x, uint16_t raw_y, lv_point_t *point)
 {
     if (!s_calibrated) {
-        /* Axes swapped by hand here only because the unrotated orientation
-           is landscape and nothing better is known yet. */
-        point->x = map_fallback(raw_y, BSP_LCD_H_RES);
-        point->y = map_fallback(raw_x, BSP_LCD_V_RES);
+        /* The digitiser shares the panel's axes, so an uncalibrated board
+           maps straight through. Only good enough to hit the wizard's
+           markers, which is all it has to be. */
+        point->x = map_fallback(raw_x, BSP_LCD_H_RES);
+        point->y = map_fallback(raw_y, BSP_LCD_V_RES);
         return;
     }
 
@@ -321,14 +324,13 @@ lv_display_t *bsp_display_start(void)
         .vres = BSP_LCD_V_RES,
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
-        /* The only place rotation may be set: lvgl_port applies these to the
-           panel's MADCTL itself, so it costs nothing per frame but silently
-           overrides anything panel_init did. Turning the 240x320 portrait
-           glass into the 320x240 landscape the deck grid expects. Flip
-           mirror_x to rotate the image 180 degrees. */
+        /* Left at the panel's own orientation. Asking MADCTL to swap the
+           axes sent pixel writes outside the visible window on this
+           controller: commands still landed, so the screen simply froze on
+           whatever it last held. */
         .rotation = {
-            .swap_xy = true,
-            .mirror_x = true,
+            .swap_xy = false,
+            .mirror_x = false,
             .mirror_y = false,
         },
         .flags = {
@@ -337,6 +339,9 @@ lv_display_t *bsp_display_start(void)
             /* An SPI panel takes RGB565 big-endian; LVGL renders it little-
                endian. Without this every color comes out wrong. */
             .swap_bytes = true,
+            /* Costs one extra buffer and some CPU per flush, and in exchange
+               works whatever this batch's controller does with MADCTL. */
+            .sw_rotate = true,
         },
     };
 
@@ -349,6 +354,11 @@ lv_display_t *bsp_display_start(void)
     }
 
     s_display = display;
+
+    /* The deck grid is laid out for landscape, so that is where the panel
+       starts. deck_settings overrides this from NVS if the user picked
+       something else. */
+    bsp_display_set_rotation(BSP_DEFAULT_ROTATION);
 
     /* Make display failures visible even if touch initialization fails. */
     s_status = "display-backlight";

@@ -21,10 +21,12 @@
    which the array parameter below decays to a pointer for anyway. */
 #define BSP_TOUCH_CALIBRATION_COEFFICIENTS 6
 
-/* Rotated: the ILI9341 is a 240x320 portrait panel, and the deck is laid out
-   in landscape. */
-#define BSP_LCD_H_RES (320)
-#define BSP_LCD_V_RES (240)
+/* The panel's own orientation, which is also the space touch calibration is
+   stored in. Turning the deck to landscape is a rotation applied on top, not
+   a different base: this controller mis-addresses its memory when MADCTL is
+   asked to swap the axes, so rotation is done in software instead. */
+#define BSP_LCD_H_RES (240)
+#define BSP_LCD_V_RES (320)
 
 /* ILI9341 on SPI2 ("HSPI" in the board's Arduino documentation). The panel's
    reset line is tied to the board reset, so there is no GPIO for it, and the

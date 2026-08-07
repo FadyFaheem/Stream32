@@ -26,9 +26,9 @@
     "maxPages": 8
   },
   "firmware": {
-    "version": "0.1.7",
+    "version": "0.1.8",
     "projectPath": "firmware",
-    "imageName": "esp32-2432s028r-ili9341-0.1.7.bin",
+    "imageName": "esp32-2432s028r-ili9341-0.1.8.bin",
     "offset": 0
   },
   "capabilities": [

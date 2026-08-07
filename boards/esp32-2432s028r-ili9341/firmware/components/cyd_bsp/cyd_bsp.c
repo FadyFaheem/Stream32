@@ -61,10 +61,11 @@ static const char *s_status = "display-not-started";
 static char s_status_detail[64];
 static uint32_t s_brightness_percent = 100;
 static bool s_display_awake;
-/* ST7789 panels are normally wired so that INVON is the correct state.
+/* Off, confirmed on hardware: this panel renders the deck's dark theme
+   correctly without INVON, despite that being the usual ST7789 wiring.
    Overridable at runtime because the same model number ships with panels
    that disagree, and the board remembers the answer. */
-static bool s_invert = true;
+static bool s_invert;
 static uint16_t s_last_raw_x;
 static uint16_t s_last_raw_y;
 static bool s_touch_down;
@@ -130,7 +131,11 @@ static esp_err_t panel_init(void)
     };
     const esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = GPIO_NUM_NC,
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR,
+        /* RGB, not the BGR most of this board's community configs specify.
+           Confirmed on hardware: with BGR the amber title came out blue and
+           the dark background picked up an orange cast, which is what
+           swapping red and blue does to those two colours. */
+        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
     };
 

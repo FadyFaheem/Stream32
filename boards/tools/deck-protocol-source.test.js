@@ -191,11 +191,15 @@ test('screen geometry is read live, not from Kconfig', () => {
   );
 });
 
-test('no board sets panel rotation behind esp_lvgl_port', () => {
-  // lvgl_port_add_disp applies its own rotation config to the panel's MADCTL
-  // ("Apply rotation from initial display configuration"), so a swap_xy or
-  // mirror call in a BSP's own init is silently discarded. A board that set
-  // rotation there came up in portrait with no error to show for it.
+test('no board redoes a rotation the platform already applies', () => {
+  // Rotation is applied for us in two places, and duplicating either half
+  // fails silently. lvgl_port_add_disp writes the panel's MADCTL from its own
+  // rotation config, so a swap_xy or mirror call in a BSP's init is discarded
+  // and the board comes up in portrait with no error to show for it. LVGL's
+  // indev_pointer_proc then turns every pointer sample by the display
+  // rotation, using the same formula as deck_affine_rotate, so a BSP that
+  // turns its own samples as well rotates each touch twice and leaves a
+  // quarter of the screen unreachable.
   for (const board of BOARDS) {
     const components = path.join(ROOT, 'boards', board, 'firmware', 'components');
 
@@ -204,10 +208,17 @@ test('no board sets panel rotation behind esp_lvgl_port', () => {
       const sources = readdirSync(directory).filter((f) => f.endsWith('.c'));
 
       for (const file of sources) {
+        const source = read(path.join(directory, file));
+
         assert.doesNotMatch(
-          read(path.join(directory, file)),
+          source,
           /esp_lcd_panel_(swap_xy|mirror)\s*\(/,
           `${board}/${component}/${file} sets rotation that lvgl_port overwrites`,
+        );
+        assert.doesNotMatch(
+          source,
+          /deck_affine_rotate\s*\(/,
+          `${board}/${component}/${file} rotates touch that LVGL rotates again`,
         );
       }
     }

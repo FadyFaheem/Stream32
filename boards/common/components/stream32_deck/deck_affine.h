@@ -29,18 +29,20 @@ bool deck_affine_solve(
     float coefficients[DECK_CALIBRATION_COEFFICIENTS]
 );
 
-// Rotation helpers shared by the touch driver and the calibration wizard.
+// Rotation helpers for the calibration wizard.
 //
 // A calibration is stored against the panel's unrotated orientation so that
-// turning the display never invalidates it. The driver rotates each sampled
-// point on the way out, and the wizard unrotates its markers on the way in.
-// Keeping both directions here means they cannot drift apart, and lets a
-// host test prove they are inverses.
+// turning the display never invalidates it. LVGL rotates every pointer sample
+// by the display rotation on the way out, so the wizard has to unrotate its
+// markers on the way in to solve in the same space.
 //
 // base_w and base_h are the unrotated size. Degrees must be 0, 90, 180 or
 // 270; anything else is treated as 0.
 
-// Unrotated point to where it lands on a display turned by `degrees`.
+// Unrotated point to where it lands on a display turned by `degrees`. This is
+// LVGL's own indev_pointer_proc transform written out. No firmware calls it,
+// because LVGL has already applied it; it lives here so a host test can prove
+// the unrotate below is its exact inverse instead of letting the pair drift.
 void deck_affine_rotate(
     uint16_t degrees,
     int32_t base_w,

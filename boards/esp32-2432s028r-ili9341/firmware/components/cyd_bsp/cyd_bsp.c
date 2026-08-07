@@ -29,8 +29,6 @@
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 
-#include "deck_affine.h"
-
 #define BSP_LCD_SPI_HOST SPI2_HOST
 #define BSP_TOUCH_SPI_HOST SPI3_HOST
 #define BSP_LCD_PIXEL_CLOCK_HZ (40 * 1000 * 1000)
@@ -40,11 +38,12 @@
 #define BSP_BACKLIGHT_PWM_HZ 12000
 #define BSP_BACKLIGHT_DUTY_MAX 1023
 
-/* Pre-calibration fallback only: a straight full-range map with the axes
-   swapped for the landscape rotation. It is deliberately approximate. Its one
-   job is to make the calibration wizard's targets hittable on a board that
-   has never been calibrated; the solved affine transform replaces it as soon
-   as one is stored. */
+/* Pre-calibration fallback only: a straight linear map across the count
+   window a typical XPT2046 reports, in the panel's own unrotated orientation.
+   It is deliberately approximate, and on a panel whose range differs it
+   leaves part of the screen out of reach. That is survivable because the
+   wizard samples the digitiser directly rather than through this map, so a
+   board can always be calibrated out of it. */
 #define BSP_TOUCH_RAW_MIN 300
 #define BSP_TOUCH_RAW_MAX 3800
 #define BSP_TOUCH_ADC_MAX 4095
@@ -241,15 +240,15 @@ static int32_t map_fallback(uint16_t raw, int32_t span)
    scale, axis swap and mirroring together.
  *
  * Both paths produce a point in the unrotated BSP_LCD_H_RES x BSP_LCD_V_RES
- * space, which the caller then turns to match the current rotation. Storing
- * the calibration unrotated is what lets the display be turned afterwards
- * without asking for it again. */
+ * space, which is exactly what LVGL wants handed to it: it applies the
+ * display rotation to pointer samples itself. Storing the calibration
+ * unrotated is also what lets the display be turned afterwards without
+ * asking for it again. */
 static void apply_calibration(uint16_t raw_x, uint16_t raw_y, lv_point_t *point)
 {
     if (!s_calibrated) {
         /* The digitiser shares the panel's axes, so an uncalibrated board
-           maps straight through. Only good enough to hit the wizard's
-           markers, which is all it has to be. */
+           maps straight through. */
         point->x = map_fallback(raw_x, BSP_LCD_H_RES);
         point->y = map_fallback(raw_y, BSP_LCD_V_RES);
         return;
@@ -286,18 +285,11 @@ static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
     s_last_raw_y = raw_y[0];
     s_touch_down = true;
 
-    lv_point_t unrotated;
-
-    apply_calibration(raw_x[0], raw_y[0], &unrotated);
-    deck_affine_rotate(
-        s_rotation,
-        BSP_LCD_H_RES,
-        BSP_LCD_V_RES,
-        unrotated.x,
-        unrotated.y,
-        &data->point.x,
-        &data->point.y
-    );
+    /* Left unrotated on purpose. LVGL's indev_pointer_proc turns every
+       pointer sample by the display rotation itself, using the same formula
+       as deck_affine_rotate, so turning it here too rotated each touch twice
+       and pushed a quarter of the screen out of reach. */
+    apply_calibration(raw_x[0], raw_y[0], &data->point);
     data->state = LV_INDEV_STATE_PRESSED;
 }
 

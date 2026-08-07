@@ -382,6 +382,35 @@ test('UI owns overlays and detaches LVGL images before freeing pixels', () => {
   );
 });
 
+test('every overlay mutation holds the display lock, not just visible ones', () => {
+  // The lease sweep in deck_ui_poll frees these pixels from the task that
+  // reads one transport while a key update frees them from the task reading
+  // the other. Gating the lock on a rebuild left every page but the visible
+  // one racing, which is a double free rather than a torn repaint.
+  const signatures = [
+    'bool deck_ui_clear_overlays(void)',
+    'const char *deck_ui_apply_key_update(',
+    'const char *deck_ui_commit_image(',
+  ];
+
+  for (const signature of signatures) {
+    // None of the three is forward declared, so this lands on the definition.
+    const start = ui.indexOf(signature);
+    assert.ok(start > 0, `${signature} not found`);
+
+    const body = ui.slice(start, ui.indexOf('\n}', start));
+
+    assert.doesNotMatch(body, /rebuild && !bsp_display_lock/, signature);
+    assert.match(body, /if \(!bsp_display_lock\(1000\)\) \{/, signature);
+    // The lock has to be taken before the overlay is read, not just before
+    // the free, or the reuse path installs a pointer the sweep has released.
+    assert.ok(
+      body.indexOf('bsp_display_lock') < body.indexOf('s_overlays['),
+      `${signature} reads the overlay table before locking it`,
+    );
+  }
+});
+
 const BOARDS = [
   'waveshare-esp32-s3-touch-lcd-4-v3',
   'elecrow-crowpanel-advanced-10-1-esp32-p4',

@@ -132,9 +132,11 @@ test('firmware detaches visible LVGL images before freeing pixels', () => {
   );
   assert.match(
     commitBody,
-    /const bool rebuild = s_active && page == s_visible_page;[\s\S]*bsp_display_lock[\s\S]*lv_obj_clean[\s\S]*heap_caps_free\(overlay->image\)[\s\S]*overlay->image = owned_pixels;[\s\S]*build_page_locked/,
+    /bsp_display_lock[\s\S]*const bool rebuild = s_active && page == s_visible_page;[\s\S]*lv_obj_clean[\s\S]*heap_caps_free\(overlay->image\)[\s\S]*overlay->image = owned_pixels;[\s\S]*build_page_locked/,
   );
-  assert.match(clearBody, /if \(rebuild && !bsp_display_lock\(1000\)\) \{\s*return false;/);
+  // Unconditional: the lock owns the overlay table, so a page that is not on
+  // screen still has to hold it before touching s_overlays.
+  assert.match(clearBody, /if \(!bsp_display_lock\(1000\)\) \{\s*return false;/);
   assert.doesNotMatch(clearBody, /\bbuild_page\(/);
 });
 

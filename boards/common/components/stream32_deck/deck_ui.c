@@ -75,6 +75,8 @@ typedef struct {
 static const char *TAG = "deck_ui";
 static deck_notify_fn s_notify;
 static deck_page_t s_pages[DECK_MAX_PAGES];
+/* bsp_display_lock owns this table, from its first read to its last write:
+   two transports mean two tasks race to free overlay->image. */
 static deck_overlay_t s_overlays[DECK_MAX_PAGES][DECK_MAX_KEYS];
 static uint8_t s_page_count;
 static uint8_t s_visible_page;
@@ -223,11 +225,11 @@ static void reload_artwork(const deck_page_t *page, int key_px)
 
 bool deck_ui_clear_overlays(void)
 {
-    const bool rebuild = s_active && s_visible_page < s_page_count;
-
-    if (rebuild && !bsp_display_lock(1000)) {
+    if (!bsp_display_lock(1000)) {
         return false;
     }
+
+    const bool rebuild = s_active && s_visible_page < s_page_count;
 
     if (rebuild && s_deck_screen != NULL) {
         /* Detach every LVGL image descriptor before freeing its pixels. */
@@ -248,9 +250,9 @@ bool deck_ui_clear_overlays(void)
 
     if (rebuild) {
         build_page_locked(s_visible_page);
-        bsp_display_unlock();
     }
 
+    bsp_display_unlock();
     return true;
 }
 
@@ -670,6 +672,12 @@ const char *deck_ui_apply_key_update(
         memcpy(parsed.label, update->label, sizeof(parsed.label));
     }
 
+    /* Before the read: the reuse below borrows a pointer the sweep may free,
+       so locking the free alone would still install a dangling one. */
+    if (!bsp_display_lock(1000)) {
+        return "display-busy";
+    }
+
     deck_overlay_t *overlay = &s_overlays[page_index][key_index];
     const deck_overlay_t previous = *overlay;
     *need_image = parsed.image_crc != 0;
@@ -684,10 +692,6 @@ const char *deck_ui_apply_key_update(
     const bool changed = memcmp(&previous, &parsed, sizeof(parsed)) != 0;
     const bool rebuild =
         changed && s_active && page_index == s_visible_page;
-
-    if (rebuild && !bsp_display_lock(1000)) {
-        return "display-busy";
-    }
 
     if (rebuild && s_deck_screen != NULL) {
         /* The current descriptor may point at overlay->image. */
@@ -704,9 +708,9 @@ const char *deck_ui_apply_key_update(
 
     if (rebuild) {
         build_page_locked((uint8_t)page_index);
-        bsp_display_unlock();
     }
 
+    bsp_display_unlock();
     return NULL;
 }
 
@@ -768,13 +772,13 @@ const char *deck_ui_commit_image(
 
     memcpy(owned_pixels, pixels, size);
 
-    deck_overlay_t *overlay = &s_overlays[page][index];
-    const bool rebuild = s_active && page == s_visible_page;
-
-    if (rebuild && !bsp_display_lock(1000)) {
+    if (!bsp_display_lock(1000)) {
         heap_caps_free(owned_pixels);
         return "display-busy";
     }
+
+    deck_overlay_t *overlay = &s_overlays[page][index];
+    const bool rebuild = s_active && page == s_visible_page;
 
     if (rebuild && s_deck_screen != NULL) {
         /* Stop LVGL from reading the old image before replacing it. */
@@ -790,9 +794,9 @@ const char *deck_ui_commit_image(
 
     if (rebuild) {
         build_page_locked(page);
-        bsp_display_unlock();
     }
 
+    bsp_display_unlock();
     return NULL;
 }
 

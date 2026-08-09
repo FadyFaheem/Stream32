@@ -51,6 +51,11 @@ esp_err_t deck_settings_set_invert(bool invert);
 bool deck_settings_get_rotation(uint16_t *degrees);
 esp_err_t deck_settings_set_rotation(uint16_t degrees);
 
+// Mirroring of the panel's own axes, which rotation cannot express. Both live
+// in one byte because they are always read and written together.
+bool deck_settings_get_flip(bool *flip_x, bool *flip_y);
+esp_err_t deck_settings_set_flip(bool flip_x, bool flip_y);
+
 // Artwork size as a percentage of the key tile, from DECK_ICON_PERCENT_MIN to
 // 100. Unlike the others this is not a BSP setting, so deck_ui reads it at
 // startup rather than deck_settings_apply pushing it anywhere.

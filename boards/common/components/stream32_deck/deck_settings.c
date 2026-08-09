@@ -10,6 +10,7 @@
    the contract is declared rather than included. */
 extern esp_err_t bsp_display_set_invert(bool invert);
 extern esp_err_t bsp_display_set_rotation(uint16_t degrees);
+extern esp_err_t bsp_display_set_flip(bool flip_x, bool flip_y);
 extern esp_err_t bsp_touch_set_calibration(
     const float coefficients[DECK_CALIBRATION_COEFFICIENTS]
 );
@@ -18,6 +19,9 @@ extern esp_err_t bsp_touch_set_calibration(
 #define DECK_SETTINGS_KEY_CALIBRATION "touchcal"
 #define DECK_SETTINGS_KEY_INVERT "invert"
 #define DECK_SETTINGS_KEY_ROTATION "rotation"
+#define DECK_SETTINGS_KEY_FLIP "flip"
+#define DECK_SETTINGS_FLIP_X 0x01
+#define DECK_SETTINGS_FLIP_Y 0x02
 #define DECK_SETTINGS_KEY_ICON_PERCENT "iconpct"
 #define DECK_SETTINGS_KEY_LABEL_LINES "lbllines"
 
@@ -59,6 +63,8 @@ void deck_settings_apply(void)
 {
     float coefficients[DECK_CALIBRATION_COEFFICIENTS];
     bool invert;
+    bool flip_x;
+    bool flip_y;
     uint16_t degrees;
 
     /* Rotation first: it changes the screen size everything else is laid out
@@ -66,6 +72,11 @@ void deck_settings_apply(void)
        does not care which way round the panel ends up. */
     if (deck_settings_get_rotation(&degrees)) {
         bsp_display_set_rotation(degrees);
+    }
+
+    /* After rotation, which rewrites the mirror bits this sits on top of. */
+    if (deck_settings_get_flip(&flip_x, &flip_y)) {
+        bsp_display_set_flip(flip_x, flip_y);
     }
 
     if (deck_settings_get_calibration(coefficients)) {
@@ -218,6 +229,60 @@ esp_err_t deck_settings_set_rotation(uint16_t degrees)
     }
 
     error = nvs_set_u16(handle, DECK_SETTINGS_KEY_ROTATION, degrees);
+
+    if (error == ESP_OK) {
+        error = nvs_commit(handle);
+    }
+
+    nvs_close(handle);
+    return error;
+}
+
+bool deck_settings_get_flip(bool *flip_x, bool *flip_y)
+{
+    if (!s_mounted || flip_x == NULL || flip_y == NULL) {
+        return false;
+    }
+
+    nvs_handle_t handle;
+
+    if (nvs_open(DECK_SETTINGS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
+        return false;
+    }
+
+    uint8_t stored = 0;
+    const esp_err_t error = nvs_get_u8(handle, DECK_SETTINGS_KEY_FLIP, &stored);
+
+    nvs_close(handle);
+
+    if (error != ESP_OK) {
+        return false;
+    }
+
+    *flip_x = (stored & DECK_SETTINGS_FLIP_X) != 0;
+    *flip_y = (stored & DECK_SETTINGS_FLIP_Y) != 0;
+    return true;
+}
+
+esp_err_t deck_settings_set_flip(bool flip_x, bool flip_y)
+{
+    if (!s_mounted) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    nvs_handle_t handle;
+    esp_err_t error = nvs_open(DECK_SETTINGS_NAMESPACE, NVS_READWRITE, &handle);
+
+    if (error != ESP_OK) {
+        return error;
+    }
+
+    error = nvs_set_u8(
+        handle,
+        DECK_SETTINGS_KEY_FLIP,
+        (uint8_t)((flip_x ? DECK_SETTINGS_FLIP_X : 0) |
+                  (flip_y ? DECK_SETTINGS_FLIP_Y : 0))
+    );
 
     if (error == ESP_OK) {
         error = nvs_commit(handle);

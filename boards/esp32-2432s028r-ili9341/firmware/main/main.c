@@ -84,8 +84,10 @@ static void send_hello(void)
 {
     uint8_t mac[6];
     /* Sized for the worst case the compiler has to assume: esp_app_desc_t
-       carries a 32-byte version, and the feature list grows over time. */
-    char message[384];
+       carries a 32-byte version, and the feature list grows over time. A
+       truncated hello is still a well-formed line, so it would fail as a
+       parse error rather than as anything that points back here. */
+    char message[448];
     const esp_app_desc_t *app = esp_app_get_description();
 
     /* Reads the efuse MAC; the radio is never started. */
@@ -97,8 +99,9 @@ static void send_hello(void)
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
         "\"features\":[\"display-control\",\"display-brightness\","
         "\"display-blank\",\"display-invert\",\"display-rotation\","
-        "\"display-icon-size\",\"display-label-lines\",\"key-update\","
-        "\"image-rle\",\"clean-mode\",\"touch-calibration\"]}",
+        "\"display-flip\",\"display-icon-size\",\"display-label-lines\","
+        "\"key-update\",\"image-rle\",\"clean-mode\","
+        "\"touch-calibration\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
         app->version,
@@ -163,15 +166,21 @@ static void handle_host_message(const char *line, size_t length)
 
             /* Every one of these is stored on the board, so the desktop has
                to be told where its controls actually sit. */
-            char state[128];
+            char state[192];
+            bool flip_x = false;
+            bool flip_y = false;
 
+            bsp_display_flip(&flip_x, &flip_y);
             snprintf(
                 state,
                 sizeof(state),
                 "{\"type\":\"display\",\"invert\":%s,\"rotation\":%u,"
+                "\"flipX\":%s,\"flipY\":%s,"
                 "\"iconSize\":%u,\"labelLines\":%u}",
                 bsp_display_invert() ? "true" : "false",
                 (unsigned)bsp_display_rotation(),
+                flip_x ? "true" : "false",
+                flip_y ? "true" : "false",
                 (unsigned)deck_layout_icon_percent(),
                 (unsigned)deck_layout_label_lines()
             );

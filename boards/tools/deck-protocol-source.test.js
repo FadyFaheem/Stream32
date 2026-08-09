@@ -304,12 +304,17 @@ test('settings and artwork sit outside the region a flash rewrites', () => {
 test('no board redoes a rotation the platform already applies', () => {
   // Rotation is applied for us in two places, and duplicating either half
   // fails silently. lvgl_port_add_disp writes the panel's MADCTL from its own
-  // rotation config, so a swap_xy or mirror call in a BSP's init is discarded
-  // and the board comes up in portrait with no error to show for it. LVGL's
+  // rotation config, so a swap_xy call in a BSP's init is discarded and the
+  // board comes up in portrait with no error to show for it. LVGL's
   // indev_pointer_proc then turns every pointer sample by the display
   // rotation, using the same formula as deck_affine_rotate, so a BSP that
   // turns its own samples as well rotates each touch twice and leaves a
   // quarter of the screen unreachable.
+  //
+  // Mirroring is the one bit lvgl_port leaves no way to reach, since its
+  // rotation config is fixed when the display is registered, so the user's
+  // flip is allowed to write MADCTL directly. apply_mirror below is what
+  // keeps that from being the same silent overwrite.
   for (const board of BOARDS) {
     const components = path.join(ROOT, 'boards', board, 'firmware', 'components');
 
@@ -322,7 +327,7 @@ test('no board redoes a rotation the platform already applies', () => {
 
         assert.doesNotMatch(
           source,
-          /esp_lcd_panel_(swap_xy|mirror)\s*\(/,
+          /esp_lcd_panel_swap_xy\s*\(/,
           `${board}/${component}/${file} sets rotation that lvgl_port overwrites`,
         );
         assert.doesNotMatch(
@@ -333,6 +338,67 @@ test('no board redoes a rotation the platform already applies', () => {
       }
     }
   }
+});
+
+test('the CYD flip survives a rotation and takes touch with it', () => {
+  const bsp = read(
+    path.join(
+      ROOT,
+      'boards',
+      'esp32-2432s028r-ili9341',
+      'firmware',
+      'components',
+      'cyd_bsp',
+      'cyd_bsp.c',
+    ),
+  );
+  const setRotation = bsp.slice(
+    bsp.indexOf('esp_err_t bsp_display_set_rotation('),
+    bsp.indexOf('uint16_t bsp_display_rotation(void)'),
+  );
+
+  // The mirror bits esp_lvgl_port 2.5.0 writes for each rotation, given this
+  // display's all-false rotation config. Getting these backwards turns the
+  // default landscape picture upside down for everyone, flip or no flip.
+  assert.match(
+    bsp,
+    /rotation_mirrors_x = s_rotation == 180 \|\| s_rotation == 270/,
+  );
+  assert.match(
+    bsp,
+    /rotation_mirrors_y = s_rotation == 90 \|\| s_rotation == 180/,
+  );
+
+  // lv_display_set_rotation rewrites MADCTL from that config, so the flip has
+  // to be re-sent afterwards, and after s_rotation is what apply_mirror reads.
+  assert.ok(
+    setRotation.indexOf('lv_display_set_rotation') <
+      setRotation.indexOf('s_rotation = degrees') &&
+      setRotation.indexOf('s_rotation = degrees') <
+        setRotation.indexOf('apply_mirror()'),
+    'set_rotation must re-apply the mirror after storing the new rotation',
+  );
+
+  // MADCTL turns the glass and not the digitiser. Mirroring the sample in the
+  // unrotated space is what keeps one calibration valid for all eight
+  // orientations, so it belongs after the transform, not inside one branch.
+  const calibration = bsp.slice(
+    bsp.indexOf('static void apply_calibration('),
+    bsp.indexOf('static void touch_read_cb('),
+  );
+
+  assert.match(
+    calibration,
+    /if \(s_flip_x\) \{\s*point->x = BSP_LCD_H_RES - 1 - point->x;/,
+  );
+  assert.match(
+    calibration,
+    /if \(s_flip_y\) \{\s*point->y = BSP_LCD_V_RES - 1 - point->y;/,
+  );
+  assert.ok(
+    calibration.indexOf('s_calibration[0]') < calibration.indexOf('s_flip_x'),
+    'the flip must be applied to the calibrated point, not before it',
+  );
 });
 
 test('every board answers the calibration and invert BSP contract', () => {
@@ -352,6 +418,11 @@ test('every board answers the calibration and invert BSP contract', () => {
     assert.match(bsp, /bool bsp_display_invert\(void\)/);
     assert.match(bsp, /esp_err_t bsp_display_set_rotation\(uint16_t degrees\)/);
     assert.match(bsp, /uint16_t bsp_display_rotation\(void\)/);
+    assert.match(
+      bsp,
+      /esp_err_t bsp_display_set_flip\(bool flip_x, bool flip_y\)/,
+    );
+    assert.match(bsp, /void bsp_display_flip\(bool \*flip_x, bool \*flip_y\)/);
     assert.match(bsp, /bool bsp_touch_read_raw\(/);
     assert.match(bsp, /esp_err_t bsp_touch_set_calibration\(/);
   }

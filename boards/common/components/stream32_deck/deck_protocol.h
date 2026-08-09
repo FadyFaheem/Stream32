@@ -52,6 +52,9 @@ typedef struct {
     bool invert;
     bool has_rotation;
     uint16_t rotation;
+    bool has_flip;
+    bool flip_x;
+    bool flip_y;
     bool has_icon_percent;
     uint8_t icon_percent;
     bool has_label_lines;

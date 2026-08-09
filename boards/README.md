@@ -194,6 +194,7 @@ Desktop messages:
 {"type":"page","index":1}
 {"type":"display","awake":false,"idleTimeoutSeconds":600}
 {"type":"display","awake":true,"idleTimeoutSeconds":600,"invert":true,"rotation":90}
+{"type":"display","awake":true,"idleTimeoutSeconds":600,"flipX":true,"flipY":false}
 {"type":"display","blankNow":true}
 {"type":"calibrate","action":"start"}
 ```
@@ -212,7 +213,7 @@ Firmware messages:
 {"type":"press","page":0,"index":4,"phase":"down"}
 {"type":"calibrate-ack","action":"start"}
 {"type":"calibrate","state":"done"}
-{"type":"display","invert":true,"rotation":90}
+{"type":"display","invert":true,"rotation":90,"flipX":false,"flipY":false}
 ```
 
 The desktop does not mark a port connected until the hello response has the
@@ -290,6 +291,23 @@ panel's unrotated orientation and turned on the way out.
 
 Rotation needs `esp_lcd_panel_swap_xy`, which the RGB and MIPI-DSI panel
 drivers do not implement, so only the Cheap Yellow Display offers it today.
+
+The optional `flipX` and `flipY` fields on `display` mirror the panel's own x
+and y axes for firmware advertising `display-flip`. They are one control and
+travel together. Rotation reaches four of the eight ways a panel can be
+addressed, and these reach the other four, which is what a board wired to
+show everything mirrored needs; the two together cannot fail to get a picture
+the right way up. Nothing on the grid moves, so unlike rotation no artwork is
+re-sent. Touch is mirrored to match in the same unrotated space the
+calibration is stored in, so one calibration stays valid for all eight.
+
+Mirroring is the one thing `esp_lvgl_port` gives no way to change after a
+display is registered: it rewrites MADCTL from the rotation config it was
+handed, so the flip is written straight to the panel and re-applied after
+every rotation change. Only the Cheap Yellow Display offers it. The CrowPanel
+driver does implement mirroring, but its GT911 hands LVGL screen coordinates
+the BSP never transforms, so mirroring the glass alone would leave every touch
+pointing at the key opposite the finger.
 
 The optional `invert` field on `display` flips the panel's colour inversion
 for firmware advertising `display-invert`. The same board model ships with

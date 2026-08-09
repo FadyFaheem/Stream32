@@ -973,6 +973,23 @@ class DeviceController {
     this.deckRuntime?.applyDisplayState(deviceId, { invert });
   }
 
+  // Mirroring costs no re-layout: the grid keeps its shape, so unlike rotation
+  // the board keeps the artwork it already has.
+  async setDisplayFlip(deviceId, flipX, flipY) {
+    const session = this.deckRuntime?.sessionFor(deviceId);
+
+    if (!session) {
+      throw new Error('The deck is not connected.');
+    }
+
+    if (session.hello?.features?.includes('display-flip') !== true) {
+      throw new Error('Mirroring the screen requires updated board firmware.');
+    }
+
+    await this.applyDisplayPolicyToSession(session, { flipX, flipY });
+    this.deckRuntime?.applyDisplayState(deviceId, { flipX, flipY });
+  }
+
   // Rotation, icon size and label lines all re-flow the board's grid, so it
   // drops every stored image and comes back with a different keyPx. Nothing
   // on the wire announces that, so the deck has to be laid out again from

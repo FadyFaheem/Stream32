@@ -28,6 +28,7 @@ extern esp_err_t bsp_display_set_invert(bool invert);
 extern bool bsp_display_invert(void);
 extern esp_err_t bsp_display_set_rotation(uint16_t degrees);
 extern uint16_t bsp_display_rotation(void);
+extern esp_err_t bsp_display_set_flip(bool flip_x, bool flip_y);
 extern esp_err_t bsp_touch_set_calibration(
     const float coefficients[DECK_CALIBRATION_COEFFICIENTS]
 );
@@ -896,51 +897,48 @@ const char *deck_ui_blank_display(void)
 
 /* Every display setting reports a refusal the same way: a board without the
    hardware says so distinctly from one that tried and failed, because the
-   first means "hide the control" and the second means "something broke". */
-static const char *setting_error(
-    esp_err_t error,
-    const char *unsupported,
-    const char *failed
-)
+   first means "hide the control" and the second means "something broke". The
+   one buffer is safe: dispatch is serialized and the code is sent at once. */
+static char s_setting_error[40];
+
+static bool setting_failed(esp_err_t error, const char *setting)
 {
-    if (error == ESP_ERR_NOT_SUPPORTED) {
-        return unsupported;
+    if (error == ESP_OK) {
+        return false;
     }
 
-    return error == ESP_OK ? NULL : failed;
+    snprintf(
+        s_setting_error,
+        sizeof(s_setting_error),
+        "display-%s-%s",
+        setting,
+        error == ESP_ERR_NOT_SUPPORTED ? "unsupported" : "failed"
+    );
+    return true;
 }
 
 const char *deck_ui_apply_display(const deck_protocol_display_t *display)
 {
-    const char *error;
     /* Rotation, icon size and label lines all change the size artwork is
        drawn at, so they share one re-flow below. */
     bool restyled = false;
 
     if (display->has_rotation && display->rotation != bsp_display_rotation()) {
-        error = setting_error(
+        if (setting_failed(
             bsp_display_set_rotation(display->rotation),
-            "display-rotation-unsupported",
-            "display-rotation-failed"
-        );
-
-        if (error != NULL) {
-            return error;
+            "rotation"
+        )) {
+            return s_setting_error;
         }
 
         deck_settings_set_rotation(display->rotation);
         restyled = true;
     }
 
-    if (display->has_icon_percent &&
-        deck_layout_set_icon_percent(display->icon_percent)) {
-        restyled = true;
-    }
-
-    if (display->has_label_lines &&
-        deck_layout_set_label_lines(display->label_lines)) {
-        restyled = true;
-    }
+    restyled |= display->has_icon_percent &&
+        deck_layout_set_icon_percent(display->icon_percent);
+    restyled |= display->has_label_lines &&
+        deck_layout_set_label_lines(display->label_lines);
 
     if (restyled) {
         /* Every stored image is the wrong size now and can never be read
@@ -958,41 +956,43 @@ const char *deck_ui_apply_display(const deck_protocol_display_t *display)
     }
 
     if (display->has_invert && display->invert != bsp_display_invert()) {
-        error = setting_error(
+        if (setting_failed(
             bsp_display_set_invert(display->invert),
-            "display-invert-unsupported",
-            "display-invert-failed"
-        );
-
-        if (error != NULL) {
-            return error;
+            "invert"
+        )) {
+            return s_setting_error;
         }
 
         deck_settings_set_invert(display->invert);
     }
 
-    if (display->has_brightness) {
-        error = setting_error(
-            bsp_display_set_brightness(display->brightness_percent),
-            "display-brightness-unsupported",
-            "display-brightness-failed"
-        );
-
-        if (error != NULL) {
-            return error;
+    /* No re-flow: mirroring turns the glass without moving anything on it. */
+    if (display->has_flip) {
+        if (setting_failed(
+            bsp_display_set_flip(display->flip_x, display->flip_y),
+            "flip"
+        )) {
+            return s_setting_error;
         }
+
+        deck_settings_set_flip(display->flip_x, display->flip_y);
+    }
+
+    if (display->has_brightness && setting_failed(
+        bsp_display_set_brightness(display->brightness_percent),
+        "brightness"
+    )) {
+        return s_setting_error;
     }
 
     s_idle_timeout_ms = display->idle_timeout_seconds * 1000;
     s_forced_asleep = !display->awake;
     s_consume_touch = false;
 
-    if (s_forced_asleep) {
-        set_panel_awake(false);
-    } else {
+    if (display->awake) {
         s_last_activity_ms = now_ms();
-        set_panel_awake(true);
     }
 
+    set_panel_awake(display->awake);
     return NULL;
 }

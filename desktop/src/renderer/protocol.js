@@ -550,6 +550,8 @@ function encodeDisplayMessage({
   brightness,
   invert,
   rotation,
+  flipX,
+  flipY,
   iconSize,
   labelLines,
 }) {
@@ -589,6 +591,17 @@ function encodeDisplayMessage({
     }
 
     message.rotation = rotation;
+  }
+
+  // One control, so the board rejects half of it rather than guessing at the
+  // axis the message left out.
+  if (flipX !== undefined || flipY !== undefined) {
+    if (typeof flipX !== 'boolean' || typeof flipY !== 'boolean') {
+      throw new TypeError('Display flip needs a boolean for both axes.');
+    }
+
+    message.flipX = flipX;
+    message.flipY = flipY;
   }
 
   if (iconSize !== undefined) {
@@ -632,6 +645,16 @@ function validateDisplayStateMessage(message) {
     }
 
     state.rotation = message.rotation;
+  }
+
+  for (const axis of ['flipX', 'flipY']) {
+    if (message[axis] !== undefined) {
+      if (typeof message[axis] !== 'boolean') {
+        throw new TypeError(`Display ${axis} must be a boolean.`);
+      }
+
+      state[axis] = message[axis];
+    }
   }
 
   if (message.iconSize !== undefined) {

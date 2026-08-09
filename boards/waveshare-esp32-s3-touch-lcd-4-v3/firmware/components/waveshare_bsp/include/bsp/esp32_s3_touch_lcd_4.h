@@ -141,9 +141,12 @@ esp_err_t bsp_display_set_awake(bool awake);
 esp_err_t bsp_display_set_brightness(uint32_t brightness_percent);
 esp_err_t bsp_display_set_invert(bool invert);
 bool bsp_display_invert(void);
-/* Square RGB panel with no swap_xy in its driver: rotation declines. */
+/* Square RGB panel with no swap_xy in its driver: rotation declines, and an
+   RGB panel has no MADCTL to mirror either. */
 esp_err_t bsp_display_set_rotation(uint16_t degrees);
 uint16_t bsp_display_rotation(void);
+esp_err_t bsp_display_set_flip(bool flip_x, bool flip_y);
+void bsp_display_flip(bool *flip_x, bool *flip_y);
 /* GT911 reports screen coordinates directly, so these decline. */
 bool bsp_touch_read_raw(uint16_t *raw_x, uint16_t *raw_y);
 esp_err_t bsp_touch_set_calibration(const float *coefficients);

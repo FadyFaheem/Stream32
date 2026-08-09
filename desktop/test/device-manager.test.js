@@ -180,6 +180,7 @@ function managerFixture() {
     calibrated: [],
     invertedTo: [],
     rotatedTo: [],
+    flippedTo: [],
     iconSizedTo: [],
     labelLinedTo: [],
   };
@@ -190,6 +191,8 @@ function managerFixture() {
   const syncProgress = new Map();
   const inverted = new Map();
   const rotation = new Map();
+  const flipX = new Map();
+  const flipY = new Map();
   const iconSize = new Map();
   const labelLines = new Map();
 
@@ -220,6 +223,8 @@ function managerFixture() {
       calibrating,
       inverted,
       rotation,
+      flipX,
+      flipY,
       iconSize,
       labelLines,
       setCalibrating: async (deviceId, active) => {
@@ -258,6 +263,11 @@ function managerFixture() {
     setDisplayRotation: async (deviceId, degrees) => {
       calls.rotatedTo.push([deviceId, degrees]);
       rotation.set(deviceId, degrees);
+    },
+    setDisplayFlip: async (deviceId, x, y) => {
+      calls.flippedTo.push([deviceId, x, y]);
+      flipX.set(deviceId, x);
+      flipY.set(deviceId, y);
     },
     setDisplayIconSize: async (deviceId, percent) => {
       calls.iconSizedTo.push([deviceId, percent]);
@@ -467,6 +477,33 @@ test('icon size appears only on firmware that can inset artwork', async () => {
   await fire(select, 'change');
   assert.deepEqual(calls.iconSizedTo, [['bbbbbbbbbbbb', 70]]);
   assert.equal(picker().value, '70');
+});
+
+test('mirroring appears only on boards that can flip an axis', async () => {
+  const { manager, calls } = managerFixture();
+  const sessions = manager.deck.runtime.sessions;
+
+  manager.render();
+  assert.equal(findByClass(manager.list, 'device-flip'), null);
+
+  sessions.get('bbbbbbbbbbbb').hello.features = ['display-flip'];
+  manager.deck.runtime.flipY.set('bbbbbbbbbbbb', true);
+  manager.render();
+
+  const axis = (index) =>
+    findByClass(manager.list, 'device-flip').children[index].children[0];
+
+  // The board owns both values, so the checkboxes show what it reported.
+  assert.equal(axis(0).checked, false);
+  assert.equal(axis(1).checked, true);
+
+  // Either box sends the pair, because the board takes them as one control.
+  const x = axis(0);
+  x.checked = true;
+  await fire(x, 'change');
+  assert.deepEqual(calls.flippedTo, [['bbbbbbbbbbbb', true, true]]);
+  assert.equal(axis(0).checked, true);
+  assert.equal(axis(1).checked, true);
 });
 
 test('screen rotation appears only on boards that can turn the panel', async () => {

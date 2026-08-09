@@ -71,6 +71,12 @@ static bool s_touch_down;
 static bool s_calibrated;
 static float s_calibration[BSP_TOUCH_CALIBRATION_COEFFICIENTS];
 static uint16_t s_rotation = BSP_DEFAULT_ROTATION;
+/* Mirroring of the panel's own axes, on top of whatever rotation is set.
+   Off by default and remembered in NVS, because the same model number ships
+   with panels wired so that a rotation alone can never get the picture the
+   right way round. */
+static bool s_flip_x;
+static bool s_flip_y;
 static lv_display_t *s_display;
 
 static esp_err_t backlight_init(void)
@@ -251,16 +257,28 @@ static void apply_calibration(uint16_t raw_x, uint16_t raw_y, lv_point_t *point)
            maps straight through. */
         point->x = map_fallback(raw_x, BSP_LCD_H_RES);
         point->y = map_fallback(raw_y, BSP_LCD_V_RES);
-        return;
+    } else {
+        const float x = s_calibration[0] * raw_x + s_calibration[1] * raw_y +
+            s_calibration[2];
+        const float y = s_calibration[3] * raw_x + s_calibration[4] * raw_y +
+            s_calibration[5];
+
+        point->x = clamp((int32_t)x, BSP_LCD_H_RES);
+        point->y = clamp((int32_t)y, BSP_LCD_V_RES);
     }
 
-    const float x = s_calibration[0] * raw_x + s_calibration[1] * raw_y +
-        s_calibration[2];
-    const float y = s_calibration[3] * raw_x + s_calibration[4] * raw_y +
-        s_calibration[5];
+    /* A MADCTL mirror turns the glass and nothing else, so the digitiser has
+       to be turned to match. Mirroring here, in the unrotated space, keeps
+       one saved calibration good for every rotation and flip: the panel's x
+       axis is the one MADCTL's MX bit mirrors whichever way the screen is
+       turned, which is also why the calibration survives a rotation. */
+    if (s_flip_x) {
+        point->x = BSP_LCD_H_RES - 1 - point->x;
+    }
 
-    point->x = clamp((int32_t)x, BSP_LCD_H_RES);
-    point->y = clamp((int32_t)y, BSP_LCD_V_RES);
+    if (s_flip_y) {
+        point->y = BSP_LCD_V_RES - 1 - point->y;
+    }
 }
 
 static void touch_read_cb(lv_indev_t *indev, lv_indev_data_t *data)
@@ -520,6 +538,23 @@ bool bsp_display_invert(void)
     return s_invert;
 }
 
+/* esp_lvgl_port rewrites MADCTL from its own rotation config every time the
+   display rotation changes, so a mirror set behind its back is discarded on
+   the next turn. These are the mirror bits it writes for each rotation given
+   this display's all-false rotation config; the user's flip is an XOR on top,
+   re-sent after every rotation change. */
+static esp_err_t apply_mirror(void)
+{
+    const bool rotation_mirrors_x = s_rotation == 180 || s_rotation == 270;
+    const bool rotation_mirrors_y = s_rotation == 90 || s_rotation == 180;
+
+    return esp_lcd_panel_mirror(
+        s_panel,
+        rotation_mirrors_x != s_flip_x,
+        rotation_mirrors_y != s_flip_y
+    );
+}
+
 esp_err_t bsp_display_set_rotation(uint16_t degrees)
 {
     static const lv_display_rotation_t ROTATIONS[] = {
@@ -542,12 +577,44 @@ esp_err_t bsp_display_set_rotation(uint16_t degrees)
        call turns both the framebuffer and the glass. */
     lvgl_port_lock(0);
     lv_display_set_rotation(s_display, ROTATIONS[degrees / 90]);
-    lvgl_port_unlock();
     s_rotation = degrees;
-    return ESP_OK;
+
+    const esp_err_t error = apply_mirror();
+
+    lvgl_port_unlock();
+    return error;
 }
 
 uint16_t bsp_display_rotation(void)
 {
     return s_rotation;
+}
+
+esp_err_t bsp_display_set_flip(bool flip_x, bool flip_y)
+{
+    if (s_panel == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    /* MADCTL decides where a flush lands, so it is changed with the LVGL task
+       held rather than between two halves of one. */
+    lvgl_port_lock(0);
+    s_flip_x = flip_x;
+    s_flip_y = flip_y;
+
+    const esp_err_t error = apply_mirror();
+
+    lvgl_port_unlock();
+    return error;
+}
+
+void bsp_display_flip(bool *flip_x, bool *flip_y)
+{
+    if (flip_x != NULL) {
+        *flip_x = s_flip_x;
+    }
+
+    if (flip_y != NULL) {
+        *flip_y = s_flip_y;
+    }
 }

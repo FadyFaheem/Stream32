@@ -447,6 +447,27 @@ uint16_t bsp_display_rotation(void)
     return 0;
 }
 
+/* The driver does override mirror, but this board's GT911 hands LVGL screen
+   coordinates the BSP never transforms, so mirroring the glass alone would
+   leave every touch pointing at the key opposite the one under the finger. */
+esp_err_t bsp_display_set_flip(bool flip_x, bool flip_y)
+{
+    (void)flip_x;
+    (void)flip_y;
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+void bsp_display_flip(bool *flip_x, bool *flip_y)
+{
+    if (flip_x != NULL) {
+        *flip_x = false;
+    }
+
+    if (flip_y != NULL) {
+        *flip_y = false;
+    }
+}
+
 /* GT911 is a capacitive controller that reports screen coordinates directly,
    so there is nothing to calibrate and no raw sample to expose. */
 bool bsp_touch_read_raw(uint16_t *raw_x, uint16_t *raw_y)

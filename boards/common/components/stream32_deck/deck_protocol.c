@@ -861,6 +861,8 @@ static const char *handle_display(const cJSON *message)
     const cJSON *brightness = json_field(message, "brightness");
     const cJSON *invert = json_field(message, "invert");
     const cJSON *rotation = json_field(message, "rotation");
+    const cJSON *flip_x = json_field(message, "flipX");
+    const cJSON *flip_y = json_field(message, "flipY");
     const cJSON *icon_size = json_field(message, "iconSize");
     const cJSON *label_lines = json_field(message, "labelLines");
     int idle_timeout;
@@ -870,19 +872,21 @@ static const char *handle_display(const cJSON *message)
     int label_line_count = 0;
 
     if (blank_now != NULL) {
-        if (!cJSON_IsTrue(blank_now) || awake != NULL ||
-            idle_seconds != NULL || brightness != NULL || invert != NULL ||
-            rotation != NULL || icon_size != NULL || label_lines != NULL) {
+        /* blankNow travels alone. Counting the message's members says so once,
+           where naming every other field has to be remembered as they grow. */
+        if (!cJSON_IsTrue(blank_now) || cJSON_GetArraySize(message) != 2) {
             return "display-invalid";
         }
 
         return deck_ui_blank_display();
     }
 
-    /* Absent leaves the board's stored value alone; present and out of range
-       is a bad message. rotation_degrees stays 0 when absent, so the quarter
-       turn check below passes without a special case. */
+    /* Absent leaves the stored value alone; present and out of range is a bad
+       message. rotation_degrees stays 0 when absent so the quarter turn check
+       passes, and half a flip fails because the missing half is not a bool. */
     if ((invert != NULL && !cJSON_IsBool(invert)) ||
+        ((flip_x != NULL || flip_y != NULL) &&
+         (!cJSON_IsBool(flip_x) || !cJSON_IsBool(flip_y))) ||
         !optional_integer(rotation, 0, 270, &rotation_degrees) ||
         rotation_degrees % 90 != 0 ||
         !optional_integer(
@@ -915,6 +919,9 @@ static const char *handle_display(const cJSON *message)
         .invert = cJSON_IsTrue(invert),
         .has_rotation = rotation != NULL,
         .rotation = (uint16_t)rotation_degrees,
+        .has_flip = flip_x != NULL,
+        .flip_x = cJSON_IsTrue(flip_x),
+        .flip_y = cJSON_IsTrue(flip_y),
         .has_icon_percent = icon_size != NULL,
         .icon_percent = (uint8_t)icon_percent,
         .has_label_lines = label_lines != NULL,

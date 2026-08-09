@@ -36,6 +36,8 @@ function deviceInventory({
   calibrating,
   inverted,
   rotation,
+  flipX,
+  flipY,
   iconSize,
   labelLines,
 } = {}) {
@@ -92,6 +94,11 @@ function deviceInventory({
         ? (session.hello?.features ?? []).includes('display-rotation')
         : false,
       rotation: connected && rotation ? rotation.get(deviceId) ?? 0 : 0,
+      supportsFlip: connected
+        ? (session.hello?.features ?? []).includes('display-flip')
+        : false,
+      flipX: connected && flipX ? flipX.get(deviceId) === true : false,
+      flipY: connected && flipY ? flipY.get(deviceId) === true : false,
       supportsIconSize: connected
         ? (session.hello?.features ?? []).includes('display-icon-size')
         : false,
@@ -345,6 +352,8 @@ class DeviceManager {
       calibrating: this.deck.runtime.calibrating,
       inverted: this.deck.runtime.inverted,
       rotation: this.deck.runtime.rotation,
+      flipX: this.deck.runtime.flipX,
+      flipY: this.deck.runtime.flipY,
       iconSize: this.deck.runtime.iconSize,
       labelLines: this.deck.runtime.labelLines,
     });
@@ -478,6 +487,7 @@ class DeviceManager {
       row.supportsBrightness && this.renderBrightness(row),
       row.supportsInvert && this.renderInvert(row),
       row.supportsRotation && this.renderRotation(row),
+      row.supportsFlip && this.renderFlip(row),
       row.supportsIconSize && this.renderIconSize(row),
       row.supportsLabelLines && this.renderLabelLines(row),
       this.companionSettings.enabled && this.renderCompanion(row),
@@ -687,6 +697,59 @@ class DeviceManager {
 
     section.append(label, select, helper);
     return section;
+  }
+
+  // Rotation reaches four of the eight ways a panel can be wired, and these
+  // two reach the other four. Together they cannot fail to get a picture the
+  // right way up, which is the point: some boards ship mirrored.
+  renderFlip(row) {
+    const { document } = this;
+    const section = document.createElement('div');
+    const toggles = {};
+
+    section.className = 'device-flip';
+
+    for (const axis of ['flipX', 'flipY']) {
+      const label = document.createElement('label');
+      const toggle = document.createElement('input');
+      const caption = document.createElement('span');
+
+      label.className = 'device-companion-toggle';
+      toggle.type = 'checkbox';
+      toggle.checked = row[axis];
+      caption.textContent = `Mirror the ${axis === 'flipX' ? 'X' : 'Y'} axis`;
+      toggle.addEventListener('change', () => this.saveFlip(row, toggles));
+      label.append(toggle, caption);
+      toggles[axis] = toggle;
+      section.append(label);
+    }
+
+    const helper = document.createElement('p');
+    helper.className = 'helper';
+    helper.textContent =
+      'Try these with the rotation above if the screen reads backwards or ' +
+      'upside down. Touch follows, and the board remembers the answer.';
+
+    section.append(helper);
+    return section;
+  }
+
+  async saveFlip(row, toggles) {
+    for (const toggle of Object.values(toggles)) {
+      toggle.disabled = true;
+    }
+
+    try {
+      await this.deviceController.setDisplayFlip(
+        row.deviceId,
+        toggles.flipX.checked,
+        toggles.flipY.checked,
+      );
+    } catch (error) {
+      this.setStatus(`Could not mirror the screen: ${error.message}`, 'error');
+    }
+
+    this.render();
   }
 
   // Small panels give every key a large tile, and artwork drawn to fill it

@@ -107,6 +107,18 @@ esp_err_t bsp_display_set_rotation(uint16_t degrees);
 uint16_t bsp_display_rotation(void);
 
 /**
+ * @brief Mirror the panel's own x and/or y axis, on top of the rotation.
+ *
+ * Rotation alone reaches four of the eight ways a panel can be addressed.
+ * These two flips reach the other four, which is what a board wired to
+ * display everything mirrored needs. Touch is mirrored to match, so a saved
+ * calibration stays valid.
+ */
+esp_err_t bsp_display_set_flip(bool flip_x, bool flip_y);
+
+void bsp_display_flip(bool *flip_x, bool *flip_y);
+
+/**
  * @brief Last raw 12-bit touch sample, before calibration is applied, and
  *        whether a touch is currently down.
  *

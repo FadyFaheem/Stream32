@@ -1801,6 +1801,7 @@ progress::-webkit-progress-value {
 
 .device-brightness,
 .device-invert,
+.device-flip,
 .device-rotation,
 .device-icon-size,
 .device-label-lines,
@@ -1831,6 +1832,7 @@ progress::-webkit-progress-value {
 
 .device-brightness .helper,
 .device-invert .helper,
+.device-flip .helper,
 .device-rotation .helper,
 .device-icon-size .helper,
 .device-label-lines .helper {

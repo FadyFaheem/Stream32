@@ -748,6 +748,61 @@ test('carries screen rotation on the display message in both directions', () => 
   );
 });
 
+test('carries the screen mirror on the display message in both directions', () => {
+  assert.match(
+    new TextDecoder().decode(
+      encodeDisplayMessage({
+        awake: true,
+        idleTimeoutSeconds: 600,
+        flipX: true,
+        flipY: false,
+      }),
+    ),
+    /"flipX":true,"flipY":false}/,
+  );
+
+  // The board treats the pair as one control, so sending half of it is a bug
+  // here rather than a partial update it has to merge with what it stored.
+  for (const half of [{ flipX: true }, { flipY: false }, { flipX: 1, flipY: 0 }]) {
+    assert.throws(
+      () =>
+        encodeDisplayMessage({
+          awake: true,
+          idleTimeoutSeconds: 600,
+          ...half,
+        }),
+      /both axes/,
+    );
+  }
+
+  // Absent means "leave it alone", which every routine policy push sends.
+  assert.doesNotMatch(
+    new TextDecoder().decode(
+      encodeDisplayMessage({ awake: true, idleTimeoutSeconds: 600 }),
+    ),
+    /flip/,
+  );
+
+  assert.deepEqual(
+    validateDisplayStateMessage({
+      type: 'display',
+      rotation: 90,
+      flipX: false,
+      flipY: true,
+    }),
+    { rotation: 90, flipX: false, flipY: true },
+  );
+  // Firmware old enough to rotate but not mirror announces neither.
+  assert.deepEqual(
+    validateDisplayStateMessage({ type: 'display', rotation: 90 }),
+    { rotation: 90 },
+  );
+  assert.throws(
+    () => validateDisplayStateMessage({ type: 'display', flipY: 'yes' }),
+    /flipY must be a boolean/,
+  );
+});
+
 test('carries icon size on the display message in both directions', () => {
   for (const iconSize of [25, 55, 100]) {
     assert.match(

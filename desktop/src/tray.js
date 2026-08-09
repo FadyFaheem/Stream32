@@ -12,12 +12,20 @@ function createTray({
 }) {
   let updateReady = false;
 
-  const image = nativeImage.createFromPath(iconPath);
-  const tray = new Tray(
-    process.platform === 'darwin'
-      ? image.resize({ height: 18, width: 18 })
-      : image.resize({ height: 24, width: 24 }),
-  );
+  // Windows takes the path so the shell picks the rendition matching the
+  // tray's current scaling; resizing a loaded image would throw those away
+  // and hand it a blurred copy of the largest one.
+  const trayIcon = () => {
+    if (process.platform === 'win32') {
+      return iconPath;
+    }
+
+    const image = nativeImage.createFromPath(iconPath);
+    const side = process.platform === 'darwin' ? 18 : 24;
+
+    return image.resize({ height: side, width: side });
+  };
+  const tray = new Tray(trayIcon());
 
   function rebuildMenu() {
     const menu = Menu.buildFromTemplate([

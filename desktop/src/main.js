@@ -96,10 +96,16 @@ let rendererLogWindow = { count: 0, startedAt: 0 };
 // the user explicitly selects a port. Permission remains limited in serial.js.
 app.commandLine.appendSwitch('disable-serial-blocklist');
 
+// Windows gets the .ico, which carries a rendition drawn for each of the
+// small sizes the taskbar, title bar and tray ask for. Scaling the single PNG
+// down instead thins every stroke to a fraction of a pixel, which a dark
+// taskbar swallows. See tools/build-icon.js.
 function getIconPath() {
+  const icon = process.platform === 'win32' ? 'icon.ico' : 'logo.png';
+
   return app.isPackaged
-    ? path.join(process.resourcesPath, 'logo.png')
-    : path.join(__dirname, '..', '..', 'assets', 'logo.png');
+    ? path.join(process.resourcesPath, icon)
+    : path.join(__dirname, '..', '..', 'assets', icon);
 }
 
 function isStream32Focus(snapshot) {

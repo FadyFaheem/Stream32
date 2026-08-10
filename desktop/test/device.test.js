@@ -626,6 +626,41 @@ test('re-flowing the grid pushes the deck again instead of waiting for a replug'
   assert.equal(relaidOut.length, 3);
 });
 
+// esptool-js's own HardReset never asserts RTS (espressif/esptool-js#177),
+// so this is the sequence that actually pulls EN low. Verified against a
+// real ESP32-2432S028R: RTS false alone does nothing; true, wait, false
+// produces the POWERON_RESET banner.
+test('automatic post-flash reset pulses RTS to restart the board', async () => {
+  const controller = Object.create(DeviceController.prototype);
+  const events = [];
+  const transport = {
+    async setDTR(state) {
+      events.push(['dtr', state]);
+    },
+    async setRTS(state) {
+      events.push(['rts', state]);
+    },
+    async disconnect() {
+      events.push(['disconnect']);
+    },
+  };
+
+  controller.flashStatus = {};
+
+  await controller.disconnectFlashTransport(transport, 'automatic');
+  assert.deepEqual(events, [
+    ['dtr', false],
+    ['rts', true],
+    ['rts', false],
+    ['disconnect'],
+  ]);
+
+  // Boards that need a manual RST press are never toggled from here.
+  events.length = 0;
+  await controller.disconnectFlashTransport(transport, 'manual');
+  assert.deepEqual(events, [['disconnect']]);
+});
+
 test('applies a locked display policy immediately after reconnect', async () => {
   const controller = Object.create(DeviceController.prototype);
   const messages = [];

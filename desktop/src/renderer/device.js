@@ -781,13 +781,11 @@ class DeviceController {
           await sleep(500);
         },
       });
-      const { loader } = result;
       transport = result.transport;
       firmwareWritten = true;
       this.setProgress(100);
 
       await this.disconnectFlashTransport(
-        loader,
         transport,
         firmware.board.postFlashReset,
       );
@@ -822,10 +820,17 @@ class DeviceController {
     }
   }
 
-  async disconnectFlashTransport(loader, transport, postFlashReset) {
+  // Not esptool-js's HardReset: that never asserts RTS (espressif/esptool-js
+  // issue #177), so EN was never pulled low and UART-bridge boards like the
+  // CYD sat in the flasher stub until someone pressed RST. This is
+  // esptool.py's sequence: IO0 released, EN low for 100 ms, then boot.
+  async disconnectFlashTransport(transport, postFlashReset) {
     if (postFlashReset === 'automatic') {
       this.flashStatus.textContent = 'Restarting the board…';
-      await loader.after('hard_reset');
+      await transport.setDTR(false);
+      await transport.setRTS(true);
+      await sleep(100);
+      await transport.setRTS(false);
     }
 
     await transport.disconnect();

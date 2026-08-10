@@ -477,6 +477,14 @@ class DeviceManager {
     toggle.addEventListener('click', () => this.toggleConnection(row, toggle));
     actions.append(toggle);
 
+    // A connected board would only register itself again on its next hello,
+    // so removal is offered once it is disconnected.
+    if (!row.connected) {
+      const remove = this.createButton('Remove…', 'button button-quiet');
+      remove.addEventListener('click', () => this.removeDevice(row, remove));
+      actions.append(remove);
+    }
+
     const sync = document.createElement('p');
     sync.className = 'device-sync';
     this.syncNodes.set(row.deviceId, sync);
@@ -986,6 +994,40 @@ class DeviceManager {
       'Board support is still loading, or a flash is already running.',
       'error',
     );
+  }
+
+  async removeDevice(row, control) {
+    control.disabled = true;
+
+    const confirmed = await this.deck.openConfirmDialog({
+      title: `Remove ${row.name}?`,
+      message:
+        'This forgets the board and deletes its saved profiles from this ' +
+        'computer. The board itself is not changed, and connecting it ' +
+        'again registers it as new.',
+      confirmLabel: 'Remove device',
+      cancelLabel: 'Keep device',
+    });
+
+    if (!confirmed) {
+      control.disabled = false;
+      return;
+    }
+
+    let status;
+
+    try {
+      await this.deck.api.removeDeck(row.deviceId);
+      delete this.deck.devices[row.deviceId];
+      status = [`${row.name} was removed.`, 'idle'];
+    } catch (error) {
+      status = [`Could not remove the device: ${error.message}`, 'error'];
+    }
+
+    // The Deck view may have been showing the removed device.
+    this.deck.renderAll();
+    this.render();
+    this.setStatus(...status);
   }
 
   async renameDevice(deviceId, input) {

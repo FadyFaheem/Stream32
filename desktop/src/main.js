@@ -43,6 +43,7 @@ const {
   getDecksPath,
   readDecks,
   registerDevice,
+  removeDevice,
   renameDevice,
   saveDeviceProfile,
   saveDeviceProfiles,
@@ -546,6 +547,10 @@ function registerIpcHandlers() {
   ipcMain.handle('deck:rename-device', (event, deviceId, name) => {
     requireMainSender(event, 'Device rename request is invalid.');
     return renameDevice(deviceId, name, getDecksPath());
+  });
+  ipcMain.handle('deck:remove-device', (event, deviceId) => {
+    requireMainSender(event, 'Device removal request is invalid.');
+    return removeDevice(deviceId, getDecksPath());
   });
   ipcMain.handle('deck:profile-operation', (event, deviceId, operation) => {
     requireMainSender(event, 'Profile operation request is invalid.');

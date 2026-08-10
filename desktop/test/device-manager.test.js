@@ -176,6 +176,9 @@ function managerFixture() {
     shown: [],
     reconnects: 0,
     renamed: [],
+    removed: [],
+    confirms: [],
+    confirmAnswer: false,
     cleaned: [],
     calibrated: [],
     invertedTo: [],
@@ -237,12 +240,20 @@ function managerFixture() {
         calls.renamed.push([deviceId, name]);
         return { name, boardId: devices[deviceId].boardId };
       },
+      removeDeck: async (deviceId) => {
+        calls.removed.push(deviceId);
+      },
     },
     selectDevice: (deviceId) => {
       calls.selected.push(deviceId);
       return true;
     },
     renderDevicePicker: () => {},
+    renderAll: () => {},
+    openConfirmDialog: async (options) => {
+      calls.confirms.push(options);
+      return calls.confirmAnswer;
+    },
   };
   manager.deviceController = {
     boards,
@@ -538,6 +549,43 @@ test('screen rotation appears only on boards that can turn the panel', async () 
   // status line has to say so rather than looking like nothing happened.
   assert.match(manager.status.textContent, /rotated to 270/);
   assert.match(manager.status.textContent, /artwork/);
+});
+
+test('removing a device asks first and forgets its saved profiles', async () => {
+  const { manager, calls } = managerFixture();
+  manager.render();
+
+  // Connected boards keep their session, so only offline cards offer it.
+  const removeButtons = [];
+  const collect = (node) => {
+    if (node.textContent === 'Remove…') {
+      removeButtons.push(node);
+    }
+
+    for (const child of node.children || []) {
+      collect(child);
+    }
+  };
+  collect(manager.list);
+  assert.equal(removeButtons.length, 2, 'both offline boards offer removal');
+  assert.equal(findByText(manager.list.children[0], 'Remove…'), null);
+
+  // Offline boards sort after connected ones, so the third card is Desk.
+  const keep = findByText(manager.list.children[2], 'Remove…');
+  await fire(keep, 'click');
+  assert.equal(calls.confirms.length, 1);
+  assert.match(calls.confirms[0].title, /Remove Desk\?/);
+  assert.match(calls.confirms[0].message, /deletes its saved profiles/);
+  assert.deepEqual(calls.removed, [], 'cancelling keeps the device');
+  assert.equal(keep.disabled, false);
+
+  calls.confirmAnswer = true;
+  manager.render();
+  await fire(findByText(manager.list.children[2], 'Remove…'), 'click');
+  assert.deepEqual(calls.removed, ['cccccccccccc']);
+  assert.equal(manager.deck.devices.cccccccccccc, undefined);
+  assert.equal(manager.list.children.length, 3);
+  assert.match(manager.status.textContent, /Desk was removed/);
 });
 
 test('the board reports how a calibration ended', () => {

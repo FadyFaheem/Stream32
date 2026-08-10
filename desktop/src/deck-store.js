@@ -483,6 +483,16 @@ function renameDevice(deviceId, name, decksPath) {
   return device;
 }
 
+// Forgets a board and its saved profiles. Only valid registry entries are
+// offered for removal in the UI; preserved corrupt devices stay untouched so
+// storage repair keeps working. A board that reconnects registers fresh.
+function removeDevice(deviceId, decksPath) {
+  const registry = readDecks(decksPath);
+  requireDevice(registry, deviceId);
+  delete registry.devices[deviceId];
+  writeRegistry(registry, decksPath);
+}
+
 function requireOperationPage(device, operation) {
   if (
     !PROFILE_ID_PATTERN.test(operation.profileId) ||
@@ -733,6 +743,7 @@ module.exports = {
   importProfile,
   readDecks,
   registerDevice,
+  removeDevice,
   renameDevice,
   saveDeviceProfile,
   saveDeviceProfiles,

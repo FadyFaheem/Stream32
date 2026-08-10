@@ -38,6 +38,8 @@ contextBridge.exposeInMainWorld('stream32', {
   runAction: (action) => ipcRenderer.invoke('action:run', action),
   registerDeck: (deviceId, boardId, name) =>
     ipcRenderer.invoke('deck:register', deviceId, boardId, name),
+  removeDeck: (deviceId) =>
+    ipcRenderer.invoke('deck:remove-device', deviceId),
   renameDeck: (deviceId, name) =>
     ipcRenderer.invoke('deck:rename-device', deviceId, name),
   runProfileOperation: (deviceId, operation) =>

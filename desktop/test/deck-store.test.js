@@ -22,6 +22,7 @@ const {
   applyProfileOperation,
   readDecks,
   registerDevice,
+  removeDevice,
   renameDevice,
   saveDeviceProfile,
   saveDeviceProfiles,
@@ -894,6 +895,44 @@ test('persists a per-device brightness override that can fall back', () => {
     const salvaged = readDecks(decksPath);
     assert.equal(salvaged.devices[DEVICE_ID].brightness, null);
     assert.match(salvaged.errors[0].message, /brightness/);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test('removing a device forgets it and its profiles but nothing else', () => {
+  const directory = mkdtempSync(path.join(tmpdir(), 'stream32-decks-'));
+  const decksPath = path.join(directory, 'decks.json');
+  const OTHER_DEVICE_ID = '112233445566';
+
+  try {
+    registerDevice(DEVICE_ID, BOARD_ID, 'Desk', decksPath);
+    registerDevice(OTHER_DEVICE_ID, BOARD_ID, 'Booth', decksPath);
+
+    // A preserved corrupt entry must survive the rewrite that removal does.
+    const raw = readSettings(decksPath);
+    raw.devices['invalid-device'] = { boardId: BOARD_ID, profiles: 'junk' };
+    writeSettings(raw, decksPath);
+
+    removeDevice(DEVICE_ID, decksPath);
+
+    assert.deepEqual(
+      Object.keys(readDecks(decksPath).devices),
+      [OTHER_DEVICE_ID],
+    );
+    assert.deepEqual(
+      readSettings(decksPath).devices['invalid-device'],
+      raw.devices['invalid-device'],
+    );
+
+    // Unknown and malformed ids are refused rather than ignored.
+    assert.throws(() => removeDevice(DEVICE_ID, decksPath), /no saved deck/);
+    assert.throws(() => removeDevice('nope', decksPath), /Device id/);
+
+    // Removal frees the slot, so the same board can register as new again.
+    const reRegistered = registerDevice(DEVICE_ID, BOARD_ID, 'Desk', decksPath);
+    assert.equal(reRegistered.name, 'Desk');
+    assert.deepEqual(Object.keys(reRegistered.profiles), ['default']);
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

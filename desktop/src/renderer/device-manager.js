@@ -739,17 +739,22 @@ class DeviceManager {
       toggle.disabled = true;
     }
 
+    let status;
+
     try {
       await this.deviceController.setDisplayFlip(
         row.deviceId,
         toggles.flipX.checked,
         toggles.flipY.checked,
       );
+      status = [`${row.name} mirroring updated. The screen is redrawn now.`, 'working'];
     } catch (error) {
-      this.setStatus(`Could not mirror the screen: ${error.message}`, 'error');
+      status = [`Could not mirror the screen: ${error.message}`, 'error'];
     }
 
+    // render() rewrites the status line, so the outcome has to follow it.
     this.render();
+    this.setStatus(...status);
   }
 
   // Small panels give every key a large tile, and artwork drawn to fill it

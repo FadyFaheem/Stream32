@@ -978,21 +978,17 @@ class DeviceController {
     this.deckRuntime?.applyDisplayState(deviceId, { invert });
   }
 
-  // Mirroring costs no re-layout: the grid keeps its shape, so unlike rotation
-  // the board keeps the artwork it already has.
-  async setDisplayFlip(deviceId, flipX, flipY) {
-    const session = this.deckRuntime?.sessionFor(deviceId);
-
-    if (!session) {
-      throw new Error('The deck is not connected.');
-    }
-
-    if (session.hello?.features?.includes('display-flip') !== true) {
-      throw new Error('Mirroring the screen requires updated board firmware.');
-    }
-
-    await this.applyDisplayPolicyToSession(session, { flipX, flipY });
-    this.deckRuntime?.applyDisplayState(deviceId, { flipX, flipY });
+  // Mirroring keeps the grid's shape, so keyPx and every stored image CRC
+  // survive and the re-layout streams no artwork. It is still needed: MADCTL
+  // only remaps future flushes, so without the rebuild the glass keeps the
+  // old picture while touch already follows the new mapping.
+  setDisplayFlip(deviceId, flipX, flipY) {
+    return this.setDisplayGeometry(
+      deviceId,
+      'display-flip',
+      'Mirroring the screen requires updated board firmware.',
+      { flipX, flipY },
+    );
   }
 
   // Rotation, icon size and label lines all re-flow the board's grid, so it

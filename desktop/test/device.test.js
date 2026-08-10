@@ -579,6 +579,7 @@ test('re-flowing the grid pushes the deck again instead of waiting for a replug'
       features: [
         'display-control',
         'display-rotation',
+        'display-flip',
         'display-icon-size',
         'display-label-lines',
       ],
@@ -603,14 +604,18 @@ test('re-flowing the grid pushes the deck again instead of waiting for a replug'
   await controller.setDisplayRotation('abc123', 270);
   await controller.setDisplayIconSize('abc123', 70);
   await controller.setDisplayLabelLines('abc123', 2);
+  // Mirroring keeps keyPx, but MADCTL only remaps future flushes, so it
+  // also re-lays out to repaint the glass straight away.
+  await controller.setDisplayFlip('abc123', true, false);
 
   assert.deepEqual(
-    messages.map((message) => message.rotation ?? message.iconSize ?? message.labelLines),
-    [270, 70, 2],
+    messages.map((message) =>
+      message.rotation ?? message.iconSize ?? message.labelLines ?? message.flipX),
+    [270, 70, 2, true],
   );
-  // The board drops every stored image as it re-flows, so each of the three
-  // has to be followed by a fresh layout or the keys stay blank.
-  assert.deepEqual(relaidOut, ['abc123', 'abc123', 'abc123']);
+  // The board drops every stored image as it re-flows, so each change has
+  // to be followed by a fresh layout or the keys stay blank.
+  assert.deepEqual(relaidOut, ['abc123', 'abc123', 'abc123', 'abc123']);
 
   // A board whose firmware cannot do it is refused before anything is sent.
   session.hello.features = ['display-control'];
@@ -619,11 +624,15 @@ test('re-flowing the grid pushes the deck again instead of waiting for a replug'
     /Screen rotation requires updated board firmware/,
   );
   await assert.rejects(
+    controller.setDisplayFlip('abc123', true, true),
+    /Mirroring the screen requires updated board firmware/,
+  );
+  await assert.rejects(
     controller.setDisplayRotation('missing', 90),
     /The deck is not connected/,
   );
-  assert.equal(messages.length, 3);
-  assert.equal(relaidOut.length, 3);
+  assert.equal(messages.length, 4);
+  assert.equal(relaidOut.length, 4);
 });
 
 // esptool-js's own HardReset never asserts RTS (espressif/esptool-js#177),

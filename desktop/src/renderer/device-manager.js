@@ -578,6 +578,7 @@ class DeviceManager {
 
     const toggle = document.createElement('input');
     toggle.type = 'checkbox';
+    toggle.className = 'switch';
     toggle.checked = row.companion.enabled;
     toggleLabel.append(toggle, toggleText);
 
@@ -651,6 +652,7 @@ class DeviceManager {
     section.className = 'device-invert';
     label.className = 'device-companion-toggle';
     toggle.type = 'checkbox';
+    toggle.className = 'switch';
     toggle.checked = row.inverted;
     caption.textContent = 'Invert display colours';
     toggle.addEventListener('change', () => this.saveInvert(row, toggle));
@@ -716,6 +718,7 @@ class DeviceManager {
 
       label.className = 'device-companion-toggle';
       toggle.type = 'checkbox';
+      toggle.className = 'switch';
       toggle.checked = row[axis];
       caption.textContent = `Mirror the ${axis === 'flipX' ? 'X' : 'Y'} axis`;
       toggle.addEventListener('change', () => this.saveFlip(row, toggles));

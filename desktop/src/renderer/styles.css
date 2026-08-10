@@ -1782,23 +1782,27 @@ progress::-webkit-progress-value {
 }
 
 .device-settings {
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 9px;
   background: rgba(4, 10, 14, 0.4);
 }
 
 .device-settings > summary {
-  padding: 0.5rem 0.7rem;
+  padding: 0.55rem 0.85rem;
   cursor: pointer;
+  user-select: none;
   color: var(--accent-strong);
   font-size: 0.8rem;
   font-weight: 700;
 }
 
-.device-settings > :last-child {
-  padding-bottom: 0.7rem;
+.device-settings > summary:hover {
+  background: rgba(255, 173, 34, 0.06);
 }
 
+/* Each setting is one row: name and control share the line, and the muted
+   helper explains it underneath. */
 .device-brightness,
 .device-invert,
 .device-flip,
@@ -1806,28 +1810,26 @@ progress::-webkit-progress-value {
 .device-icon-size,
 .device-label-lines,
 .device-companion {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  padding: 0.55rem 0.7rem 0;
+  gap: 0.3rem 0.55rem;
+  padding: 0.7rem 0.85rem;
   border-top: 1px solid var(--line);
 }
 
-.device-brightness .field-label,
-.device-companion label {
-  margin: 0;
-  font-size: 0.8rem;
+/* Brightness alone puts two things on the right: the field and its unit. */
+.device-brightness {
+  grid-template-columns: minmax(0, 1fr) auto auto;
 }
 
-.device-brightness input {
-  width: 5rem;
-  min-height: 2.2rem;
-  padding: 0 0.5rem;
-  color: var(--ink);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: rgba(4, 10, 14, 0.6);
+.device-brightness .field-label,
+.device-rotation .field-label,
+.device-icon-size .field-label,
+.device-label-lines .field-label {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .device-brightness .helper,
@@ -1835,21 +1837,33 @@ progress::-webkit-progress-value {
 .device-flip .helper,
 .device-rotation .helper,
 .device-icon-size .helper,
-.device-label-lines .helper {
-  flex: 1 1 12rem;
+.device-label-lines .helper,
+.device-companion .device-companion-status {
+  grid-column: 1 / -1;
   margin: 0;
 }
 
-.device-rotation .field-label,
-.device-icon-size .field-label,
-.device-label-lines .field-label {
-  margin: 0;
+.device-brightness input {
+  width: 4.6rem;
+  min-height: 2.2rem;
+  padding: 0 0.5rem;
+  text-align: right;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(4, 10, 14, 0.6);
+}
+
+.device-brightness span {
+  color: var(--muted);
   font-size: 0.8rem;
+  font-weight: 700;
 }
 
 .device-rotation select,
 .device-icon-size select,
 .device-label-lines select {
+  min-width: 10rem;
   min-height: 2.2rem;
   padding: 0 0.5rem;
   color: var(--ink);
@@ -1858,10 +1872,16 @@ progress::-webkit-progress-value {
   background: rgba(4, 10, 14, 0.6);
 }
 
+/* The caption reads first and the switch sits flush right, so every row in
+   the panel lines its control up on the same edge. */
 .device-companion-toggle {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: space-between;
+  gap: 0.55rem;
+  flex-direction: row-reverse;
+  grid-column: 1 / -1;
+  cursor: pointer;
   font-size: 0.82rem;
   font-weight: 700;
 }
@@ -1870,17 +1890,22 @@ progress::-webkit-progress-value {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  grid-column: 1 / -1;
+  color: var(--muted);
   font-size: 0.8rem;
 }
 
 .device-companion-grid select {
   min-height: 2.2rem;
+  padding: 0 0.5rem;
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(4, 10, 14, 0.6);
 }
 
 .device-companion-status {
-  flex: 1 0 100%;
   min-height: 1.1rem;
-  margin: 0;
 }
 
 .device-companion-status[data-state="ready"] {

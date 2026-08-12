@@ -670,6 +670,62 @@ test('automatic post-flash reset pulses RTS to restart the board', async () => {
   assert.deepEqual(events, [['disconnect']]);
 });
 
+test('changing the colour order rides the board reboot', async () => {
+  const controller = Object.create(DeviceController.prototype);
+  const messages = [];
+  const closed = [];
+  const reconnected = [];
+  const applied = [];
+  const port = { id: 'cyd-port' };
+  const session = {
+    handshakeComplete: true,
+    port,
+    hello: {
+      boardId: TEST_BOARD_ID,
+      features: ['display-control', 'display-color-order'],
+    },
+    send: async (bytes) => {
+      messages.push(JSON.parse(new TextDecoder().decode(bytes)));
+    },
+  };
+
+  controller.displayPolicy = {
+    brightnessPercent: 60,
+    idleTimeoutMinutes: 5,
+    sleepWhenLocked: false,
+  };
+  controller.machineLocked = false;
+  controller.deckRuntime = {
+    sessionFor: (deviceId) => (deviceId === 'abc123' ? session : undefined),
+    applyDisplayState: (deviceId, state) => applied.push([deviceId, state]),
+  };
+  controller.closeSessionForPort = async (target) => closed.push(target);
+  controller.connectWithRetries = async (...args) => {
+    reconnected.push(args);
+    return session.hello;
+  };
+
+  await controller.setDisplayColorOrder('abc123', 'bgr');
+
+  assert.equal(messages[0].colorOrder, 'bgr');
+  assert.deepEqual(applied, [['abc123', { colorOrder: 'bgr' }]]);
+  // The panel re-initialises on boot, so the stale session is dropped and
+  // the handshake chased on the same port with the same board expected.
+  assert.deepEqual(closed, [port]);
+  assert.deepEqual(reconnected, [[port, TEST_BOARD_ID]]);
+
+  session.hello.features = ['display-control'];
+  await assert.rejects(
+    controller.setDisplayColorOrder('abc123', 'bgr'),
+    /colour order requires updated board firmware/,
+  );
+  await assert.rejects(
+    controller.setDisplayColorOrder('missing', 'bgr'),
+    /The deck is not connected/,
+  );
+  assert.equal(messages.length, 1);
+});
+
 test('applies a locked display policy immediately after reconnect', async () => {
   const controller = Object.create(DeviceController.prototype);
   const messages = [];

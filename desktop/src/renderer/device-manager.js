@@ -38,6 +38,7 @@ function deviceInventory({
   rotation,
   flipX,
   flipY,
+  colorOrder,
   iconSize,
   labelLines,
 } = {}) {
@@ -99,6 +100,11 @@ function deviceInventory({
         : false,
       flipX: connected && flipX ? flipX.get(deviceId) === true : false,
       flipY: connected && flipY ? flipY.get(deviceId) === true : false,
+      supportsColorOrder: connected
+        ? (session.hello?.features ?? []).includes('display-color-order')
+        : false,
+      colorOrder:
+        connected && colorOrder ? colorOrder.get(deviceId) ?? 'rgb' : 'rgb',
       supportsIconSize: connected
         ? (session.hello?.features ?? []).includes('display-icon-size')
         : false,
@@ -354,6 +360,7 @@ class DeviceManager {
       rotation: this.deck.runtime.rotation,
       flipX: this.deck.runtime.flipX,
       flipY: this.deck.runtime.flipY,
+      colorOrder: this.deck.runtime.colorOrder,
       iconSize: this.deck.runtime.iconSize,
       labelLines: this.deck.runtime.labelLines,
     });
@@ -494,6 +501,7 @@ class DeviceManager {
     const settings = [
       row.supportsBrightness && this.renderBrightness(row),
       row.supportsInvert && this.renderInvert(row),
+      row.supportsColorOrder && this.renderColorOrder(row),
       row.supportsRotation && this.renderRotation(row),
       row.supportsFlip && this.renderFlip(row),
       row.supportsIconSize && this.renderIconSize(row),
@@ -674,6 +682,73 @@ class DeviceManager {
 
     section.append(label, helper);
     return section;
+  }
+
+  // The same board model ships with RGB and BGR glass, so red and blue can
+  // arrive swapped everywhere. The order is part of the panel's power-up
+  // sequence, so the board saves the answer and restarts to apply it.
+  renderColorOrder(row) {
+    const { document } = this;
+    const section = document.createElement('div');
+    const label = document.createElement('label');
+    const select = document.createElement('select');
+
+    section.className = 'device-color-order';
+    label.className = 'field-label';
+    label.textContent = 'Colour order';
+    label.htmlFor = `color-order-${row.deviceId}`;
+    select.id = label.htmlFor;
+
+    for (const [value, caption] of [
+      ['rgb', 'RGB (standard)'],
+      ['bgr', 'BGR (red and blue swapped)'],
+    ]) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = caption;
+      select.append(option);
+    }
+
+    select.value = row.colorOrder;
+    select.addEventListener('change', () => this.saveColorOrder(row, select));
+
+    const helper = document.createElement('p');
+    helper.className = 'helper';
+    helper.textContent =
+      'Pick whichever stops red and blue trading places. The board ' +
+      'restarts for a moment and remembers the answer.';
+
+    section.append(label, select, helper);
+    return section;
+  }
+
+  async saveColorOrder(row, select) {
+    const order = select.value === 'bgr' ? 'bgr' : 'rgb';
+    let status;
+
+    select.disabled = true;
+    this.setStatus(
+      `${row.name} is restarting to apply the ${order.toUpperCase()} ` +
+        'colour order…',
+      'working',
+    );
+
+    try {
+      await this.deviceController.setDisplayColorOrder(row.deviceId, order);
+      status = [
+        `${row.name} is back with the ${order.toUpperCase()} colour order.`,
+        'ready',
+      ];
+    } catch (error) {
+      status = [
+        `Could not change the colour order: ${error.message}`,
+        'error',
+      ];
+    }
+
+    // render() rewrites the status line, so the outcome has to follow it.
+    this.render();
+    this.setStatus(...status);
   }
 
   // A panel mounted sideways or upside down still reads correctly, and the

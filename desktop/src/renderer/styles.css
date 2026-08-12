@@ -1805,6 +1805,7 @@ progress::-webkit-progress-value {
    helper explains it underneath. */
 .device-brightness,
 .device-invert,
+.device-color-order,
 .device-flip,
 .device-rotation,
 .device-icon-size,
@@ -1824,6 +1825,7 @@ progress::-webkit-progress-value {
 }
 
 .device-brightness .field-label,
+.device-color-order .field-label,
 .device-rotation .field-label,
 .device-icon-size .field-label,
 .device-label-lines .field-label {
@@ -1834,6 +1836,7 @@ progress::-webkit-progress-value {
 
 .device-brightness .helper,
 .device-invert .helper,
+.device-color-order .helper,
 .device-flip .helper,
 .device-rotation .helper,
 .device-icon-size .helper,
@@ -1860,6 +1863,7 @@ progress::-webkit-progress-value {
   font-weight: 700;
 }
 
+.device-color-order select,
 .device-rotation select,
 .device-icon-size select,
 .device-label-lines select {

@@ -107,6 +107,7 @@ class DeckRuntime {
     this.rotation = new Map();
     this.flipX = new Map();
     this.flipY = new Map();
+    this.colorOrder = new Map();
     this.iconSize = new Map();
     this.labelLines = new Map();
     this.liveValues = new Map();
@@ -540,6 +541,7 @@ class DeckRuntime {
       this.rotation.delete(deviceId);
       this.flipX.delete(deviceId);
       this.flipY.delete(deviceId);
+      this.colorOrder.delete(deviceId);
       this.iconSize.delete(deviceId);
       this.labelLines.delete(deviceId);
       this.clearLiveRuntime(deviceId);
@@ -886,7 +888,7 @@ class DeckRuntime {
   // this only records what it last told us.
   applyDisplayState(
     deviceId,
-    { invert, rotation, flipX, flipY, iconSize, labelLines },
+    { invert, rotation, flipX, flipY, colorOrder, iconSize, labelLines },
   ) {
     if (invert !== undefined) {
       this.inverted.set(deviceId, invert);
@@ -902,6 +904,10 @@ class DeckRuntime {
 
     if (flipY !== undefined) {
       this.flipY.set(deviceId, flipY);
+    }
+
+    if (colorOrder !== undefined) {
+      this.colorOrder.set(deviceId, colorOrder);
     }
 
     if (iconSize !== undefined) {

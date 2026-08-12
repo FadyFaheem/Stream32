@@ -184,6 +184,7 @@ function managerFixture() {
     invertedTo: [],
     rotatedTo: [],
     flippedTo: [],
+    colorOrderedTo: [],
     iconSizedTo: [],
     labelLinedTo: [],
   };
@@ -196,6 +197,7 @@ function managerFixture() {
   const rotation = new Map();
   const flipX = new Map();
   const flipY = new Map();
+  const colorOrder = new Map();
   const iconSize = new Map();
   const labelLines = new Map();
 
@@ -228,6 +230,7 @@ function managerFixture() {
       rotation,
       flipX,
       flipY,
+      colorOrder,
       iconSize,
       labelLines,
       setCalibrating: async (deviceId, active) => {
@@ -279,6 +282,10 @@ function managerFixture() {
       calls.flippedTo.push([deviceId, x, y]);
       flipX.set(deviceId, x);
       flipY.set(deviceId, y);
+    },
+    setDisplayColorOrder: async (deviceId, order) => {
+      calls.colorOrderedTo.push([deviceId, order]);
+      colorOrder.set(deviceId, order);
     },
     setDisplayIconSize: async (deviceId, percent) => {
       calls.iconSizedTo.push([deviceId, percent]);
@@ -515,6 +522,38 @@ test('mirroring appears only on boards that can flip an axis', async () => {
   assert.deepEqual(calls.flippedTo, [['bbbbbbbbbbbb', true, true]]);
   assert.equal(axis(0).checked, true);
   assert.equal(axis(1).checked, true);
+});
+
+test('colour order appears only on boards whose glass can disagree', async () => {
+  const { manager, calls } = managerFixture();
+  const sessions = manager.deck.runtime.sessions;
+
+  manager.render();
+  assert.equal(findByClass(manager.list, 'device-color-order'), null);
+
+  sessions.get('bbbbbbbbbbbb').hello.features = ['display-color-order'];
+  manager.deck.runtime.colorOrder.set('bbbbbbbbbbbb', 'bgr');
+  manager.render();
+
+  const picker = () =>
+    findByClass(manager.list, 'device-color-order').children[1];
+
+  // The board owns the stored value, so the control shows what it reported.
+  assert.equal(picker().value, 'bgr');
+  assert.deepEqual(
+    picker().children.map((option) => option.value),
+    ['rgb', 'bgr'],
+  );
+
+  const select = picker();
+  select.value = 'rgb';
+  await fire(select, 'change');
+  assert.deepEqual(calls.colorOrderedTo, [['bbbbbbbbbbbb', 'rgb']]);
+  assert.equal(picker().value, 'rgb');
+
+  // The panel re-initialises, so the status has to explain the restart
+  // rather than looking like the board dropped off on its own.
+  assert.match(manager.status.textContent, /RGB colour order/);
 });
 
 test('screen rotation appears only on boards that can turn the panel', async () => {

@@ -689,6 +689,50 @@ test('carries colour inversion on the display message in both directions', () =>
   );
 });
 
+test('carries the colour order on the display message in both directions', () => {
+  assert.equal(
+    new TextDecoder().decode(
+      encodeDisplayMessage({
+        awake: true,
+        idleTimeoutSeconds: 600,
+        colorOrder: 'bgr',
+      }),
+    ),
+    '{"type":"display","awake":true,"idleTimeoutSeconds":600,' +
+      '"colorOrder":"bgr"}\n',
+  );
+
+  // Absent means "leave it alone": the board owns the stored value, and a
+  // routine policy push must never restart the panel.
+  assert.doesNotMatch(
+    new TextDecoder().decode(
+      encodeDisplayMessage({ awake: true, idleTimeoutSeconds: 600 }),
+    ),
+    /colorOrder/,
+  );
+
+  for (const invalid of ['RGB', 'grb', true, 1]) {
+    assert.throws(
+      () =>
+        encodeDisplayMessage({
+          awake: true,
+          idleTimeoutSeconds: 600,
+          colorOrder: invalid,
+        }),
+      /rgb or bgr/,
+    );
+    assert.throws(
+      () => validateDisplayStateMessage({ type: 'display', colorOrder: invalid }),
+      /rgb or bgr/,
+    );
+  }
+
+  assert.deepEqual(
+    validateDisplayStateMessage({ type: 'display', colorOrder: 'bgr' }),
+    { colorOrder: 'bgr' },
+  );
+});
+
 test('carries screen rotation on the display message in both directions', () => {
   for (const rotation of [0, 90, 180, 270]) {
     assert.match(

@@ -7,6 +7,7 @@
 #include "cJSON.h"
 #include "deck_layout.h"
 #include "deck_protocol.h"
+#include "deck_settings.h"
 #include "deck_ui.h"
 #include "driver/gpio.h"
 #include "driver/uart.h"
@@ -14,11 +15,14 @@
 #include "esp_err.h"
 #include "esp_log.h"
 #include "esp_mac.h"
+#include "esp_system.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lvgl.h"
+#include "nvs.h"
 
 #define STREAM32_BOARD_ID "esp32-2432s028r-ili9341"
 #define STREAM32_PROTOCOL_VERSION 1
@@ -35,6 +39,15 @@
 #define STREAM32_UART_BUFFER_SIZE 4096
 #define STREAM32_EVENT_LINE_CAPACITY 128
 #define STREAM32_REPLY_CAPACITY 384
+/* The colour order key sits beside the shared deck settings in NVS, but it
+   is owned here: this is the one board whose clones disagree about it, and
+   the shared deck component sits at its size budget. ponytail: promote it
+   into deck_settings if a second board ever grows a colour order. */
+#define STREAM32_NVS_NAMESPACE "stream32"
+#define STREAM32_NVS_KEY_COLOR_ORDER "colororder"
+/* Long enough for the refusal or ack of the current line to leave the UART
+   ring before the board goes down for a colour-order change. */
+#define STREAM32_RESTART_DELAY_MS 400
 
 /* Assembler for newline-delimited JSON. */
 typedef struct {
@@ -53,6 +66,14 @@ static lv_obj_t *connection_label;
 static lv_obj_t *touch_label;
 static lv_obj_t *touch_surface;
 static volatile bool system_ready;
+/* -1 means no restart is due. Written under protocol_mutex, read by the
+   serial task's poll so the reboot happens between lines, not inside one. */
+static volatile int64_t s_restart_at_ms = -1;
+
+static int64_t uptime_ms(void)
+{
+    return esp_timer_get_time() / 1000;
+}
 
 static void serial_write_line(const char *json)
 {
@@ -80,6 +101,81 @@ static void update_connection_label(const char *text)
     bsp_display_unlock();
 }
 
+static bool color_order_load_bgr(void)
+{
+    nvs_handle_t handle;
+    uint8_t stored = 0;
+
+    if (nvs_open(STREAM32_NVS_NAMESPACE, NVS_READONLY, &handle) != ESP_OK) {
+        return false;
+    }
+
+    if (nvs_get_u8(handle, STREAM32_NVS_KEY_COLOR_ORDER, &stored) != ESP_OK) {
+        stored = 0;
+    }
+
+    nvs_close(handle);
+    return stored != 0;
+}
+
+static esp_err_t color_order_store_bgr(bool bgr)
+{
+    nvs_handle_t handle;
+    esp_err_t error = nvs_open(STREAM32_NVS_NAMESPACE, NVS_READWRITE, &handle);
+
+    if (error != ESP_OK) {
+        return error;
+    }
+
+    error = nvs_set_u8(handle, STREAM32_NVS_KEY_COLOR_ORDER, bgr ? 1 : 0);
+
+    if (error == ESP_OK) {
+        error = nvs_commit(handle);
+    }
+
+    nvs_close(handle);
+    return error;
+}
+
+/* The panel's colour order is written into its init sequence, so unlike the
+   display message's other fields it cannot be applied by the shared handler
+   at runtime. It is picked off here before dispatch, persisted, and applied
+   by restarting the board; the rest of the message is dispatched untouched
+   because the shared decoder ignores fields it does not know. */
+static const char *apply_color_order(const cJSON *message)
+{
+    const cJSON *order =
+        cJSON_GetObjectItemCaseSensitive(message, "colorOrder");
+
+    if (order == NULL) {
+        return NULL;
+    }
+
+    if (!cJSON_IsString(order) || order->valuestring == NULL) {
+        return "display-invalid";
+    }
+
+    const bool bgr = strcmp(order->valuestring, "bgr") == 0;
+
+    if (!bgr && strcmp(order->valuestring, "rgb") != 0) {
+        return "display-invalid";
+    }
+
+    bsp_display_set_color_order(bgr);
+
+    if (color_order_store_bgr(bgr) != ESP_OK) {
+        return "display-color-order-failed";
+    }
+
+    /* Only an actual change is worth a reboot; re-saving the running order
+       must not blank the screen. */
+    if (bgr != bsp_display_color_order_bgr()) {
+        s_restart_at_ms = uptime_ms() + STREAM32_RESTART_DELAY_MS;
+    }
+
+    return NULL;
+}
+
 static void send_hello(void)
 {
     uint8_t mac[6];
@@ -99,8 +195,8 @@ static void send_hello(void)
         "\"firmwareVersion\":\"%s\",\"deviceId\":\"%02x%02x%02x%02x%02x%02x\","
         "\"features\":[\"display-control\",\"display-brightness\","
         "\"display-blank\",\"display-invert\",\"display-rotation\","
-        "\"display-flip\",\"display-icon-size\",\"display-label-lines\","
-        "\"key-update\",\"image-rle\",\"clean-mode\","
+        "\"display-flip\",\"display-color-order\",\"display-icon-size\","
+        "\"display-label-lines\",\"key-update\",\"image-rle\",\"clean-mode\","
         "\"touch-calibration\"]}",
         STREAM32_PROTOCOL_VERSION,
         STREAM32_BOARD_ID,
@@ -175,12 +271,13 @@ static void handle_host_message(const char *line, size_t length)
                 state,
                 sizeof(state),
                 "{\"type\":\"display\",\"invert\":%s,\"rotation\":%u,"
-                "\"flipX\":%s,\"flipY\":%s,"
+                "\"flipX\":%s,\"flipY\":%s,\"colorOrder\":\"%s\","
                 "\"iconSize\":%u,\"labelLines\":%u}",
                 bsp_display_invert() ? "true" : "false",
                 (unsigned)bsp_display_rotation(),
                 flip_x ? "true" : "false",
                 flip_y ? "true" : "false",
+                bsp_display_color_order_bgr() ? "bgr" : "rgb",
                 (unsigned)deck_layout_icon_percent(),
                 (unsigned)deck_layout_label_lines()
             );
@@ -203,18 +300,23 @@ static void handle_host_message(const char *line, size_t length)
             serial_write_line(response);
         }
     } else {
-        const char *error = NULL;
-        const bool handled = deck_protocol_dispatch(
-            message,
-            line,
-            length,
-            reply,
-            sizeof(reply),
-            serial_write_line,
-            &error
-        );
+        /* colorOrder is this board's own display field; a bad value refuses
+           the whole line, the same way the shared handler treats its own. */
+        const char *error = strcmp(type->valuestring, "display") == 0
+            ? apply_color_order(message)
+            : NULL;
 
-        if (!handled) {
+        if (error != NULL) {
+            send_error(error);
+        } else if (!deck_protocol_dispatch(
+                message,
+                line,
+                length,
+                reply,
+                sizeof(reply),
+                serial_write_line,
+                &error
+            )) {
             send_error("unknown-type");
         } else if (error != NULL) {
             send_error(error);
@@ -321,6 +423,12 @@ static void serial_protocol_task(void *argument)
             xSemaphoreTake(protocol_mutex, portMAX_DELAY);
             serial_write_line(event_line);
             xSemaphoreGive(protocol_mutex);
+        }
+
+        /* A saved colour-order change reboots into the new panel init once
+           the reply to the line that asked for it has left. */
+        if (s_restart_at_ms >= 0 && uptime_ms() >= s_restart_at_ms) {
+            esp_restart();
         }
     }
 }
@@ -464,6 +572,13 @@ void app_main(void)
     if (task_created != pdPASS) {
         ESP_LOGE(TAG, "Could not create the serial protocol task");
         return;
+    }
+
+    /* The colour order is part of the panel's init sequence, so it has to be
+       read before the display starts rather than with the rest of the stored
+       settings in deck_ui_init. The second init inside deck_ui is a no-op. */
+    if (deck_settings_init() == ESP_OK) {
+        bsp_display_set_color_order(color_order_load_bgr());
     }
 
     lv_display_t *display = bsp_display_start();

@@ -1042,6 +1042,35 @@ class DeviceController {
     );
   }
 
+  // The colour order is wired into the panel's init sequence, so the board
+  // saves the choice and reboots to apply it. Its UART bridge port never
+  // disconnects on its own, so the dead session is dropped deliberately and
+  // the handshake chased until the board is back.
+  async setDisplayColorOrder(deviceId, colorOrder) {
+    const session = this.deckRuntime?.sessionFor(deviceId);
+
+    if (!session) {
+      throw new Error('The deck is not connected.');
+    }
+
+    if (session.hello?.features?.includes('display-color-order') !== true) {
+      throw new Error('The colour order requires updated board firmware.');
+    }
+
+    await this.applyDisplayPolicyToSession(session, { colorOrder });
+    this.deckRuntime?.applyDisplayState(deviceId, { colorOrder });
+
+    const { port } = session;
+    const boardId = session.hello.boardId;
+
+    // Give the board time to persist the order and start its reboot before
+    // hunting for the fresh hello; reconnecting sooner can catch the old
+    // session answering right before it goes down.
+    await sleep(1500);
+    await this.closeSessionForPort(port);
+    return this.connectWithRetries(port, boardId);
+  }
+
   async broadcastDisplayPolicy() {
     const tasks = this.connectedSessions()
       .filter((session) => this.displayControlSupported(session))

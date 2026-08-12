@@ -538,6 +538,9 @@ function encodePageMessage(index) {
 }
 
 const DISPLAY_ROTATIONS = new Set([0, 90, 180, 270]);
+// Sub-pixel order of the glass itself. Boards like the CYD ship the same
+// model with RGB or BGR panels, so the board stores which one it has.
+const DISPLAY_COLOR_ORDERS = new Set(['rgb', 'bgr']);
 // Artwork size as a percentage of the key tile, and how far a key label may
 // wrap. Both bounds match DECK_ICON_PERCENT_MIN and DECK_LABEL_LINES_MAX in
 // the firmware's deck_settings.h.
@@ -552,6 +555,7 @@ function encodeDisplayMessage({
   rotation,
   flipX,
   flipY,
+  colorOrder,
   iconSize,
   labelLines,
 }) {
@@ -602,6 +606,14 @@ function encodeDisplayMessage({
 
     message.flipX = flipX;
     message.flipY = flipY;
+  }
+
+  if (colorOrder !== undefined) {
+    if (!DISPLAY_COLOR_ORDERS.has(colorOrder)) {
+      throw new TypeError('Display colour order must be rgb or bgr.');
+    }
+
+    message.colorOrder = colorOrder;
   }
 
   if (iconSize !== undefined) {
@@ -655,6 +667,14 @@ function validateDisplayStateMessage(message) {
 
       state[axis] = message[axis];
     }
+  }
+
+  if (message.colorOrder !== undefined) {
+    if (!DISPLAY_COLOR_ORDERS.has(message.colorOrder)) {
+      throw new TypeError('Display colour order must be rgb or bgr.');
+    }
+
+    state.colorOrder = message.colorOrder;
   }
 
   if (message.iconSize !== undefined) {

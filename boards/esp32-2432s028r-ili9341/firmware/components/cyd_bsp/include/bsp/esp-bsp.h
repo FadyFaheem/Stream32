@@ -96,6 +96,22 @@ esp_err_t bsp_display_set_invert(bool invert);
 bool bsp_display_invert(void);
 
 /**
+ * @brief Choose the order the panel multiplexes sub-pixels in.
+ *
+ * The same model number also ships with RGB and BGR glass, and the wrong
+ * order swaps red and blue everywhere. The order is part of the panel's
+ * init sequence: before bsp_display_start it selects what the panel comes
+ * up with, and afterwards it only takes effect on the next boot, so the
+ * caller owns persisting the choice and restarting the board.
+ */
+esp_err_t bsp_display_set_color_order(bool bgr);
+
+/**
+ * @brief Colour order the running panel was actually initialised with.
+ */
+bool bsp_display_color_order_bgr(void);
+
+/**
  * @brief Rotate the display by 0, 90, 180 or 270 degrees clockwise.
  *
  * The panel is 240x320 portrait glass, so the deck runs in whichever

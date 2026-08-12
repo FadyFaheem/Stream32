@@ -401,6 +401,60 @@ test('the CYD flip survives a rotation and takes touch with it', () => {
   );
 });
 
+test('the CYD colour order is chosen before the panel starts and persists', () => {
+  const boardPath = (...parts) =>
+    path.join(ROOT, 'boards', 'esp32-2432s028r-ili9341', 'firmware', ...parts);
+  const main = read(boardPath('main', 'main.c'));
+  const bsp = read(boardPath('components', 'cyd_bsp', 'cyd_bsp.c'));
+
+  // The order is written into the panel's init sequence, so it must be
+  // loaded from NVS before bsp_display_start, not by deck_settings_apply.
+  const loadsOrder = main.indexOf(
+    'bsp_display_set_color_order(color_order_load_bgr())',
+  );
+  assert.ok(loadsOrder > 0, 'main.c never loads the stored colour order');
+  assert.ok(
+    main.indexOf('deck_settings_init()') < loadsOrder &&
+      loadsOrder < main.indexOf('bsp_display_start()'),
+    'the stored order must be applied between NVS mount and display start',
+  );
+
+  // Board-owned field: picked off before the shared dispatch, refusing the
+  // whole line on a bad value the way the shared handler would.
+  assert.ok(
+    main.indexOf('apply_color_order(message)') <
+      main.indexOf('deck_protocol_dispatch('),
+  );
+  assert.match(main, /"display-invalid"/);
+
+  // A change reboots the board, but only an actual change, and only after
+  // the reply to the line that asked for it has left the wire.
+  assert.match(main, /bgr != bsp_display_color_order_bgr\(\)/);
+  assert.match(
+    main,
+    /s_restart_at_ms = uptime_ms\(\) \+ STREAM32_RESTART_DELAY_MS/,
+  );
+  assert.match(
+    main,
+    /s_restart_at_ms >= 0 && uptime_ms\(\) >= s_restart_at_ms[\s\S]{0,80}esp_restart\(\)/,
+  );
+
+  // The desktop learns about it as a capability and as the stored value.
+  assert.match(main, /display-color-order/);
+  assert.match(main, /\\"colorOrder\\":\\"%s\\"/);
+  assert.match(main, /bsp_display_color_order_bgr\(\) \? "bgr" : "rgb"/);
+
+  // The BSP keeps the pending order apart from the one the panel booted
+  // with, which is what makes "reboot only on an actual change" decidable.
+  assert.match(
+    bsp,
+    /s_bgr\s*\? LCD_RGB_ELEMENT_ORDER_BGR\s*: LCD_RGB_ELEMENT_ORDER_RGB/,
+  );
+  assert.match(bsp, /s_bgr_active = s_bgr;/);
+  assert.match(bsp, /esp_err_t bsp_display_set_color_order\(bool bgr\)/);
+  assert.match(bsp, /bool bsp_display_color_order_bgr\(void\)/);
+});
+
 test('every board answers the calibration and invert BSP contract', () => {
   const bsps = [
     ['waveshare-esp32-s3-touch-lcd-4-v3', 'waveshare_bsp/waveshare_bsp.c'],

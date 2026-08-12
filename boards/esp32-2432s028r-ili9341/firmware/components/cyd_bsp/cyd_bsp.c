@@ -65,6 +65,13 @@ static bool s_display_awake;
    Overridable at runtime because the same model number ships with panels
    that disagree, and the board remembers the answer. */
 static bool s_invert;
+/* RGB by default, confirmed on hardware for this batch, but clones ship
+   with BGR glass that swaps red and blue. Unlike inversion this is written
+   into the panel's init sequence, so a change only lands on the next boot;
+   s_bgr is what the next init will use and s_bgr_active what the running
+   panel actually got. */
+static bool s_bgr;
+static bool s_bgr_active;
 static uint16_t s_last_raw_x;
 static uint16_t s_last_raw_y;
 static bool s_touch_down;
@@ -136,13 +143,18 @@ static esp_err_t panel_init(void)
     };
     const esp_lcd_panel_dev_config_t panel_config = {
         .reset_gpio_num = GPIO_NUM_NC,
-        /* RGB, not the BGR most of this board's community configs specify.
-           Confirmed on hardware: with BGR the amber title came out blue and
-           the dark background picked up an orange cast, which is what
-           swapping red and blue does to those two colours. */
-        .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
+        /* RGB by default, not the BGR most of this board's community configs
+           specify. Confirmed on hardware: with BGR the amber title came out
+           blue and the dark background picked up an orange cast, which is
+           what swapping red and blue does to those two colours. Clones with
+           the opposite glass store the other order and reboot into it. */
+        .rgb_ele_order = s_bgr
+            ? LCD_RGB_ELEMENT_ORDER_BGR
+            : LCD_RGB_ELEMENT_ORDER_RGB,
         .bits_per_pixel = 16,
     };
+
+    s_bgr_active = s_bgr;
 
     s_status = "display-spi-bus";
     ESP_RETURN_ON_ERROR(
@@ -516,6 +528,20 @@ esp_err_t bsp_touch_set_calibration(
     memcpy(s_calibration, coefficients, sizeof(s_calibration));
     s_calibrated = true;
     return ESP_OK;
+}
+
+esp_err_t bsp_display_set_color_order(bool bgr)
+{
+    /* Recorded, not applied: the order is part of the panel init sequence,
+       so before bsp_display_start this selects what the panel comes up
+       with, and afterwards it waits for the caller to restart the board. */
+    s_bgr = bgr;
+    return ESP_OK;
+}
+
+bool bsp_display_color_order_bgr(void)
+{
+    return s_bgr_active;
 }
 
 esp_err_t bsp_display_set_invert(bool invert)

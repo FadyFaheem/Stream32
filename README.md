@@ -15,6 +15,11 @@
   </p>
 
   <img src="./assets/crowpanel-10.1-deck.webp" alt="A CrowPanel 10.1-inch panel in a printed stand running a Stream32 deck" width="640">
+
+  <p><sub>Sponsored by</sub></p>
+  <p>
+    <a href="https://www.pcbway.com/"><img src="./assets/pcbway.svg" alt="PCBWay" width="180"></a>
+  </p>
 </div>
 
 ## Why Stream32?
@@ -133,6 +138,15 @@ Switching channels installs whichever build that channel offers, including an
 older one when moving back to Stable. The channel a build belongs to is the
 SemVer prerelease identifier of its tag, so keep the tag, the version in
 `desktop/package.json`, and the published `latest.yml` in agreement.
+
+## Sponsors
+
+<a href="https://www.pcbway.com/"><img src="./assets/pcbway.svg" alt="PCBWay" width="150" align="right"></a>
+
+[PCBWay](https://www.pcbway.com/) sponsors Stream32. They manufacture PCBs and
+do assembly, CNC machining, and 3D printing, and they back open-source hardware
+through their [sponsorship program](https://www.pcbway.com/project/sponsor/).
+That support goes toward the custom open-hardware designs on the roadmap.
 
 ## Contributing
 

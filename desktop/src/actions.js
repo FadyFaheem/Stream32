@@ -853,7 +853,18 @@ function createActionRunner({
     keyChild = null;
   }
 
-  return { dispose, getCapabilities, runAction };
+  // The Windows child compiles its SendInput definition with Add-Type, which
+  // costs far more than the keystroke it goes on to send. Paying it at startup
+  // keeps it off the first press. ponytail: a child that later dies still makes
+  // the next press pay again; respawning on exit needs a backoff first so a
+  // machine that cannot run PowerShell does not spawn in a loop.
+  function warmUp() {
+    if (platform === 'win32') {
+      windowsKeyChild();
+    }
+  }
+
+  return { dispose, getCapabilities, runAction, warmUp };
 }
 
 module.exports = {

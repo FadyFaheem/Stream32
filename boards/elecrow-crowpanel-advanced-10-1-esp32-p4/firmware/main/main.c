@@ -35,7 +35,7 @@
    USB 2.0 high-speed PHY (module pads 50/49), so CDC-ACM turns the port
    Elecrow ships as power-only into a 480 Mbit/s protocol link. UART0 stays
    live beside it: it is the only way to flash this board, and the desktop
-   holds it open across the post-flash restart. */
+   holds it open across the manual post-flash reset. */
 #define STREAM32_USB_CDC TINYUSB_CDC_ACM_0
 #define STREAM32_USB_READ_CHUNK 512
 #define STREAM32_USB_WRITE_TIMEOUT_MS 100

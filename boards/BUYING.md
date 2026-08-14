@@ -28,14 +28,15 @@ to get running.
 
 - **Buy it:** [Waveshare ESP32-S3-Touch-LCD-4 on Amazon](https://amzn.to/3RxDX7I)
 - **Confirm before ordering:**
-  - The silkscreen hardware revision is **Rev 3.0**. Rev 4 uses different
-    hardware and is not supported.
+  - The silkscreen hardware revision is **Rev 3.0** or **Rev 4.0**. Both are
+    supported. Rev 4 uses a different IO expander and adds software backlight
+    control, but the flashing process and deck experience are identical.
   - It is the **4-inch** `ESP32-S3-Touch-LCD-4`. The similarly named **4.3-inch**
     board is a different device and will not work.
 - **Optional automatic power-on:** The
   [Rev 3 power-button bypass](../docs/WAVESHARE_V3_POWER_BUTTON_BYPASS.md)
   documents a board-level modification for installations that should start
-  without pressing the power button.
+  without pressing the power button. It has only been verified on **Rev 3.0**.
 
 ## Elecrow CrowPanel Advanced 10.1" ESP32-P4
 

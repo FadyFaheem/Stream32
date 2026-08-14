@@ -602,7 +602,7 @@ test('the CrowPanel serves both links without risking the flashing one', () => {
   );
 
   // UART0 is the only way to flash this board and the link the desktop holds
-  // across a manual post-flash reset, so USB bring-up may never abort.
+  // across the post-flash restart, so USB bring-up may never abort.
   assert.doesNotMatch(usbTask, /ESP_ERROR_CHECK\(\s*tinyusb/);
   assert.match(usbTask, /vTaskDelete\(NULL\)/);
   assert.match(uartTask, /ESP_ERROR_CHECK\(uart_driver_install\(/);

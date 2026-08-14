@@ -6,9 +6,9 @@
   "hardwareRevision": "1.0-1.2",
   "chip": "ESP32-P4",
   "protocolVersion": 1,
-  "minimumDesktopVersion": "0.6.0",
+  "minimumDesktopVersion": "1.10.0",
   "preferredFlashBaud": 921600,
-  "postFlashReset": "manual",
+  "postFlashReset": "automatic",
   "usbFilters": [
     {
       "usbVendorId": 6790,
@@ -44,6 +44,6 @@
     "Hold BOOT, press and release RST, then release BOOT to enter download mode.",
     "If 921600 baud is unstable, the desktop automatically restarts the complete write once at 460800 baud.",
     "Leave Full erase off to preserve saved decks; enable it only for slow, destructive troubleshooting.",
-    "After a successful flash, press and release RST (do not hold BOOT), or reconnect power."
+    "The desktop resets the board automatically after a successful flash. If it does not reconnect, press RST or reconnect power."
   ]
 }

@@ -53,7 +53,8 @@ and SHA-256 hash, and caches it for offline reflashing.
 3. **Confirm the on-screen board revision matches your silkscreen.** The chip
    family is verified automatically, but only you can confirm the display and
    PCB revision, so this is the final safety check before erasing.
-4. Let the flash complete, then press **RESET** or reconnect power when prompted.
+4. Let the flash complete. The board restarts on its own; only press **RESET**
+   or reconnect power if the app asks you to.
 
 Normal flashing rewrites only the firmware image and **preserves your saved
 decks and artwork**. The advanced **Full erase (slow troubleshooting)** option

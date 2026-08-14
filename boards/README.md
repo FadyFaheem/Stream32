@@ -380,15 +380,22 @@ If automatic bootloader entry fails:
 2. Hold **BOOT** while reconnecting USB, then release **BOOT**.
 3. Flash again.
 
-After a verified CrowPanel write, the desktop keeps UART0 open for 90 seconds
-and sends a protocol hello once per second. Press and release **RST** during
-that window; do not hold **BOOT**. If the window expires, the firmware is still
-written and verified—press **RST** or power-cycle, then use **Reconnect**. The
-Waveshare profile uses the normal automatic post-flash reset.
+Every current profile restarts automatically after a verified write: the
+desktop pulses the bridge's control lines the way `esptool.py` does, releasing
+IO0 and holding EN low for 100 ms. If a board does not come back, press **RST**
+or power-cycle, then use **Reconnect**.
+
+The CrowPanel needed a physical **RST** press until desktop 1.10.0. That was
+never a limit of its CH340K, which does carry RTS through to EN; it was
+[esptool-js#177](https://github.com/espressif/esptool-js/issues/177), whose
+`HardReset` never asserted RTS at all. Its profile therefore requires desktop
+1.10.0 or newer, the release that replaced that call. Probe a new board with
+`boards/tools/probe-rts-reset.ps1` before assuming it needs a manual press.
 
 Board profiles declare this behavior with `postFlashReset`, validated as
-`automatic` (the default) or `manual`. This is desktop/catalog metadata and
-does not change firmware images or versions.
+`automatic` (the default) or `manual`. A `manual` profile makes the desktop
+hold the port open for 90 seconds and ask for an **RST** press instead. This is
+desktop/catalog metadata and does not change firmware images or versions.
 
 Normal flashing replaces only firmware-image sectors and preserves the
 dedicated deck partition. Use **Full erase (slow troubleshooting)** only when

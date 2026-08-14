@@ -57,7 +57,11 @@ test('board profiles declare their post-flash reset behavior', () => {
     true,
   );
   assert.equal(profile.preferredFlashBaud, 921600);
-  assert.equal(profile.postFlashReset, 'manual');
+  assert.equal(profile.postFlashReset, 'automatic');
+  // The automatic pulse only works from 1.10.0, the release that stopped
+  // calling esptool-js's HardReset. An older desktop would silently fail to
+  // restart the board instead of asking for the RST press it used to.
+  assert.equal(profile.minimumDesktopVersion, '1.10.0');
 
   const waveshareProfile = JSON.parse(
     readFileSync(

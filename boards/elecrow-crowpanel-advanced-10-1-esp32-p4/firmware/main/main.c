@@ -148,6 +148,30 @@ static void queue_event_line(const char *json)
     (void)xQueueSend(event_queue, line, 0);
 }
 
+/* A key press is the one event the desktop is waiting on, so it gets its own
+   task. Draining the queue from the UART task instead made every press wait
+   out that task's receive timeout before it reached the wire, including when
+   the faster USB 2.0 link was the one carrying the session. */
+static void event_writer_task(void *argument)
+{
+    char event_line[STREAM32_EVENT_LINE_CAPACITY];
+
+    (void)argument;
+
+    while (true) {
+        if (xQueueReceive(event_queue, event_line, portMAX_DELAY) != pdTRUE) {
+            continue;
+        }
+
+        /* Touch and press events are the one writer outside dispatch, so they
+           take the same lock to stay off a half-written reply. Holding it also
+           keeps active_link still while the line goes out. */
+        xSemaphoreTake(protocol_mutex, portMAX_DELAY);
+        serial_write_line(event_line);
+        xSemaphoreGive(protocol_mutex);
+    }
+}
+
 static void update_connection_label(const char *text)
 {
     if (connection_label == NULL || !bsp_display_lock(100)) {
@@ -469,16 +493,6 @@ static void serial_protocol_task(void *argument)
         }
 
         deck_ui_poll();
-
-        char event_line[STREAM32_EVENT_LINE_CAPACITY];
-
-        while (xQueueReceive(event_queue, event_line, 0) == pdTRUE) {
-            /* Touch and press events are the one writer outside dispatch, so
-               they take the same lock to stay off a half-written reply. */
-            xSemaphoreTake(protocol_mutex, portMAX_DELAY);
-            serial_write_line(event_line);
-            xSemaphoreGive(protocol_mutex);
-        }
     }
 }
 
@@ -618,6 +632,12 @@ void app_main(void)
 
     if (task_created != pdPASS) {
         ESP_LOGE(TAG, "Could not create the serial protocol task");
+        return;
+    }
+
+    if (xTaskCreate(event_writer_task, "stream32_events", 3072, NULL, 5, NULL) !=
+        pdPASS) {
+        ESP_LOGE(TAG, "Could not create the event writer task");
         return;
     }
 

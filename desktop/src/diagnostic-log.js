@@ -115,6 +115,10 @@ function createDiagnosticLogger({
   mkdirSync(directory, { recursive: true });
   const filePath = path.join(directory, 'stream32.log');
   const sanitizingOptions = { homeDirectory, userDataDirectory };
+  // Every action logs, so the size is tracked here rather than paying an
+  // existsSync and a statSync per line. This is the only writer; null means the
+  // size is unknown and the next line measures the file again.
+  let currentBytes = null;
 
   function log(level, event, details = {}) {
     const entry = {
@@ -131,17 +135,24 @@ function createDiagnosticLogger({
     }
 
     try {
-      if (
-        existsSync(filePath) &&
-        statSync(filePath).size + Buffer.byteLength(line, 'utf8') > maxBytes
-      ) {
+      if (currentBytes === null) {
+        currentBytes = existsSync(filePath) ? statSync(filePath).size : 0;
+      }
+
+      const bytes = Buffer.byteLength(line, 'utf8');
+
+      if (currentBytes + bytes > maxBytes) {
         rotateLogs(filePath, keepFiles);
+        currentBytes = 0;
       }
 
       appendFileSync(filePath, line, 'utf8');
+      currentBytes += bytes;
       return true;
     } catch {
-      // Diagnostics must never take down the application.
+      // Diagnostics must never take down the application. Remeasure next time:
+      // the failure may have been the file moving out from under us.
+      currentBytes = null;
       return false;
     }
   }

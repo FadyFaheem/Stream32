@@ -4,6 +4,7 @@ const {
   readFileSync,
   readdirSync,
   rmSync,
+  writeFileSync,
 } = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -52,6 +53,39 @@ test('rotates persistent logs and redacts sensitive values', () => {
       .join('');
     assert.doesNotMatch(content, /private-user|example\.com|AAAA|secret-value/);
     assert.match(content, /\[redacted\]|\[redacted-path\]/);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test('a restarted logger rotates the log left behind by the last run', () => {
+  const directory = mkdtempSync(path.join(os.tmpdir(), 'stream32-logs-'));
+
+  try {
+    // The size is tracked in memory, so a fresh logger has to measure a file it
+    // did not write before deciding the next line overflows it.
+    writeFileSync(path.join(directory, 'stream32.log'), 'x'.repeat(250), 'utf8');
+    const logger = createDiagnosticLogger({
+      directory,
+      keepFiles: 3,
+      maxBytes: 260,
+      now: () => new Date(0),
+    });
+
+    assert.equal(logger.log('info', 'test:event', { sequence: 1 }), true);
+    assert.deepEqual(readdirSync(directory).sort(), [
+      'stream32.log',
+      'stream32.log.1',
+    ]);
+    // The pre-existing bytes moved aside rather than being appended to.
+    assert.equal(
+      readFileSync(path.join(directory, 'stream32.log.1'), 'utf8'),
+      'x'.repeat(250),
+    );
+    assert.doesNotMatch(
+      readFileSync(path.join(directory, 'stream32.log'), 'utf8'),
+      /x{250}/,
+    );
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

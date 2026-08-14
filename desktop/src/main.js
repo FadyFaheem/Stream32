@@ -96,6 +96,12 @@ let rendererLogWindow = { count: 0, startedAt: 0 };
 // Electron otherwise applies Chromium's serial-device blocklist even after
 // the user explicitly selects a port. Permission remains limited in serial.js.
 app.commandLine.appendSwitch('disable-serial-blocklist');
+// A deck spends nearly all of its life hidden in the tray behind a game, and
+// the serial link and press dispatch both live in the renderer. Chromium would
+// otherwise drop that renderer to a background priority class exactly when a
+// key press has to be answered fastest.
+app.commandLine.appendSwitch('disable-renderer-backgrounding');
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 
 // Windows gets the .ico, which carries a rendition drawn for each of the
 // small sizes the taskbar, title bar and tray ask for. Scaling the single PNG
@@ -280,6 +286,10 @@ function createMainWindow() {
     backgroundColor: '#0b1116',
     icon: getIconPath(),
     webPreferences: {
+      // Closing only hides the window, so the renderer that owns the serial
+      // link keeps running with the page marked hidden. Throttled timers there
+      // would stall Multi Action delays and the device sync loop.
+      backgroundThrottling: false,
       contextIsolation: true,
       nodeIntegration: false,
       preload: path.join(__dirname, 'preload.js'),
@@ -773,6 +783,7 @@ if (!hasSingleInstanceLock) {
     }
 
     mainWindow = createMainWindow();
+    actionRunner.warmUp();
     startLockMonitoring();
     boardService = createDefaultBoardService(sendBoardDownloadProgress);
     pluginService = createPluginService({

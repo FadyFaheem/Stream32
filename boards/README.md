@@ -17,18 +17,21 @@ Looking to buy a board? See [Buying a display](./BUYING.md) for purchase links
 and the exact model and revision to choose. For a first-time setup walkthrough,
 see the [Getting started guide](../docs/GETTING_STARTED.md).
 
-Waveshare `ESP32-S3-Touch-LCD-4` (profile
-`waveshare-esp32-s3-touch-lcd-4-v3`):
+Waveshare `ESP32-S3-Touch-LCD-4` (profiles
+`waveshare-esp32-s3-touch-lcd-4-v3` and `waveshare-esp32-s3-touch-lcd-4-v4`):
 
-- Silkscreen hardware revision `3.0`
-- ESP32-S3 N16R8, ST7701 480×480 LCD, GT911 touch, and TCA9554 I/O expander
+- Silkscreen hardware revision `3.0` or `4.0` — pick the matching profile
+- ESP32-S3 N16R8, ST7701 480×480 LCD, GT911 touch
+- Rev 3.0 has a TCA9554 I/O expander and no software backlight control;
+  Rev 4.0 replaces it with a CH32V003 expander whose PWM register drives a
+  real dimmable backlight
 - The native USB Serial/JTAG connection (`303a:1001`)
 - An optional
   [power-button bypass](../docs/WAVESHARE_V3_POWER_BUTTON_BYPASS.md) for
-  automatic startup
+  automatic startup, verified on Rev 3.0
 
-The similarly named 4.3-inch board and hardware Rev 4 are different devices.
-Do not select the Rev3 profile for either one.
+The similarly named 4.3-inch board is a different device. Do not select
+either 4-inch profile for it.
 
 Elecrow `CrowPanel Advanced 10.1"` (profile
 `elecrow-crowpanel-advanced-10-1-esp32-p4`, model `DHE04310D`):
@@ -353,12 +356,14 @@ Touches remain
 consumed during host-forced sleep, so locked computers cannot run key actions.
 The optional `brightness` field is bounded to 0-100 and is sent only when hello
 also advertises `display-brightness`. The global desktop brightness setting
-therefore controls the Elecrow PWM backlight and is restored after idle or lock
-sleep. CrowPanel blanking keeps its EK79007/DSI and LVGL touch polling active
-while switching off the power-dominant PWM backlight, so an idle wake touch is
-reliable. Waveshare Rev 3 does not advertise brightness because its current
-BSP has no software-controlled backlight pin; idle and lock still blank its
-ST7701 image, although the backlight may remain lit.
+therefore controls the Elecrow and Waveshare Rev 4 PWM backlights and is
+restored after idle or lock sleep. CrowPanel blanking keeps its EK79007/DSI
+and LVGL touch polling active while switching off the power-dominant PWM
+backlight, so an idle wake touch is reliable. Waveshare Rev 4 blanking turns
+its CH32V003 PWM backlight fully off the same way. Waveshare Rev 3 does not
+advertise brightness because its current BSP has no software-controlled
+backlight pin; idle and lock still blank its ST7701 image, although the
+backlight may remain lit.
 
 The firmware persists layouts and artwork to the dedicated `deck` flash
 partition (header last, CRC-checked), so a standalone device boots straight

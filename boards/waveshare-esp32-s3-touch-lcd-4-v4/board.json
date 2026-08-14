@@ -27,6 +27,7 @@
   },
   "capabilities": [
     "display",
+    "brightness",
     "touch",
     "usb-serial-jtag"
   ],

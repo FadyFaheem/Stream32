@@ -222,15 +222,18 @@ esp_err_t bsp_sdcard_unmount(void)
 
 /* The CH32V003 PWM register is inverted: 0 is full brightness and 0xFF
    is off. */
-static esp_err_t backlight_write(int brightness_percent)
+static int clamp_brightness(int brightness_percent)
 {
     if (brightness_percent > 100) {
-        brightness_percent = 100;
-    } else if (brightness_percent < 0) {
-        brightness_percent = 0;
+        return 100;
     }
 
-    const int flipped = 100 - brightness_percent;
+    return brightness_percent < 0 ? 0 : brightness_percent;
+}
+
+static esp_err_t backlight_write(int brightness_percent)
+{
+    const int flipped = 100 - clamp_brightness(brightness_percent);
     return custom_io_expander_set_pwm(io_expander, (uint8_t)(flipped * LCD_BRIGHTNESS_MAX / 100));
 }
 
@@ -251,13 +254,7 @@ esp_err_t bsp_display_brightness_set(int brightness_percent)
         return ESP_ERR_INVALID_STATE;
     }
 
-    if (brightness_percent > 100) {
-        brightness_percent = 100;
-    } else if (brightness_percent < 0) {
-        brightness_percent = 0;
-    }
-
-    s_brightness_percent = (uint32_t)brightness_percent;
+    s_brightness_percent = (uint32_t)clamp_brightness(brightness_percent);
 
     /* A blanked panel only stores the level; the next wake applies it. */
     if (!s_display_awake) {
@@ -274,7 +271,12 @@ esp_err_t bsp_display_backlight_off(void)
 
 esp_err_t bsp_display_backlight_on(void)
 {
-    return bsp_display_brightness_set(100);
+    if (io_expander == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    s_display_awake = true;
+    return backlight_write((int)s_brightness_percent);
 }
 
 esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_handle_t *ret_panel, esp_lcd_panel_io_handle_t *ret_io)
@@ -503,8 +505,9 @@ lv_display_t *bsp_display_start_with_config(const bsp_display_cfg_t *cfg)
        the MADCTL MY/MX and SDIR/ML mirror commands in RGB mode (both were
        tried on hardware). Rotate in software instead: sw_rotate is set on
        this display, so the port rotates every flushed buffer 180° via
-       lv_draw_sw_rotate before it reaches the panel. The GT911 mirrors
-       both axes to stay aligned with the rotated view. */
+       lv_draw_sw_rotate before it reaches the panel. Touch stays aligned
+       because the port maps touch coordinates through the same display
+       rotation; the natively oriented digitizer needs no mirroring. */
     if (lvgl_port_lock(0)) {
         lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180);
         lvgl_port_unlock();

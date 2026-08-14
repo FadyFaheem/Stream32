@@ -240,6 +240,9 @@ class DeviceManager {
     // Each card's progress line, kept by device id so a sync can tick it
     // without rebuilding the list under the person's cursor.
     this.syncNodes = new Map();
+    // Colour-order saves reboot the board, so the rebuilt control has to
+    // stay locked for the whole restart, not just the node that fired it.
+    this.colorOrderPending = new Set();
   }
 
   async initialize() {
@@ -698,6 +701,9 @@ class DeviceManager {
     label.textContent = 'Colour order';
     label.htmlFor = `color-order-${row.deviceId}`;
     select.id = label.htmlFor;
+    // The save reboots the board, so a re-render must not hand back an
+    // enabled control while the restart is in flight.
+    select.disabled = this.colorOrderPending.has(row.deviceId);
 
     for (const [value, caption] of [
       ['rgb', 'RGB (standard)'],
@@ -726,6 +732,7 @@ class DeviceManager {
     const order = select.value === 'bgr' ? 'bgr' : 'rgb';
     let status;
 
+    this.colorOrderPending.add(row.deviceId);
     select.disabled = true;
     this.setStatus(
       `${row.name} is restarting to apply the ${order.toUpperCase()} ` +
@@ -744,6 +751,8 @@ class DeviceManager {
         `Could not change the colour order: ${error.message}`,
         'error',
       ];
+    } finally {
+      this.colorOrderPending.delete(row.deviceId);
     }
 
     // render() rewrites the status line, so the outcome has to follow it.

@@ -204,6 +204,7 @@ function managerFixture() {
   manager.document = document;
   manager.expanded = new Set();
   manager.syncNodes = new Map();
+  manager.colorOrderPending = new Set();
   manager.companionSettings = { enabled: false, host: '127.0.0.1', port: 16622 };
   manager.list = makeElement('div');
   manager.empty = makeElement('p');
@@ -554,6 +555,43 @@ test('colour order appears only on boards whose glass can disagree', async () =>
   // The panel re-initialises, so the status has to explain the restart
   // rather than looking like the board dropped off on its own.
   assert.match(manager.status.textContent, /RGB colour order/);
+});
+
+test('a colour-order save locks the rebuilt control until the restart lands', async () => {
+  const { manager } = managerFixture();
+  const sessions = manager.deck.runtime.sessions;
+
+  sessions.get('bbbbbbbbbbbb').hello.features = ['display-color-order'];
+  manager.render();
+
+  // Hold the save open so the reboot window can be inspected mid-flight.
+  let resolveSave;
+  manager.deviceController.setDisplayColorOrder = (deviceId, order) =>
+    new Promise((resolve) => {
+      resolveSave = () => {
+        manager.deck.runtime.colorOrder.set(deviceId, order);
+        resolve();
+      };
+    });
+
+  const picker = () =>
+    findByClass(manager.list, 'device-color-order').children[1];
+  const select = picker();
+  select.value = 'bgr';
+  const saving = fire(select, 'change');
+
+  // The save re-renders the list (applyDisplayState), which builds a fresh
+  // select: it must stay locked while the board reboots, or a second change
+  // starts a second close-and-reconnect cycle on the same port.
+  manager.render();
+  assert.equal(picker().disabled, true);
+
+  resolveSave();
+  await saving;
+
+  // Once the device is back, the rebuilt control is usable again.
+  manager.render();
+  assert.equal(picker().disabled, false);
 });
 
 test('screen rotation appears only on boards that can turn the panel', async () => {

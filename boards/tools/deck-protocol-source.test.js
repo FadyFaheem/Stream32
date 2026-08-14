@@ -458,6 +458,7 @@ test('the CYD colour order is chosen before the panel starts and persists', () =
 test('every board answers the calibration and invert BSP contract', () => {
   const bsps = [
     ['waveshare-esp32-s3-touch-lcd-4-v3', 'waveshare_bsp/waveshare_bsp.c'],
+    ['waveshare-esp32-s3-touch-lcd-4-v4', 'waveshare_bsp/waveshare_bsp.c'],
     ['elecrow-crowpanel-advanced-10-1-esp32-p4', 'elecrow_bsp/elecrow_bsp.c'],
     ['esp32-2432s028r-ili9341', 'cyd_bsp/cyd_bsp.c'],
   ];
@@ -538,6 +539,7 @@ test('every overlay mutation holds the display lock, not just visible ones', () 
 
 const BOARDS = [
   'waveshare-esp32-s3-touch-lcd-4-v3',
+  'waveshare-esp32-s3-touch-lcd-4-v4',
   'elecrow-crowpanel-advanced-10-1-esp32-p4',
   'esp32-2432s028r-ili9341',
 ];

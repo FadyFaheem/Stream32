@@ -49,3 +49,6 @@ desktop/src/renderer/material-symbols.woff2
 .DS_Store
 Thumbs.db
 Desktop.ini
+.freebuff/desktop-v2.db
+.freebuff/desktop-v2.db-shm
+.freebuff/desktop-v2.db-wal

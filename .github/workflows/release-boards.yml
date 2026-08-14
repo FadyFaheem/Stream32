@@ -95,10 +95,14 @@ jobs:
     needs:
       - validate
       - build
+    # Runs when nothing was rebuilt too. The catalog also carries postFlashReset,
+    # minimumDesktopVersion, recovery text and deck limits, and gating this on a
+    # firmware build left those edits unpublishable. build-catalog.js reuses the
+    # published image metadata for firmware it was not handed.
     if: >-
       always() &&
-      needs.validate.outputs.has_boards == 'true' &&
-      needs.build.result == 'success'
+      needs.validate.result == 'success' &&
+      (needs.build.result == 'success' || needs.build.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -110,6 +114,7 @@ jobs:
           node-version: 22
 
       - name: Download firmware images
+        if: needs.validate.outputs.has_boards == 'true'
         uses: actions/download-artifact@v7
         with:
           pattern: board-*
@@ -135,6 +140,7 @@ jobs:
           fi
 
       - name: Enforce immutable firmware versions
+        if: needs.validate.outputs.has_boards == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -165,6 +171,7 @@ jobs:
           done
 
       - name: Publish versioned firmware assets
+        if: needs.validate.outputs.has_boards == 'true'
         uses: softprops/action-gh-release@v3
         with:
           tag_name: boards-current

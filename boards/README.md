@@ -295,6 +295,14 @@ panel's unrotated orientation and turned on the way out.
 Rotation needs `esp_lcd_panel_swap_xy`, which the RGB and MIPI-DSI panel
 drivers do not implement, so only the Cheap Yellow Display offers it today.
 
+Waveshare Rev 4 mounts its panel upside down relative to Rev 3, and its
+ST7701 ignores the MADCTL and SDIR mirror commands in RGB mode, so its BSP
+asks LVGL for a fixed 180° at start-up instead. `esp_lvgl_port` turns each
+flushed buffer in software and LVGL turns every touch sample the same way,
+which is the one path to a rotated RGB panel that does not need `swap_xy`.
+It is not offered as a runtime setting: the cost is paid on every flush, and
+a board only needs it once, for how it is built.
+
 The optional `flipX` and `flipY` fields on `display` mirror the panel's own x
 and y axes for firmware advertising `display-flip`. They are one control and
 travel together. Rotation reaches four of the eight ways a panel can be

@@ -141,6 +141,17 @@ for a reboot are both states you can give an appearance to. A batch file
 reports through `exit /b`, and PowerShell through `exit`, which means
 `powershell -NoProfile -Command "...; exit 2"` is the usual one-liner shape.
 
+On macOS and Linux the command runs through `/bin/sh`, not the shell you use in
+a terminal, and it inherits the environment Stream32 was started with rather
+than the one your shell builds. On macOS that is the biggest practical
+difference between the two: an app opened from Finder or the Dock is started by
+`launchd` with a short PATH that leaves out `/opt/homebrew/bin` and
+`/usr/local/bin`, so a Homebrew tool that works when you type it will exit
+`127` here. Write the full path to it, which is worth doing anyway for
+something that runs unattended. A command that drives another app through
+`osascript` also needs Automation permission, which macOS asks for once, so run
+it by hand before pointing a key at it.
+
 ## Multi Actions
 
 A Multi Action runs up to 16 ordered action or delay steps. Action steps use

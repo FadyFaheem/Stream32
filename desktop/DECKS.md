@@ -143,7 +143,9 @@ reports through `exit /b`, and PowerShell through `exit`, which means
 
 On macOS and Linux the command runs through `/bin/sh`, not the shell you use in
 a terminal, and it inherits the environment Stream32 was started with rather
-than the one your shell builds. On macOS that is the biggest practical
+than the one your shell builds. On Debian and Ubuntu `/bin/sh` is `dash`, so a
+one-liner written in bash syntax needs `bash -c '...'` around it; a script file
+is unaffected, because its own shebang decides. On macOS that is the biggest practical
 difference between the two: an app opened from Finder or the Dock is started by
 `launchd` with a short PATH that leaves out `/opt/homebrew/bin` and
 `/usr/local/bin`, so a Homebrew tool that works when you type it will exit

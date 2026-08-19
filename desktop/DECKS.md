@@ -141,6 +141,63 @@ for a reboot are both states you can give an appearance to. A batch file
 reports through `exit /b`, and PowerShell through `exit`, which means
 `powershell -NoProfile -Command "...; exit 2"` is the usual one-liner shape.
 
+Two things to know before writing one. `cmd` expands `%NAME%` before the
+command runs, so write paths out or read the variable inside PowerShell as
+`$env:NAME` instead. And starting PowerShell costs a few hundred milliseconds,
+which is fine every five seconds and wasteful every one, so give a PowerShell
+status command a longer interval than a native tool would need.
+
+Whatever you write, run it in `cmd` first and check `echo %ERRORLEVEL%`. That
+number is exactly what Stream32 reads.
+
+#### A worked example: which audio output is live
+
+Windows has no built-in command for this, so install one:
+`Install-Module -Name AudioDeviceCmdlets -Scope CurrentUser`. Then
+`Get-AudioDevice -List | Where-Object Type -eq 'Playback'` prints the index of
+each output. Put one script somewhere stable, say
+`C:\Users\You\stream32\audio.ps1`, and have it both cycle and report:
+
+```powershell
+param([switch]$Status)
+
+# Playback device indexes, in the order the key should cycle them.
+$devices = 1, 3, 5
+
+$position = [array]::IndexOf($devices, (Get-AudioDevice -Playback).Index)
+
+if ($Status) {
+    # Position doubles as the exit code, and an output that is not in the list
+    # exits 3, which is a state you can give its own appearance.
+    if ($position -lt 0) { exit 3 }
+    exit $position
+}
+
+Set-AudioDevice -Index $devices[($position + 1) % $devices.Count] | Out-Null
+exit 0
+```
+
+The key's **Launch action** runs it:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\You\stream32\audio.ps1"
+```
+
+and its **status command** asks the same script what is true now:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\You\stream32\audio.ps1" -Status
+```
+
+Give exit code `0` the speaker artwork, `1` the headset, `2` the HDMI one, and
+`3` something that reads as "something else". Tapping the key cycles the
+output and the artwork follows immediately; changing it from the volume flyout
+instead is picked up on the next check.
+
+`-ExecutionPolicy Bypass` is needed because the policy applies to script files.
+An inline `-Command` runs without it, so a one-liner is an option when the
+logic is small enough to read.
+
 On macOS and Linux the command runs through `/bin/sh`, not the shell you use in
 a terminal, and it inherits the environment Stream32 was started with rather
 than the one your shell builds. On Debian and Ubuntu `/bin/sh` is `dash`, so a

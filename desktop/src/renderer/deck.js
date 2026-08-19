@@ -7,9 +7,11 @@ const {
   moveKey,
   pasteKey,
 } = require('./key-clipboard');
+const { LiveStatusFields } = require('./live-status-fields');
 const { remapActionAfterPageDeletion } = require('../action-model');
 const { MAX_NAME_LENGTH } = require('../deck-model');
 const {
+  MAX_STATUS_STATES,
   mergeKeyOverlay,
 } = require('../dynamic-state');
 const {
@@ -202,6 +204,22 @@ class DeckController {
     this.liveOnImageClear = document.querySelector('#deck-live-on-image-clear');
     this.liveClockField = document.querySelector('#deck-live-clock-field');
     this.liveClockFormat = document.querySelector('#deck-live-clock-format');
+    this.liveStatusFields = document.querySelector('#deck-live-status-fields');
+    this.liveStatusCommand =
+      document.querySelector('#deck-live-status-command');
+    this.liveStatusInterval =
+      document.querySelector('#deck-live-status-interval');
+    this.liveStatusAdd = document.querySelector('#deck-live-status-add');
+    this.liveStatusStates = new LiveStatusFields({
+      document,
+      container: document.querySelector('#deck-live-status-states'),
+      onChange: (mutate) => this.updateStatusStates(mutate),
+      readImageFile: (file) => this.readImageFile(file),
+      onError: (error) => this.setSyncStatus(
+        `Could not read live image: ${error.message}`,
+        'error',
+      ),
+    });
     this.liveStatus = document.querySelector('#deck-live-status');
     this.iconOpen = document.querySelector('#deck-icon-open');
     this.iconDialog = document.querySelector('#deck-icon-dialog');
@@ -696,16 +714,31 @@ class DeckController {
           };
         } else if (provider === 'clock') {
           key.liveState = { provider, hour12: false };
+        } else if (provider === 'status-command') {
+          key.liveState = {
+            provider,
+            command: '',
+            intervalSeconds: 3,
+            states: [
+              { code: 0, color: '#2f8f5b', labelColor: '#ffffff' },
+              { code: 1, color: '#8f2f2f', labelColor: '#ffffff' },
+            ],
+          };
         } else {
           key.liveState = { provider: 'focused-app' };
         }
       });
+    });
+    this.liveStatusAdd.addEventListener('click', () => {
+      this.liveStatusStates.add();
     });
     for (const control of [
       this.liveOnLabel,
       this.liveOnColor,
       this.liveOnLabelColor,
       this.liveClockFormat,
+      this.liveStatusCommand,
+      this.liveStatusInterval,
     ]) {
       control.addEventListener('change', () => this.saveLiveConfigFromEditor());
     }
@@ -1445,6 +1478,28 @@ class DeckController {
         };
       } else if (key.liveState?.provider === 'clock') {
         key.liveState.hour12 = this.liveClockFormat.value === '12';
+      } else if (key.liveState?.provider === 'status-command') {
+        const interval = Number.parseInt(this.liveStatusInterval.value, 10);
+        key.liveState.command = this.liveStatusCommand.value.trim();
+        // The editor holds a key that has not been validated yet, so an empty
+        // interval box stays out of the saved config rather than becoming NaN.
+        key.liveState.intervalSeconds = Number.isInteger(interval)
+          ? Math.min(Math.max(interval, 1), 3600)
+          : key.liveState.intervalSeconds;
+      }
+    });
+  }
+
+  updateStatusStates(mutate) {
+    this.updateSelectedKey((key) => {
+      if (key.liveState?.provider !== 'status-command') {
+        return;
+      }
+
+      const states = key.liveState.states.map((state) => ({ ...state }));
+
+      if (mutate(states)) {
+        key.liveState.states = states;
       }
     });
   }
@@ -2120,13 +2175,31 @@ class DeckController {
       live?.provider !== 'toggle' || !live.on.image;
     this.liveClockFormat.value =
       live?.provider === 'clock' && live.hour12 ? '12' : '24';
+    this.liveStatusFields.hidden = live?.provider !== 'status-command';
+    this.liveStatusCommand.value = live?.provider === 'status-command'
+      ? live.command
+      : '';
+    this.liveStatusInterval.value = String(
+      live?.provider === 'status-command' ? live.intervalSeconds : 3,
+    );
+    this.liveStatusAdd.disabled =
+      live?.provider !== 'status-command' ||
+      live.states.length >= MAX_STATUS_STATES;
+    this.liveStatusStates.render(
+      live?.provider === 'status-command' ? live.states : [],
+    );
     const session = this.runtime.sessionFor(this.selectedDeviceId);
     this.liveStatus.textContent = live
       ? session && !session.hello?.features?.includes('key-update')
         ? 'Connected firmware does not support live state. Reflash this board to enable it.'
         : live.provider === 'toggle'
           ? 'Local toggle changes only after its complete action succeeds.'
-          : 'Live appearance is ephemeral and never changes the saved base key.'
+          : live.provider === 'status-command'
+            ? live.command
+              ? 'The command runs only while this deck is connected, ' +
+                'and never two at once.'
+              : 'Enter a command that exits with a code for each state.'
+            : 'Live appearance is ephemeral and never changes the saved base key.'
       : '';
 
     const action = key.action || null;

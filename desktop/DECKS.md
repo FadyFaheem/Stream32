@@ -90,10 +90,47 @@ colors, state, and artwork never rewrite profile JSON or flash artwork.
 - **Clock** updates the key title at minute boundaries in 12- or 24-hour format.
 - **Focused app** shows a bounded application identity from the existing
   first-party focus watcher; it never exposes window titles.
+- **Status command** runs a command you write and shows the appearance you gave
+  its exit code, so a key can follow something Stream32 has no other way to
+  know. It is the one provider that can tell you about state changed by
+  something other than the deck.
 
 Toggle on-artwork uses the same bounded image upload pipeline as base artwork,
 but firmware keeps the rendered RGB565 bytes only in RAM/PSRAM. Reconnects and
 base profile syncs reapply current overlays without changing the saved base.
+
+### Status commands
+
+Give the key up to eight exit codes, each with its own label, colors and
+artwork. A script that both performs and reports an action is the usual shape:
+the key's Launch action runs `audio-output.sh`, and its status command runs
+`audio-output.sh --status`, which exits `0`, `1` or `2` for the output now in
+use. Because the board is asked what to look like rather than told what
+happened, the key stays right when the change came from somewhere else, which
+a key that only flips on its own press cannot do.
+
+The command runs on its interval and again as soon as the key's own action
+succeeds, so your own press never waits out the interval it just invalidated.
+Only the exit code is read: output is discarded rather than buffered, and it
+never reaches a log.
+
+These are the bounds it runs inside, because a polled command is not a pressed
+one:
+
+- Only while that deck is connected and not driven by Companion. A closed app
+  or an unplugged board runs nothing.
+- Never two at once for one key. A command slower than its interval stretches
+  its own schedule instead of stacking shells behind itself, and the next run
+  is due an interval after the answer rather than after the request.
+- Killed after five seconds. A hung command reports nothing rather than
+  stalling the key.
+- An unmatched exit code, a command that cannot run, and one that hangs are the
+  same answer: the key shows the appearance you saved for it.
+
+The command is yours and runs with your privileges, exactly like the Launch
+action. The difference worth thinking about is that this one runs on a timer
+rather than when you press something, so point it at something cheap that
+answers quickly.
 
 ## Multi Actions
 

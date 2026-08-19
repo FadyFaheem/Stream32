@@ -66,6 +66,7 @@ const {
   setDisplaySettings,
   setUpdateSettings,
 } = require('./settings');
+const { runStatusCommand } = require('./status-command');
 const { createTray } = require('./tray');
 const { createUpdater } = require('./updater');
 
@@ -725,6 +726,15 @@ function registerIpcHandlers() {
       ? pluginService.resolve(validated)
       : validated;
     return actionRunner.runAction(runnable);
+  });
+  // Only the exit code crosses back, so a status command can report what a key
+  // should look like without becoming a way to read files into the renderer.
+  ipcMain.handle('status:run', (event, command) => {
+    if (event.sender !== mainWindow?.webContents) {
+      throw new TypeError('Status command request is invalid.');
+    }
+
+    return runStatusCommand(command);
   });
 }
 

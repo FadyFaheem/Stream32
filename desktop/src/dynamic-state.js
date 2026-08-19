@@ -3,7 +3,20 @@ const MAX_IMAGE_DATA_URL_LENGTH = 256 * 1024;
 const COLOR_PATTERN = /^#[0-9a-f]{6}$/;
 const IMAGE_DATA_URL_PATTERN =
   /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
-const PROVIDERS = new Set(['toggle', 'clock', 'focused-app']);
+const PROVIDERS = new Set([
+  'toggle',
+  'clock',
+  'focused-app',
+  'status-command',
+]);
+const MAX_COMMAND_LENGTH = 1024;
+const MAX_STATUS_STATES = 8;
+// A poll costs a shell, so the floor keeps a mistyped interval from spawning
+// one every frame. The ceiling is an hour, past which nothing is "live".
+const MIN_STATUS_INTERVAL_SECONDS = 1;
+const MAX_STATUS_INTERVAL_SECONDS = 3600;
+// POSIX truncates a wait status to a byte, so no exit code can be outside this.
+const MAX_EXIT_CODE = 255;
 
 function optionalAppearanceString(value, field, maximumLength, pattern = null) {
   if (value === undefined) {
@@ -22,32 +35,32 @@ function optionalAppearanceString(value, field, maximumLength, pattern = null) {
   return value;
 }
 
-function validateAppearance(appearance) {
+function validateAppearance(appearance, field = 'Toggle on') {
   if (!appearance || typeof appearance !== 'object' || Array.isArray(appearance)) {
-    throw new TypeError('Toggle on appearance is invalid.');
+    throw new TypeError(`${field} appearance is invalid.`);
   }
 
   const validated = {};
   const label = optionalAppearanceString(
     appearance.label,
-    'Toggle on label',
+    `${field} label`,
     MAX_LABEL_LENGTH,
   );
   const color = optionalAppearanceString(
     appearance.color,
-    'Toggle on color',
+    `${field} color`,
     7,
     COLOR_PATTERN,
   );
   const labelColor = optionalAppearanceString(
     appearance.labelColor,
-    'Toggle on label color',
+    `${field} label color`,
     7,
     COLOR_PATTERN,
   );
   const image = optionalAppearanceString(
     appearance.image,
-    'Toggle on image',
+    `${field} image`,
     MAX_IMAGE_DATA_URL_LENGTH,
     IMAGE_DATA_URL_PATTERN,
   );
@@ -57,6 +70,53 @@ function validateAppearance(appearance) {
   if (labelColor !== undefined) validated.labelColor = labelColor;
   if (image !== undefined) validated.image = image;
   return validated;
+}
+
+function validateStatusStates(states) {
+  if (!Array.isArray(states) || states.length === 0 ||
+    states.length > MAX_STATUS_STATES) {
+    throw new TypeError('Status command states are invalid.');
+  }
+
+  const seen = new Set();
+
+  return states.map((entry) => {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+      throw new TypeError('Status command state is invalid.');
+    }
+
+    const { code } = entry;
+
+    if (
+      !Number.isInteger(code) ||
+      code < 0 ||
+      code > MAX_EXIT_CODE ||
+      seen.has(code)
+    ) {
+      throw new TypeError('Status command exit code is invalid.');
+    }
+
+    seen.add(code);
+    return { code, ...validateAppearance(entry, 'Status command state') };
+  });
+}
+
+// The exit code a key is currently showing. An unmatched code, a command that
+// could not run, and one killed for hanging all land here as null, and a key
+// with no appearance to show falls back to the one the user saved.
+function statusAppearanceFor(config, code) {
+  if (config?.provider !== 'status-command' || !Number.isInteger(code)) {
+    return null;
+  }
+
+  const match = config.states.find((state) => state.code === code);
+
+  if (!match) {
+    return null;
+  }
+
+  const { code: _code, ...appearance } = match;
+  return appearance;
 }
 
 function validateLiveState(config) {
@@ -81,6 +141,30 @@ function validateLiveState(config) {
       return { provider: 'clock', hour12: Boolean(config.hour12) };
     case 'focused-app':
       return { provider: 'focused-app' };
+    case 'status-command': {
+      if (
+        typeof config.command !== 'string' ||
+        !config.command.trim() ||
+        config.command.length > MAX_COMMAND_LENGTH
+      ) {
+        throw new TypeError('Status command is invalid.');
+      }
+
+      if (
+        !Number.isInteger(config.intervalSeconds) ||
+        config.intervalSeconds < MIN_STATUS_INTERVAL_SECONDS ||
+        config.intervalSeconds > MAX_STATUS_INTERVAL_SECONDS
+      ) {
+        throw new TypeError('Status command interval is invalid.');
+      }
+
+      return {
+        provider: 'status-command',
+        command: config.command,
+        intervalSeconds: config.intervalSeconds,
+        states: validateStatusStates(config.states),
+      };
+    }
     default:
       throw new TypeError(`Unknown live state provider: ${config.provider}`);
   }
@@ -150,12 +234,17 @@ function providerNames(registry) {
 }
 
 module.exports = {
+  MAX_COMMAND_LENGTH,
   MAX_LABEL_LENGTH,
+  MAX_STATUS_STATES,
+  MAX_STATUS_INTERVAL_SECONDS,
+  MIN_STATUS_INTERVAL_SECONDS,
   PROVIDERS,
   focusedAppTitle,
   formatClock,
   mergeKeyOverlay,
   millisecondsUntilNextMinute,
   providerNames,
+  statusAppearanceFor,
   validateLiveState,
 };

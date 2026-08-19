@@ -4,9 +4,11 @@ Stream32 action plugins are declarative JSON manifests. They add searchable
 actions and generated configuration fields without loading third-party code
 into Electron or the ESP32 firmware.
 
-Live key-state providers (`toggle`, `clock`, and `focused-app`) are first-party
-desktop features. Plugin manifests cannot add provider code, polling,
-WebSockets, native modules, or evaluated scripts.
+Live key-state providers (`toggle`, `clock`, `focused-app`, and
+`status-command`) are first-party desktop features. Plugin manifests cannot add
+provider code, polling, WebSockets, native modules, or evaluated scripts. A
+`status-command` key polls a command the user typed into their own deck, which
+is not the same thing as a manifest bringing code along with it.
 
 The desktop app executes plugins. Current boards continue to send generic
 `page` and `index` press events over protocol 1, so a plugin works with every

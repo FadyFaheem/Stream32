@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('stream32', {
     ipcRenderer.invoke('plugins:remove', pluginId),
   restoreBackup: () => ipcRenderer.invoke('backup:restore'),
   runAction: (action) => ipcRenderer.invoke('action:run', action),
+  runStatusCommand: (command) => ipcRenderer.invoke('status:run', command),
   registerDeck: (deviceId, boardId, name) =>
     ipcRenderer.invoke('deck:register', deviceId, boardId, name),
   removeDeck: (deviceId) =>

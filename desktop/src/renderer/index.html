@@ -409,6 +409,7 @@
                         <option value="toggle">Local toggle</option>
                         <option value="clock">Clock</option>
                         <option value="focused-app">Focused app</option>
+                        <option value="status-command">Status command</option>
                       </select>
                     </label>
                     <p class="helper deck-live-helper">
@@ -449,6 +450,43 @@
                         <option value="12">12-hour</option>
                       </select>
                     </label>
+                    <div id="deck-live-status-fields" class="deck-live-status-command">
+                      <label class="deck-field">
+                        Status command
+                        <input
+                          id="deck-live-status-command"
+                          type="text"
+                          maxlength="1024"
+                          placeholder="audio-output.sh --status"
+                        >
+                      </label>
+                      <label class="deck-field deck-live-interval-field">
+                        Check every
+                        <input
+                          id="deck-live-status-interval"
+                          type="number"
+                          min="1"
+                          max="3600"
+                          step="1"
+                          value="3"
+                        >
+                      </label>
+                      <p class="helper">
+                        Stream32 runs this command on a timer and after the key's
+                        own action, and shows the appearance matching its exit
+                        code. An exit code with no appearance below, a command
+                        that cannot run, and one that hangs past five seconds all
+                        leave the key looking the way you saved it.
+                      </p>
+                      <div id="deck-live-status-states"></div>
+                      <button
+                        id="deck-live-status-add"
+                        class="button button-quiet"
+                        type="button"
+                      >
+                        Add exit code
+                      </button>
+                    </div>
                     <p id="deck-live-status" class="helper" aria-live="polite"></p>
                   </fieldset>
                 </fieldset>

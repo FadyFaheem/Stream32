@@ -340,6 +340,66 @@ test('no board redoes a rotation the platform already applies', () => {
   }
 });
 
+test('the Waveshare boards turn their square panel in software', () => {
+  // Their ST7701 runs as an RGB panel, so neither swap_xy nor the MADCTL
+  // mirror the other boards rotate with reaches it. sw_rotate is what makes
+  // lv_display_set_rotation turn the flushed buffer instead, and LVGL turns
+  // touch by the same rotation, so it has to stay set for either to work.
+  for (const [board, base] of [
+    ['waveshare-esp32-s3-touch-lcd-4-v3', 0],
+    ['waveshare-esp32-s3-touch-lcd-4-v4', 180],
+  ]) {
+    const bsp = read(
+      path.join(
+        ROOT,
+        'boards',
+        board,
+        'firmware',
+        'components',
+        'waveshare_bsp',
+        'waveshare_bsp.c',
+      ),
+    );
+
+    assert.match(bsp, /\.sw_rotate = true/, board);
+    assert.match(
+      bsp,
+      new RegExp(`#define BSP_ROTATION_BASE_DEGREES ${base}\\b`),
+      `${board} carries the wrong mounting offset`,
+    );
+    assert.match(
+      bsp,
+      /const uint16_t applied = \(degrees \+ BSP_ROTATION_BASE_DEGREES\) % 360;/,
+      `${board} does not fold its mounting offset into the request`,
+    );
+
+    // Rev 4 used to turn its own 180° at start-up as well. Two places setting
+    // a rotation is how a board ends up 180° from where it was asked to be.
+    assert.equal(
+      bsp.match(/lv_display_set_rotation\(/g)?.length,
+      1,
+      `${board} sets a rotation from more than one place`,
+    );
+  }
+});
+
+test('a board offering rotation says which way it is already turned', () => {
+  // It is stored in NVS, so a board that never reports it leaves the Devices
+  // page showing 0° for a screen that came up sideways.
+  for (const board of BOARDS) {
+    const main = read(
+      path.join(ROOT, 'boards', board, 'firmware', 'main', 'main.c'),
+    );
+
+    if (!main.includes('display-rotation')) {
+      continue;
+    }
+
+    assert.match(main, /\\"rotation\\":%u/, board);
+    assert.match(main, /\(unsigned\)bsp_display_rotation\(\)/, board);
+  }
+});
+
 test('the CYD flip survives a rotation and takes touch with it', () => {
   const bsp = read(
     path.join(

@@ -572,6 +572,39 @@ test('every board transport dispatches through the shared protocol module', () =
   }
 });
 
+test('every board writes queued events from a task that blocks on the queue', () => {
+  // Draining the queue from a protocol task instead makes every press wait out
+  // that task's receive timeout before it reaches the wire. A new board copied
+  // from an older sibling is how that latency comes back.
+  for (const board of BOARDS) {
+    const main = read(
+      path.join(ROOT, 'boards', board, 'firmware', 'main', 'main.c'),
+    );
+
+    assert.match(
+      main,
+      /static void event_writer_task\([\s\S]*xQueueReceive\(event_queue, event_line, portMAX_DELAY\)/,
+      `${board} drains events without a task that blocks on the queue`,
+    );
+    assert.match(
+      main,
+      /xTaskCreate\(event_writer_task,/,
+      `${board} never starts its event writer task`,
+    );
+    // The writer is the one writer outside dispatch, so both take the lock.
+    assert.match(
+      main,
+      /xSemaphoreTake\(protocol_mutex[\s\S]*handle_host_message\([\s\S]*xSemaphoreGive\(protocol_mutex\)/,
+      `${board} dispatches without holding the protocol lock`,
+    );
+    assert.doesNotMatch(
+      main,
+      /xQueueReceive\(event_queue, event_line, 0\)/,
+      `${board} still polls the event queue from a protocol task`,
+    );
+  }
+});
+
 test('the CrowPanel serves both links without risking the flashing one', () => {
   const main = read(
     path.join(

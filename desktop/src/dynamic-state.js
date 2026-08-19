@@ -15,8 +15,11 @@ const MAX_STATUS_STATES = 8;
 // one every frame. The ceiling is an hour, past which nothing is "live".
 const MIN_STATUS_INTERVAL_SECONDS = 1;
 const MAX_STATUS_INTERVAL_SECONDS = 3600;
-// POSIX truncates a wait status to a byte, so no exit code can be outside this.
-const MAX_EXIT_CODE = 255;
+// POSIX truncates a wait status to a byte, but Windows exit codes are 32-bit
+// and the useful ones are not small: 9009 is "command not found" and 3010 is
+// "reboot required". Negative codes are crash statuses nobody maps on purpose,
+// and they land in the same unmatched bucket as everything else.
+const MAX_EXIT_CODE = 2_147_483_647;
 
 function optionalAppearanceString(value, field, maximumLength, pattern = null) {
   if (value === undefined) {
@@ -235,6 +238,7 @@ function providerNames(registry) {
 
 module.exports = {
   MAX_COMMAND_LENGTH,
+  MAX_EXIT_CODE,
   MAX_LABEL_LENGTH,
   MAX_STATUS_STATES,
   MAX_STATUS_INTERVAL_SECONDS,

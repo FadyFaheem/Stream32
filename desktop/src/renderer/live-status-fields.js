@@ -1,8 +1,11 @@
-const { MAX_LABEL_LENGTH, MAX_STATUS_STATES } = require('../dynamic-state');
+const {
+  MAX_EXIT_CODE,
+  MAX_LABEL_LENGTH,
+  MAX_STATUS_STATES,
+} = require('../dynamic-state');
 
 const DEFAULT_COLOR = '#2f8f5b';
 const DEFAULT_LABEL_COLOR = '#ffffff';
-const MAX_EXIT_CODE = 255;
 
 // One row per exit code the key knows how to look like. The rows are built
 // rather than written into index.html because their number is the user's

@@ -122,8 +122,10 @@ one:
 - Never two at once for one key. A command slower than its interval stretches
   its own schedule instead of stacking shells behind itself, and the next run
   is due an interval after the answer rather than after the request.
-- Killed after five seconds. A hung command reports nothing rather than
-  stalling the key.
+- Killed after five seconds, along with anything it started. Killing the shell
+  alone would leave the command that is actually hanging behind it, so the
+  whole process group goes on POSIX and `taskkill /t` walks the tree on
+  Windows. A hung command reports nothing rather than stalling the key.
 - An unmatched exit code, a command that cannot run, and one that hangs are the
   same answer: the key shows the appearance you saved for it.
 
@@ -131,6 +133,13 @@ The command is yours and runs with your privileges, exactly like the Launch
 action. The difference worth thinking about is that this one runs on a timer
 rather than when you press something, so point it at something cheap that
 answers quickly.
+
+On Windows the command runs through `cmd`, and no console window appears for
+it. Exit codes there are not limited to the 0-255 a POSIX wait status carries,
+so `9009` for a command that does not exist and `3010` for an installer asking
+for a reboot are both states you can give an appearance to. A batch file
+reports through `exit /b`, and PowerShell through `exit`, which means
+`powershell -NoProfile -Command "...; exit 2"` is the usual one-liner shape.
 
 ## Multi Actions
 

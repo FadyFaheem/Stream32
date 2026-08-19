@@ -94,9 +94,19 @@ test('status command states are bounded and their exit codes unique', () => {
     () => validateLiveState({ ...base, states: [{ code: 1 }, { code: 1 }] }),
     /exit code/,
   );
-  // POSIX truncates a wait status to a byte, so 256 is unreachable.
+  // Windows exit codes are 32-bit, and its useful ones are not small: 9009 is
+  // "command not found" and 3010 is "reboot required".
+  assert.deepEqual(
+    validateLiveState({ ...base, states: [{ code: 9009, label: 'Missing' }] })
+      .states,
+    [{ code: 9009, label: 'Missing' }],
+  );
   assert.throws(
-    () => validateLiveState({ ...base, states: [{ code: 256 }] }),
+    () => validateLiveState({ ...base, states: [{ code: 2_147_483_648 }] }),
+    /exit code/,
+  );
+  assert.throws(
+    () => validateLiveState({ ...base, states: [{ code: -1 }] }),
     /exit code/,
   );
   assert.throws(() => validateLiveState({ ...base, states: [] }), /states/);

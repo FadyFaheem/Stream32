@@ -90,7 +90,8 @@ test('a duplicate or out-of-range exit code is refused, not saved', async () => 
   assert.deepEqual(states(), before);
   assert.equal(codeInput(container.children[1]).value, '1');
 
-  for (const rejected of ['256', '-1', 'nine']) {
+  // Windows exit codes are 32-bit, so the bound is that rather than a byte.
+  for (const rejected of ['2147483648', '-1', 'nine']) {
     code.value = rejected;
     await fire(code, 'change');
     assert.deepEqual(states(), before);

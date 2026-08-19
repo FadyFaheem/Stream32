@@ -220,8 +220,6 @@ esp_err_t bsp_sdcard_unmount(void)
  **************************************************************************************************/
 #define LCD_BRIGHTNESS_MAX 0xFF
 
-/* The CH32V003 PWM register is inverted: 0 is full brightness and 0xFF
-   is off. */
 static int clamp_brightness(int brightness_percent)
 {
     if (brightness_percent > 100) {
@@ -231,6 +229,8 @@ static int clamp_brightness(int brightness_percent)
     return brightness_percent < 0 ? 0 : brightness_percent;
 }
 
+/* The CH32V003 PWM register is inverted: 0 is full brightness and 0xFF
+   is off. */
 static esp_err_t backlight_write(int brightness_percent)
 {
     const int flipped = 100 - clamp_brightness(brightness_percent);
@@ -239,13 +239,8 @@ static esp_err_t backlight_write(int brightness_percent)
 
 esp_err_t bsp_display_brightness_init(void)
 {
-    if (io_expander == NULL) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
     /* Drive the backlight on so the panel lights up. */
-    s_display_awake = true;
-    return backlight_write((int)s_brightness_percent);
+    return bsp_display_backlight_on();
 }
 
 esp_err_t bsp_display_brightness_set(int brightness_percent)
@@ -261,12 +256,19 @@ esp_err_t bsp_display_brightness_set(int brightness_percent)
         return ESP_OK;
     }
 
-    return backlight_write(brightness_percent);
+    return backlight_write((int)s_brightness_percent);
 }
 
+/* Blanking is not a brightness of zero: the requested level has to survive it
+   so the next wake restores the picture the user asked for. */
 esp_err_t bsp_display_backlight_off(void)
 {
-    return bsp_display_brightness_set(0);
+    if (io_expander == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    s_display_awake = false;
+    return backlight_write(0);
 }
 
 esp_err_t bsp_display_backlight_on(void)
@@ -356,7 +358,7 @@ esp_err_t bsp_display_new(const bsp_display_config_t *config, esp_lcd_panel_hand
 
     /* Rev 4 backlight is a PWM register on the CH32V003; drive it to full so
        the panel is lit. Without this the panel can stay dark. */
-    ESP_ERROR_CHECK(bsp_display_brightness_init());
+    BSP_ERROR_CHECK_RETURN_ERR(bsp_display_brightness_init());
 
     if (ret_panel) {
         *ret_panel = panel_handle;
@@ -544,16 +546,14 @@ esp_err_t bsp_display_set_awake(bool awake)
 
     /* Rev 4 has a real PWM backlight, so blanking actually turns the panel
        dark. Waking restores the configured brightness rather than forcing
-       full, and the ST7701 display command is kept for state-machine
-       parity. */
-    const esp_err_t error = backlight_write(awake ? (int)s_brightness_percent : 0);
-    const esp_err_t panel = esp_lcd_panel_disp_on_off(panel_handle, awake);
+       full. The ST7701 display command is what Rev 3 blanks with, and it
+       still removes the static image the backlight alone would keep burning
+       in, so both are driven here. */
+    BSP_ERROR_CHECK_RETURN_ERR(awake
+        ? bsp_display_backlight_on()
+        : bsp_display_backlight_off());
 
-    if (error == ESP_OK && panel == ESP_OK) {
-        s_display_awake = awake;
-    }
-
-    return error != ESP_OK ? error : panel;
+    return esp_lcd_panel_disp_on_off(panel_handle, awake);
 }
 
 esp_err_t bsp_display_set_brightness(uint32_t brightness_percent)

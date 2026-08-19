@@ -15,6 +15,7 @@
 #include "esp_mac.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lvgl.h"
 
@@ -28,6 +29,9 @@
 
 static const char *TAG = "stream32";
 static QueueHandle_t event_queue;
+/* Serializes dispatch and every physical write. Queued touch events are the
+   one writer outside dispatch, and they now run on their own task. */
+static SemaphoreHandle_t protocol_mutex;
 static lv_obj_t *connection_label;
 static lv_obj_t *touch_label;
 static lv_obj_t *touch_surface;
@@ -65,6 +69,28 @@ static void queue_event_line(const char *json)
 
     strlcpy(line, json, sizeof(line));
     (void)xQueueSend(event_queue, line, 0);
+}
+
+/* A key press is the one event the desktop is waiting on, so it gets its own
+   task. Draining the queue from the protocol task instead made every press
+   wait out that task's receive timeout before it reached the wire. */
+static void event_writer_task(void *argument)
+{
+    char event_line[STREAM32_EVENT_LINE_CAPACITY];
+
+    (void)argument;
+
+    while (true) {
+        if (xQueueReceive(event_queue, event_line, portMAX_DELAY) != pdTRUE) {
+            continue;
+        }
+
+        /* Events are the one writer outside dispatch, so they take the same
+           lock to stay off a half-written reply. */
+        xSemaphoreTake(protocol_mutex, portMAX_DELAY);
+        usb_write_line(event_line);
+        xSemaphoreGive(protocol_mutex);
+    }
 }
 
 static void update_connection_label(const char *text)
@@ -235,12 +261,15 @@ static void usb_protocol_task(void *argument)
             const char byte = (char)incoming[index];
 
             if (byte == '\n') {
+                xSemaphoreTake(protocol_mutex, portMAX_DELAY);
+
                 if (dropping_oversized_line) {
                     send_error("message-too-large");
                 } else if (line_length > 0) {
                     handle_host_message(line, line_length);
                 }
 
+                xSemaphoreGive(protocol_mutex);
                 line_length = 0;
                 dropping_oversized_line = false;
             } else if (byte != '\r' && !dropping_oversized_line) {
@@ -253,12 +282,6 @@ static void usb_protocol_task(void *argument)
         }
 
         deck_ui_poll();
-
-        char event_line[STREAM32_EVENT_LINE_CAPACITY];
-
-        while (xQueueReceive(event_queue, event_line, 0) == pdTRUE) {
-            usb_write_line(event_line);
-        }
     }
 }
 
@@ -377,9 +400,10 @@ static void create_self_test_ui(void)
 void app_main(void)
 {
     event_queue = xQueueCreate(24, STREAM32_EVENT_LINE_CAPACITY);
+    protocol_mutex = xSemaphoreCreateMutex();
 
-    if (event_queue == NULL) {
-        ESP_LOGE(TAG, "Could not allocate the event queue");
+    if (event_queue == NULL || protocol_mutex == NULL) {
+        ESP_LOGE(TAG, "Could not allocate the protocol primitives");
         return;
     }
 
@@ -415,5 +439,11 @@ void app_main(void)
 
     if (task_created != pdPASS) {
         ESP_LOGE(TAG, "Could not create the USB protocol task");
+        return;
+    }
+
+    if (xTaskCreate(event_writer_task, "stream32_events", 3072, NULL, 5, NULL) !=
+        pdPASS) {
+        ESP_LOGE(TAG, "Could not create the event writer task");
     }
 }

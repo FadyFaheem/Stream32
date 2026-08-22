@@ -49,6 +49,8 @@ function newActionForDefinition(definition, profiles = []) {
   switch (definition.coreType) {
     case 'media':
       return { type: 'media', command: 'play-pause' };
+    case 'audio':
+      return { type: 'audio', operation: 'set-volume', level: 50 };
     case 'hotkey':
       return {
         type: 'hotkey',
@@ -152,6 +154,9 @@ function buildLeafAction(draft, definition, pageCount) {
       break;
     case 'mouse':
       candidate = { type: 'mouse', ...draft };
+      break;
+    case 'audio':
+      candidate = { type: 'audio', ...draft };
       break;
     case 'page':
       candidate = { type: 'page', page: draft.page ?? 0 };
@@ -496,6 +501,167 @@ function renderPlugin({ action, commit, container, definition, document }) {
   }
 }
 
+const AUDIO_OPERATION_OPTIONS = [
+  ['set-volume', 'Set system volume'],
+  ['mute', 'Mute system output'],
+  ['set-output-device', 'Switch output device'],
+  ['app-volume', 'Set app volume'],
+  ['app-mute', 'Mute an app'],
+];
+const MUTE_STATE_OPTIONS = [
+  ['toggle', 'Toggle'],
+  ['on', 'Mute'],
+  ['off', 'Unmute'],
+];
+
+function audioDefaultsFor(operation) {
+  switch (operation) {
+    case 'set-volume':
+      return { operation, level: 50 };
+    case 'mute':
+      return { operation, state: 'toggle' };
+    case 'set-output-device':
+      return { operation, device: '' };
+    case 'app-volume':
+      return { operation, app: '', level: 50 };
+    default:
+      return { operation, app: '', state: 'toggle' };
+  }
+}
+
+// Device and application names are typed, not picked, because a saved key has
+// to survive the device being unplugged or the application not running yet.
+// The datalist only offers what is present right now as a convenience.
+function renderAudio({
+  action,
+  audioSuggestions = { apps: [], devices: [] },
+  commit,
+  container,
+  document,
+  requestAudioSuggestions = () => {},
+}) {
+  const operation = document.createElement('select');
+
+  for (const [value, label] of AUDIO_OPERATION_OPTIONS) {
+    const option = document.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    operation.append(option);
+  }
+
+  operation.value = action.operation || 'set-volume';
+  operation.addEventListener('change', () => {
+    for (const key of Object.keys(action)) {
+      if (key !== 'type') {
+        delete action[key];
+      }
+    }
+
+    Object.assign(action, audioDefaultsFor(operation.value));
+    commit();
+  });
+  container.append(makeField(document, 'Audio operation', operation));
+
+  const addLevel = () => {
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.min = '0';
+    input.max = '100';
+    input.step = '1';
+    input.value = String(action.level ?? 50);
+    input.addEventListener('change', () => {
+      action.level = Number(input.value);
+      commit();
+    });
+    container.append(makeField(document, 'Volume (%)', input));
+  };
+
+  const addMuteState = () => {
+    const select = document.createElement('select');
+
+    for (const [value, label] of MUTE_STATE_OPTIONS) {
+      const option = document.createElement('option');
+      option.value = value;
+      option.textContent = label;
+      select.append(option);
+    }
+
+    select.value = action.state || 'toggle';
+    select.addEventListener('change', () => {
+      action.state = select.value;
+      commit();
+    });
+    container.append(makeField(document, 'Mute state', select));
+  };
+
+  const addSuggestedText = (property, label, listId, suggestions) => {
+    const input = document.createElement('input');
+    const list = document.createElement('datalist');
+    list.id = listId;
+
+    for (const suggestion of suggestions) {
+      const option = document.createElement('option');
+      option.value = suggestion;
+      list.append(option);
+    }
+
+    input.type = 'text';
+    input.maxLength = 256;
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('list', listId);
+    input.value = action[property] || '';
+    input.addEventListener('change', () => {
+      action[property] = input.value.trim();
+      commit();
+    });
+    const refresh = document.createElement('button');
+    refresh.type = 'button';
+    refresh.className = 'button button-quiet';
+    refresh.textContent = suggestions.length
+      ? `Refresh (${suggestions.length})`
+      : 'Detect';
+    refresh.addEventListener('click', () => {
+      requestAudioSuggestions();
+    });
+    container.append(makeField(document, label, input), list, refresh);
+  };
+
+  switch (operation.value) {
+    case 'set-volume':
+      addLevel();
+      return;
+    case 'mute':
+      addMuteState();
+      return;
+    case 'set-output-device':
+      addSuggestedText(
+        'device',
+        'Output device',
+        'deck-audio-devices',
+        audioSuggestions.devices,
+      );
+      return;
+    case 'app-volume':
+      addSuggestedText(
+        'app',
+        'Application',
+        'deck-audio-apps',
+        audioSuggestions.apps,
+      );
+      addLevel();
+      return;
+    default:
+      addSuggestedText(
+        'app',
+        'Application',
+        'deck-audio-apps',
+        audioSuggestions.apps,
+      );
+      addMuteState();
+  }
+}
+
 function renderReady({ container, document }) {
   const ready = document.createElement('p');
   ready.className = 'helper';
@@ -504,6 +670,7 @@ function renderReady({ container, document }) {
 }
 
 const FIELD_BUILDERS = Object.freeze({
+  audio: renderAudio,
   clean: renderReady,
   hotkey: renderHotkey,
   launch: renderString,
@@ -525,6 +692,7 @@ function fieldBuilderForDefinition(definition) {
 
 function renderActionFields({
   action,
+  audioSuggestions,
   capability,
   commit,
   container,
@@ -533,6 +701,7 @@ function renderActionFields({
   pages,
   profiles = [],
   reportMessage = () => {},
+  requestAudioSuggestions,
   showLimitation = true,
 }) {
   if (!definition) {
@@ -565,12 +734,14 @@ function renderActionFields({
 
   builder({
     action,
+    audioSuggestions,
     commit,
     container,
     definition,
     document,
     pages,
     profiles,
+    requestAudioSuggestions,
   });
 
   if (showLimitation && limitation) {

@@ -23,6 +23,23 @@ const CORE_ACTIONS = [
     coreType: 'media',
   },
   {
+    key: 'core:audio',
+    source: 'Stream32',
+    category: 'System',
+    name: 'Audio control',
+    description:
+      'Set an exact volume, mute, switch the output device, or control one app.',
+    icon: 'volume_up',
+    keywords: ['audio', 'volume', 'mute', 'output', 'device', 'mixer', 'app'],
+    available: true,
+    coreType: 'audio',
+    appearance: {
+      label: 'Audio',
+      icon: 'volume_up',
+      color: '#3d5a4c',
+    },
+  },
+  {
     key: 'core:hotkey',
     source: 'Stream32',
     category: 'System',
@@ -261,6 +278,11 @@ class ActionEditor {
     this.onReload = onReload;
     this.actions = [...CORE_ACTIONS];
     this.capabilities = {};
+    // Enumerating output devices and playing applications spawns a platform
+    // audio query, so it is loaded on demand from the audio fields rather than
+    // at startup, and the editor keeps whatever the last query returned.
+    this.audioSuggestions = { apps: [], devices: [] };
+    this.onRequestAudioSuggestions = null;
     this.action = null;
     this.context = null;
     this.draftKey = null;
@@ -342,6 +364,14 @@ class ActionEditor {
     this.capabilities = capabilities || {};
     this.applyCapabilities();
     this.renderSummary();
+    this.renderConfig();
+  }
+
+  setAudioSuggestions(suggestions) {
+    this.audioSuggestions = {
+      apps: Array.isArray(suggestions?.apps) ? suggestions.apps : [],
+      devices: Array.isArray(suggestions?.devices) ? suggestions.devices : [],
+    };
     this.renderConfig();
   }
 
@@ -483,6 +513,7 @@ class ActionEditor {
 
     renderActionFields({
       action: this.draft,
+      audioSuggestions: this.audioSuggestions,
       capability: definition?.coreType
         ? this.capabilities[definition.coreType]
         : undefined,
@@ -495,6 +526,7 @@ class ActionEditor {
       reportMessage: (message) => {
         this.message.textContent = message;
       },
+      requestAudioSuggestions: () => this.onRequestAudioSuggestions?.(),
     });
   }
 
@@ -662,6 +694,8 @@ class ActionEditor {
         fields.className = 'multi-step-fields';
         renderActionFields({
           action: step,
+          audioSuggestions: this.audioSuggestions,
+          requestAudioSuggestions: () => this.onRequestAudioSuggestions?.(),
           capability: definition?.coreType
             ? this.capabilities[definition.coreType]
             : undefined,

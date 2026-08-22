@@ -38,6 +38,10 @@ sdmmc_card_t *bsp_sdcard = NULL;
 static esp_lcd_touch_handle_t tp = NULL;
 static esp_lcd_panel_handle_t panel_handle = NULL;
 static bool s_invert = false;
+/* How far this revision's panel is mounted from upright. Rev 3 is upright,
+   so the user's degrees reach LVGL unchanged. */
+#define BSP_ROTATION_BASE_DEGREES 0
+static uint16_t s_rotation = 0;
 
 static const st7701_lcd_init_cmd_t lcd_init_cmds[] = {
     {0x11, (uint8_t[]){0x00}, 0, 120},
@@ -516,17 +520,42 @@ bool bsp_display_invert(void)
     return s_invert;
 }
 
-/* The ST7701 runs as an RGB panel, whose esp_lcd driver has no swap_xy, so
-   there is no rotation to offer on a square 480x480 screen anyway. */
+/* The ST7701 runs as an RGB panel, whose esp_lcd driver implements neither
+   swap_xy nor mirror, so the turn is done in software: the display is
+   registered with sw_rotate, which makes esp_lvgl_port rotate each flushed
+   buffer and leave the panel's own scan order alone. LVGL turns every touch
+   sample by the same rotation, so the glass follows without recalibration.
+   The screen is square, so all four orientations keep the same 480x480 grid
+   and the same key size. */
 esp_err_t bsp_display_set_rotation(uint16_t degrees)
 {
-    (void)degrees;
-    return ESP_ERR_NOT_SUPPORTED;
+    static const lv_display_rotation_t ROTATIONS[] = {
+        LV_DISPLAY_ROTATION_0,
+        LV_DISPLAY_ROTATION_90,
+        LV_DISPLAY_ROTATION_180,
+        LV_DISPLAY_ROTATION_270,
+    };
+
+    if (degrees % 90 != 0 || degrees > 270) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (disp == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    const uint16_t applied = (degrees + BSP_ROTATION_BASE_DEGREES) % 360;
+
+    lvgl_port_lock(0);
+    lv_display_set_rotation(disp, ROTATIONS[applied / 90]);
+    s_rotation = degrees;
+    lvgl_port_unlock();
+    return ESP_OK;
 }
 
 uint16_t bsp_display_rotation(void)
 {
-    return 0;
+    return s_rotation;
 }
 
 /* Mirroring is a MADCTL bit, which an RGB panel driven straight from the

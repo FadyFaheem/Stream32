@@ -818,6 +818,9 @@ test('device manager view and nav are wired accessibly', () => {
   // Hidden in the markup so the Companion block never flashes before the
   // setting is read.
   assert.match(html, /id="companion-link"[^>]*hidden/);
-  assert.match(renderer, /\['deck', 'devices', 'flash', 'settings'\]/);
+  assert.match(
+    renderer,
+    /\['deck', 'devices', 'community', 'flash', 'settings'\]/,
+  );
   assert.match(renderer, /new DeviceManager\(/);
 });

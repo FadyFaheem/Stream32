@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('stream32', {
     ipcRenderer.invoke('boards:firmware', boardId),
   getAutoStart: () => ipcRenderer.invoke('autostart:get'),
   getActionCapabilities: () => ipcRenderer.invoke('action:capabilities'),
+  listAudioOutputDevices: () => ipcRenderer.invoke('audio:outputDevices'),
+  listAudioApps: () => ipcRenderer.invoke('audio:apps'),
   getCompanionSettings: () => ipcRenderer.invoke('companion:settings'),
   getDisplaySettings: () => ipcRenderer.invoke('display-settings:get'),
   getFocusSnapshot: () => ipcRenderer.invoke('focus:snapshot'),
@@ -25,6 +27,13 @@ contextBridge.exposeInMainWorld('stream32', {
   listPluginCatalog: (force = false) =>
     ipcRenderer.invoke('plugins:catalog', force),
   listPlugins: (force = false) => ipcRenderer.invoke('plugins:list', force),
+  listCommunityDecks: (force = false) =>
+    ipcRenderer.invoke('community:list', force),
+  installCommunityDeck: (deviceId, id) =>
+    ipcRenderer.invoke('community:install', deviceId, id),
+  // Takes no URL on purpose: the renderer can ask for the sharing guide, not
+  // for an arbitrary page, so this stays narrower than a general openExternal.
+  openCommunityShareGuide: () => ipcRenderer.invoke('community:share-guide'),
   listPullRequestBuilds: () =>
     ipcRenderer.invoke('updater:list-pull-requests'),
   logDiagnosticLine: (kind, line) =>

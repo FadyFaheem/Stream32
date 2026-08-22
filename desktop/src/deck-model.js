@@ -2,6 +2,7 @@ const {
   MAX_DELAY_MS,
   MAX_MULTI_STEPS,
   MAX_TOTAL_DELAY_MS,
+  validateAudioAction,
   validateMouseAction,
   validateTextAction,
 } = require('./action-model');
@@ -72,6 +73,8 @@ function validateLeafAction(action, pageCount) {
       return validateTextAction(action);
     case 'mouse':
       return validateMouseAction(action);
+    case 'audio':
+      return validateAudioAction(action);
     case 'media':
       if (!MEDIA_COMMANDS.has(action.command)) {
         throw new TypeError('Unknown media command.');

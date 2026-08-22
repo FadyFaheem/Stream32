@@ -38,6 +38,11 @@ sdmmc_card_t *bsp_sdcard = NULL;
 static esp_lcd_touch_handle_t tp = NULL;
 static esp_lcd_panel_handle_t panel_handle = NULL;
 static bool s_invert = false;
+/* How far this revision's panel is mounted from upright. Rev 4 carries it
+   upside down, so the user's 0 degrees is LVGL's 180 and every request is
+   turned by that on the way in. */
+#define BSP_ROTATION_BASE_DEGREES 180
+static uint16_t s_rotation = 0;
 /* The requested backlight level survives blanking: wake restores it. */
 static uint32_t s_brightness_percent = 100;
 static bool s_display_awake = false;
@@ -505,15 +510,10 @@ lv_display_t *bsp_display_start_with_config(const bsp_display_cfg_t *cfg)
 
     /* Rev 4 mounts the panel rotated 180° vs Rev 3, and the ST7701 ignores
        the MADCTL MY/MX and SDIR/ML mirror commands in RGB mode (both were
-       tried on hardware). Rotate in software instead: sw_rotate is set on
-       this display, so the port rotates every flushed buffer 180° via
-       lv_draw_sw_rotate before it reaches the panel. Touch stays aligned
-       because the port maps touch coordinates through the same display
-       rotation; the natively oriented digitizer needs no mirroring. */
-    if (lvgl_port_lock(0)) {
-        lv_display_set_rotation(disp, LV_DISPLAY_ROTATION_180);
-        lvgl_port_unlock();
-    }
+       tried on hardware), so that offset is carried as the base of every
+       rotation instead. Asking for zero here is what puts it upright; a
+       stored orientation replaces it later from deck_settings_apply. */
+    bsp_display_set_rotation(0);
 
     return disp;
 }
@@ -585,17 +585,42 @@ bool bsp_display_invert(void)
     return s_invert;
 }
 
-/* The ST7701 runs as an RGB panel, whose esp_lcd driver has no swap_xy, so
-   there is no rotation to offer on a square 480x480 screen anyway. */
+/* The ST7701 runs as an RGB panel, whose esp_lcd driver implements neither
+   swap_xy nor mirror, so the turn is done in software: the display is
+   registered with sw_rotate, which makes esp_lvgl_port rotate each flushed
+   buffer and leave the panel's own scan order alone. LVGL turns every touch
+   sample by the same rotation, so the glass follows without recalibration.
+   The screen is square, so all four orientations keep the same 480x480 grid
+   and the same key size. */
 esp_err_t bsp_display_set_rotation(uint16_t degrees)
 {
-    (void)degrees;
-    return ESP_ERR_NOT_SUPPORTED;
+    static const lv_display_rotation_t ROTATIONS[] = {
+        LV_DISPLAY_ROTATION_0,
+        LV_DISPLAY_ROTATION_90,
+        LV_DISPLAY_ROTATION_180,
+        LV_DISPLAY_ROTATION_270,
+    };
+
+    if (degrees % 90 != 0 || degrees > 270) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (disp == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    const uint16_t applied = (degrees + BSP_ROTATION_BASE_DEGREES) % 360;
+
+    lvgl_port_lock(0);
+    lv_display_set_rotation(disp, ROTATIONS[applied / 90]);
+    s_rotation = degrees;
+    lvgl_port_unlock();
+    return ESP_OK;
 }
 
 uint16_t bsp_display_rotation(void)
 {
-    return 0;
+    return s_rotation;
 }
 
 /* Mirroring is a MADCTL bit, which an RGB panel driven straight from the

@@ -3,12 +3,14 @@ const {
   MAX_MULTI_STEPS,
 } = require('../action-model');
 const { validateAction } = require('../deck-model');
+const { canonicalKeyFromCode } = require('../keymap');
 const {
   buildLeafAction,
   newActionForDefinition,
   pluginDraftError,
   renderActionFields,
 } = require('./action-fields');
+const { createMacroRecorder, describeStep } = require('./macro-recorder');
 
 const CORE_ACTIONS = [
   {
@@ -21,6 +23,23 @@ const CORE_ACTIONS = [
     keywords: ['music', 'volume', 'play', 'pause'],
     available: true,
     coreType: 'media',
+  },
+  {
+    key: 'core:audio',
+    source: 'Stream32',
+    category: 'System',
+    name: 'Audio control',
+    description:
+      'Set an exact volume, mute, switch the output device, or control one app.',
+    icon: 'volume_up',
+    keywords: ['audio', 'volume', 'mute', 'output', 'device', 'mixer', 'app'],
+    available: true,
+    coreType: 'audio',
+    appearance: {
+      label: 'Audio',
+      icon: 'volume_up',
+      color: '#3d5a4c',
+    },
   },
   {
     key: 'core:hotkey',
@@ -261,6 +280,16 @@ class ActionEditor {
     this.onReload = onReload;
     this.actions = [...CORE_ACTIONS];
     this.capabilities = {};
+    // Enumerating output devices and playing applications spawns a platform
+    // audio query, so it is loaded on demand from the audio fields rather than
+    // at startup, and the editor keeps whatever the last query returned.
+    this.audioSuggestions = { apps: [], devices: [] };
+    this.onRequestAudioSuggestions = null;
+    this.recording = false;
+    this.captureDelays = true;
+    this.recorder = createMacroRecorder();
+    this.recorderPreview = null;
+    this.recorderCapture = null;
     this.action = null;
     this.context = null;
     this.draftKey = null;
@@ -345,6 +374,14 @@ class ActionEditor {
     this.renderConfig();
   }
 
+  setAudioSuggestions(suggestions) {
+    this.audioSuggestions = {
+      apps: Array.isArray(suggestions?.apps) ? suggestions.apps : [],
+      devices: Array.isArray(suggestions?.devices) ? suggestions.devices : [],
+    };
+    this.renderConfig();
+  }
+
   applyCapabilities() {
     this.actions = this.actions.map((definition) => {
       const capability = this.capabilities[definition.coreType];
@@ -364,6 +401,13 @@ class ActionEditor {
   }
 
   render({ action, context, pages, profiles = [] }) {
+    // A recording belongs to the Multi Action it was started from. Selecting
+    // another key or another action abandons it rather than appending the
+    // captured steps somewhere they were never meant to go.
+    if (context !== this.context || action) {
+      this.cancelRecording();
+    }
+
     if (context !== this.context) {
       this.context = context;
       this.draftKey = actionKey(action);
@@ -458,6 +502,7 @@ class ActionEditor {
   }
 
   choose(definition) {
+    this.cancelRecording();
     this.draftKey = definition.key;
     this.draft = newActionForDefinition(definition, this.profiles);
     this.dialog.close();
@@ -483,6 +528,7 @@ class ActionEditor {
 
     renderActionFields({
       action: this.draft,
+      audioSuggestions: this.audioSuggestions,
       capability: definition?.coreType
         ? this.capabilities[definition.coreType]
         : undefined,
@@ -495,6 +541,7 @@ class ActionEditor {
       reportMessage: (message) => {
         this.message.textContent = message;
       },
+      requestAudioSuggestions: () => this.onRequestAudioSuggestions?.(),
     });
   }
 
@@ -662,6 +709,8 @@ class ActionEditor {
         fields.className = 'multi-step-fields';
         renderActionFields({
           action: step,
+          audioSuggestions: this.audioSuggestions,
+          requestAudioSuggestions: () => this.onRequestAudioSuggestions?.(),
           capability: definition?.coreType
             ? this.capabilities[definition.coreType]
             : undefined,
@@ -714,13 +763,145 @@ class ActionEditor {
         () => this.addMultiStep({ type: 'delay', ms: 1000 }),
         full,
       ),
+      this.makeStepButton(
+        this.recording ? 'Stop recording' : 'Record keys',
+        this.recording
+          ? 'Stop recording and keep the captured steps'
+          : 'Record a sequence of key presses as steps',
+        () => this.toggleRecording(),
+        full && !this.recording,
+      ),
     );
     this.config.append(list, toolbar);
-    this.message.textContent = multiDraftError(
-      steps,
-      this.actions,
-      this.pages,
+
+    if (this.recording) {
+      this.config.append(this.buildRecorderPanel());
+    }
+
+    this.message.textContent = this.recording
+      ? ''
+      : multiDraftError(steps, this.actions, this.pages);
+  }
+
+  // Recording captures presses inside the editor rather than hooking the OS:
+  // the capture surface has focus, so keys land here instead of the app the
+  // deck will eventually drive. That keeps the recorder from acting as a
+  // system-wide keylogger while still capturing exactly what was typed.
+  buildRecorderPanel() {
+    const panel = this.document.createElement('div');
+    panel.className = 'macro-recorder';
+    const capture = this.document.createElement('input');
+    capture.type = 'text';
+    capture.readOnly = true;
+    capture.className = 'macro-recorder-capture';
+    capture.placeholder = 'Press keys to record them';
+    capture.setAttribute('aria-label', 'Macro recording capture area');
+    capture.addEventListener('keydown', (event) => {
+      event.preventDefault();
+
+      if (event.repeat) {
+        return;
+      }
+
+      const key = canonicalKeyFromCode(event.code);
+
+      if (!key) {
+        return;
+      }
+
+      this.recorder.press({
+        key,
+        char: event.key.length === 1 ? event.key : '',
+        alt: event.altKey,
+        ctrl: event.ctrlKey,
+        meta: event.metaKey,
+        shift: event.shiftKey,
+        time: Date.now(),
+      });
+      this.renderRecorderPreview();
+    });
+    const preview = this.document.createElement('p');
+    preview.className = 'helper macro-recorder-preview';
+    preview.setAttribute('aria-live', 'polite');
+    const delays = this.document.createElement('input');
+    delays.type = 'checkbox';
+    delays.checked = this.captureDelays;
+    delays.addEventListener('change', () => {
+      this.captureDelays = delays.checked;
+      this.startRecorder();
+      this.renderRecorderPreview();
+    });
+    const delaysLabel = this.document.createElement('label');
+    delaysLabel.className = 'hotkey-modifier';
+    delaysLabel.append(delays, 'Record the pauses between presses');
+    panel.append(
+      this.makeField('Recording', capture),
+      delaysLabel,
+      preview,
     );
+    this.recorderPreview = preview;
+    this.recorderCapture = capture;
+    return panel;
+  }
+
+  renderRecorderPreview() {
+    if (!this.recorderPreview) {
+      return;
+    }
+
+    const steps = this.recorder.preview();
+    const remaining = MAX_MULTI_STEPS - this.draft.steps.length - steps.length;
+    this.recorderPreview.textContent = steps.length
+      ? `${steps.map(describeStep).join(' → ')}` +
+        `${remaining <= 0 ? ' — no room for more steps' : ''}`
+      : 'Nothing recorded yet.';
+  }
+
+  startRecorder() {
+    this.recorder = createMacroRecorder({
+      captureDelays: this.captureDelays,
+      maxSteps: MAX_MULTI_STEPS - this.draft.steps.length,
+    });
+  }
+
+  cancelRecording() {
+    if (!this.recording) {
+      return;
+    }
+
+    this.recording = false;
+    this.recorder.reset();
+    this.recorderPreview = null;
+    this.recorderCapture = null;
+  }
+
+  toggleRecording() {
+    if (!this.recording) {
+      this.recording = true;
+      this.startRecorder();
+      this.renderConfig();
+      this.recorderCapture?.focus();
+      return;
+    }
+
+    const { steps, truncated } = this.recorder.result();
+    this.recording = false;
+    this.recorderPreview = null;
+    this.recorderCapture = null;
+
+    if (steps.length > 0) {
+      this.draft.steps.push(...steps);
+      this.emit();
+    }
+
+    this.renderConfig();
+
+    if (truncated) {
+      this.message.textContent =
+        `Recording stopped at the ${MAX_MULTI_STEPS}-step limit.`;
+    } else if (steps.length === 0) {
+      this.message.textContent = 'Nothing was recorded.';
+    }
   }
 
   buildAction() {

@@ -1,0 +1,72 @@
+name: Publish Community Decks
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "decks/**"
+      - "desktop/src/deck-model.js"
+      - "desktop/src/action-model.js"
+      - "desktop/src/dynamic-state.js"
+      - "desktop/src/keymap.js"
+      - "desktop/src/plugin-manifest.js"
+      - "desktop/src/profile-rules.js"
+      - ".github/workflows/release-decks.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: publish-community-decks
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: Publish community deck catalog
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+
+      # Every submitted profile is run through the desktop importer here, so a
+      # deck that would fail to install never reaches the catalog.
+      - name: Validate and test deck catalog
+        run: |
+          node --test decks/tools/*.test.js
+          node decks/tools/build-catalog.js --validate-only
+
+      - name: Build catalog and profile assets
+        run: node decks/tools/build-catalog.js
+
+      # Unlike plugin manifests, a deck asset is mutable: an author updates
+      # their deck in place and the catalog carries the new hash. Assets are
+      # still published before the catalog, so the catalog never names an asset
+      # that is not there yet.
+      - name: Publish deck assets
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: decks-current
+          name: Stream32 Community Decks
+          body: >-
+            Rolling catalog of community deck profiles. Each entry is verified
+            against the byte size and SHA-256 recorded in catalog-v1.json.
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: false
+          files: decks/dist/assets/*.json
+
+      - name: Publish catalog last
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: decks-current
+          make_latest: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          files: decks/dist/catalog-v1.json

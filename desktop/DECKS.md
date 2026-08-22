@@ -232,6 +232,50 @@ at its first failed step, when its device disconnects, or when another named
 profile becomes active. Repeated presses of the same Multi Action key do not
 overlap, while other keys remain available.
 
+## Community decks
+
+The **Community** view lists deck profiles published by other owners. Installing
+one adds it as a new named profile on the device you choose; it never replaces a
+profile you already have, and from that point it is an ordinary local profile you
+can rename, edit, or delete.
+
+The catalog is downloaded from a fixed GitHub Release the first time the view is
+opened, so a user who never opens it makes no network request. Each entry
+records a byte size and a SHA-256, and a download that does not match both is
+refused before it is parsed. What survives that is then run through the same
+importer the **Import** button uses, so a shared deck can only contain action
+types Stream32 already supports. If the catalog cannot be reached, the last
+downloaded list is shown and marked as stale.
+
+Sharing your own deck is a pull request rather than an in-app upload, which is
+why there are no accounts and no captcha: identity and review come from GitHub.
+**Share your deck** opens [the guide](../decks/README.md).
+
+One thing worth reviewing before installing someone else's deck: a **Launch app
+/ command** key carries a command line that runs with your privileges. It is
+visible in the key editor before you press it, so check those keys the way you
+would check a script from the internet.
+
+## Recording a macro
+
+**Record keys** in the Multi Action editor captures a sequence of presses and
+appends them as steps, instead of adding each one by hand. It folds the
+recording into the fewest steps that reproduce it:
+
+- Plain printable keys accumulate into one **Type Text** step, so typing
+  `git status` costs one step rather than ten.
+- A press carrying Ctrl, Alt, or the Windows key, and any named key such as
+  Enter, Tab, or F5, becomes its own **hotkey** step.
+- Pauses longer than 120 ms become **delay** steps, rounded to 50 ms.
+  Ordinary typing speed does not. Turn off **Record the pauses between
+  presses** to capture only the keys.
+
+Recording reads keys from the capture field inside the editor, which holds
+focus while recording, so Stream32 never installs a system-wide keyboard hook.
+Recording stops at the 16-step Multi Action limit and says so, and selecting
+another key or another action abandons the recording rather than appending it
+somewhere unexpected.
+
 ## Keyboard and mouse input
 
 **Type Text** sends up to 512 Unicode characters to the focused application.
@@ -245,3 +289,36 @@ System Events/CoreGraphics programs and requires Stream32 in **System Settings
 `xdotool`; generic Wayland input is intentionally reported as unavailable.
 The action picker queries these host capabilities and displays the reason when
 an action cannot run.
+
+## Audio control
+
+**Media control** sends the transport and volume keys, which are relative and
+always address whatever the system is playing. **Audio control** talks to the
+mixer instead, so a key can set an exact level, force a mute state, move the
+default output, or address one application:
+
+| Operation | What it does |
+| --- | --- |
+| Set system volume | Sets the default output to an exact 0-100% |
+| Mute system output | Mute, unmute, or toggle |
+| Switch output device | Makes a named output device the default |
+| Set app volume | Sets one application's mixer level |
+| Mute an app | Mutes, unmutes, or toggles one application |
+
+Device and application names are typed rather than picked from a closed list,
+because the device may be unplugged and the application may not be running when
+the key is edited. **Detect** fills a suggestion list from whatever is present
+right now. An application is addressable only while it is actually playing
+audio; pressing the key while it is silent reports that instead of failing
+quietly. Names match case-insensitively and ignore a trailing `.exe`, so one
+key works across platforms.
+
+Platform support differs, and the action picker reports the reason when
+something is unavailable:
+
+- **Windows** supports every operation through CoreAudio.
+- **macOS** supports volume and mute. Switching the default output needs
+  `SwitchAudioSource` (`brew install switchaudio-osx`). Per-application volume
+  has no public API and is unavailable.
+- **Linux** supports every operation through `pactl`, and unlike Type Text and
+  Mouse it works under Wayland.

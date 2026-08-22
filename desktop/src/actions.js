@@ -1,6 +1,7 @@
 const { shell } = require('electron');
 const { spawn } = require('node:child_process');
 
+const { createAudioController } = require('./audio');
 const {
   KEY_TABLE,
   MEDIA_VK,
@@ -453,6 +454,7 @@ function createActionRunner({
   let capabilityPromise = null;
   let nextWindowsRequestId = 1;
   const windowsRequests = new Map();
+  const audio = createAudioController({ platform, spawnProcess });
 
   function defaultProbeCommand(command, args) {
     return new Promise((resolve) => {
@@ -465,11 +467,22 @@ function createActionRunner({
     });
   }
 
+  // The editor greys out an action whose platform cannot run it, so the audio
+  // stack is probed here alongside the input stack and reported under the same
+  // core-type key the action picker looks up.
+  async function audioCapability() {
+    const capabilities = await audio.getCapabilities();
+    return capabilities.system.available
+      ? { available: true, reason: '' }
+      : { available: false, reason: capabilities.system.reason };
+  }
+
   async function getCapabilities() {
     if (platform === 'win32') {
       return {
         text: { available: true, reason: '' },
         mouse: { available: true, reason: '' },
+        audio: { available: true, reason: '' },
       };
     }
 
@@ -483,6 +496,7 @@ function createActionRunner({
           available: true,
           reason: 'Requires macOS Accessibility permission.',
         },
+        audio: await audioCapability(),
       };
     }
 
@@ -493,9 +507,12 @@ function createActionRunner({
       ) {
         const reason =
           'Type Text and Mouse require an X11 session; generic Wayland input is not supported.';
+        // Audio is not an input method: pactl talks to the sound server, so it
+        // keeps working under Wayland and is probed on its own.
         return {
           text: { available: false, reason },
           mouse: { available: false, reason },
+          audio: await audioCapability(),
         };
       }
 
@@ -507,6 +524,7 @@ function createActionRunner({
       return {
         text: { available, reason },
         mouse: { available, reason },
+        audio: await audioCapability(),
       };
     })();
     return capabilityPromise;
@@ -789,6 +807,9 @@ function createActionRunner({
           );
         }
         return;
+      case 'audio':
+        await audio.apply(action);
+        return;
       case 'url':
         if (typeof action.url !== 'string' || !URL_PATTERN.test(action.url)) {
           throw new TypeError('Action URL must use http or https.');
@@ -851,6 +872,7 @@ function createActionRunner({
     }
 
     keyChild = null;
+    audio.dispose();
   }
 
   // The Windows child compiles its SendInput definition with Add-Type, which
@@ -864,7 +886,14 @@ function createActionRunner({
     }
   }
 
-  return { dispose, getCapabilities, runAction, warmUp };
+  return {
+    dispose,
+    getCapabilities,
+    listAudioApps: () => audio.listApps(),
+    listAudioOutputDevices: () => audio.listOutputDevices(),
+    runAction,
+    warmUp,
+  };
 }
 
 module.exports = {

@@ -723,6 +723,63 @@ input:disabled {
   border-color: rgba(255, 173, 34, 0.58);
 }
 
+/* Focus rules are set once and then rarely touched, so they collapse to a
+   single line and let the key grid sit higher on the page. The summary keeps
+   the configured matches glanceable without opening the forms. */
+.deck-focus-rules {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(4, 10, 14, 0.4);
+}
+
+.deck-focus-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  user-select: none;
+  flex-wrap: wrap;
+}
+
+.deck-focus-summary:hover {
+  background: rgba(255, 173, 34, 0.06);
+}
+
+.deck-focus-summary-title {
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.deck-focus-summary-detail {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.deck-focus-status {
+  margin: 0;
+  padding: 0 0.85rem 0.2rem;
+}
+
+.deck-focus-status[data-state="ready"] {
+  color: var(--success);
+}
+
+.deck-focus-status[data-state="error"] {
+  color: var(--error);
+}
+
+/* Both rules are the same shape, so they sit side by side wherever the window
+   is wide enough and stack below that. */
+.deck-focus-panes {
+  display: grid;
+  gap: 0.9rem 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  padding: 0.2rem 0.85rem 0.85rem;
+}
+
 .deck-profile-rulebar,
 .deck-page-rulebar {
   display: flex;
@@ -1270,6 +1327,109 @@ input:disabled {
 
 .multi-step-error {
   color: #ff9b8c;
+}
+
+.view-community {
+  display: grid;
+  align-content: start;
+  gap: 1rem;
+}
+
+.community-head {
+  display: flex;
+  align-items: start;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+
+.community-head h2 {
+  margin: 0.2rem 0 0.4rem;
+}
+
+.community-head .helper {
+  max-width: 60ch;
+}
+
+.community-head-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.community-controls {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.community-search-field {
+  flex: 1 1 260px;
+}
+
+.community-device-field {
+  flex: 0 1 220px;
+}
+
+.community-list {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.community-card {
+  display: grid;
+  align-content: start;
+  gap: 0.4rem;
+  padding: 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-strong);
+}
+
+.community-card h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.community-card-meta,
+.community-card-summary {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.community-card .button {
+  justify-self: start;
+  margin-top: 0.3rem;
+}
+
+/* The capture area is the only focused control while recording, so it is
+   marked clearly enough that it is obvious keys are being read. */
+.macro-recorder {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.7rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(255, 173, 34, 0.45);
+  border-radius: 10px;
+  background: rgba(255, 173, 34, 0.06);
+}
+
+.macro-recorder-capture {
+  width: 100%;
+  min-height: 2.55rem;
+  padding: 0 0.85rem;
+  color: var(--ink);
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--surface-strong);
+}
+
+.macro-recorder-preview {
+  margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .deck-action-message {

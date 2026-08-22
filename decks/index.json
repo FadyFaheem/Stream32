@@ -1,0 +1,302 @@
+{
+  "schemaVersion": 1,
+  "decks": [
+    {
+      "id": "windows-workspace",
+      "source": "profiles/windows-workspace.json",
+      "name": "Windows Workspace",
+      "author": "FadyFaheem",
+      "summary": "All eight pages with a hub and per-app pages that follow the focused app.",
+      "board": "crowpanel-10",
+      "tags": [
+        "windows",
+        "office",
+        "workspace"
+      ]
+    },
+    {
+      "id": "chrome-shortcuts",
+      "source": "profiles/chrome-shortcuts.json",
+      "name": "Chrome Shortcuts",
+      "author": "FadyFaheem",
+      "summary": "Tabs, navigation, zoom, devtools, and window management for Chrome.",
+      "board": "crowpanel-10",
+      "tags": [
+        "chrome",
+        "browser"
+      ]
+    },
+    {
+      "id": "cursor-shortcuts",
+      "source": "profiles/cursor-shortcuts.json",
+      "name": "Cursor Shortcuts",
+      "author": "FadyFaheem",
+      "summary": "Editing, navigation, panel, and AI shortcuts for Cursor.",
+      "board": "crowpanel-10",
+      "tags": [
+        "cursor",
+        "editor",
+        "coding"
+      ]
+    },
+    {
+      "id": "outlook-shortcuts",
+      "source": "profiles/outlook-shortcuts.json",
+      "name": "Outlook Shortcuts",
+      "author": "FadyFaheem",
+      "summary": "Mail, calendar, reply, and folder shortcuts for Outlook.",
+      "board": "crowpanel-10",
+      "tags": [
+        "outlook",
+        "email",
+        "office"
+      ]
+    },
+    {
+      "id": "excel-shortcuts",
+      "source": "profiles/excel-shortcuts.json",
+      "name": "Excel Shortcuts",
+      "author": "FadyFaheem",
+      "summary": "Formatting, formulas, navigation, and paste shortcuts for Excel.",
+      "board": "crowpanel-10",
+      "tags": [
+        "excel",
+        "office",
+        "spreadsheet"
+      ]
+    },
+    {
+      "id": "word-shortcuts",
+      "source": "profiles/word-shortcuts.json",
+      "name": "Word Shortcuts",
+      "author": "FadyFaheem",
+      "summary": "Formatting, review, navigation, and layout shortcuts for Word.",
+      "board": "crowpanel-10",
+      "tags": [
+        "word",
+        "office",
+        "writing"
+      ]
+    },
+    {
+      "id": "teams-controls",
+      "source": "profiles/teams-controls.json",
+      "name": "Teams Call Controls",
+      "author": "FadyFaheem",
+      "summary": "Mic, camera, screen share, hand, and leave for Teams calls.",
+      "board": "crowpanel-10",
+      "tags": [
+        "teams",
+        "meetings",
+        "office"
+      ]
+    },
+    {
+      "id": "vlc-controls",
+      "source": "profiles/vlc-controls.json",
+      "name": "VLC Controls",
+      "author": "FadyFaheem",
+      "summary": "Playback, seek, volume, subtitle, and speed control for VLC.",
+      "board": "crowpanel-10",
+      "tags": [
+        "vlc",
+        "media",
+        "video"
+      ]
+    },
+    {
+      "id": "chrome-shortcuts-waveshare-v3",
+      "source": "profiles/chrome-shortcuts-waveshare-v3.json",
+      "name": "Chrome Shortcuts (mini)",
+      "author": "FadyFaheem",
+      "summary": "Tabs, navigation, zoom, devtools, and window management for Chrome. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 3",
+      "tags": [
+        "chrome",
+        "browser",
+        "mini"
+      ]
+    },
+    {
+      "id": "cursor-shortcuts-waveshare-v3",
+      "source": "profiles/cursor-shortcuts-waveshare-v3.json",
+      "name": "Cursor Shortcuts (mini)",
+      "author": "FadyFaheem",
+      "summary": "Editing, navigation, panel, and AI shortcuts for Cursor. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 3",
+      "tags": [
+        "cursor",
+        "editor",
+        "coding",
+        "mini"
+      ]
+    },
+    {
+      "id": "outlook-shortcuts-waveshare-v3",
+      "source": "profiles/outlook-shortcuts-waveshare-v3.json",
+      "name": "Outlook Shortcuts (mini)",
+      "author": "FadyFaheem",
+      "summary": "Mail, calendar, reply, and folder shortcuts for Outlook. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 3",
+      "tags": [
+        "outlook",
+        "email",
+        "office",
+        "mini"
+      ]
+    },
+    {
+      "id": "excel-shortcuts-waveshare-v3",
+      "source": "profiles/excel-shortcuts-waveshare-v3.json",
+      "name": "Excel Shortcuts (mini)",
+      "author": "FadyFaheem",
+      "summary": "Formatting, formulas, navigation, and paste shortcuts for Excel. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 3",
+      "tags": [
+        "excel",
+        "office",
+        "spreadsheet",
+        "mini"
+      ]
+    },
+    {
+      "id": "word-shortcuts-waveshare-v3",
+      "source": "profiles/word-shortcuts-waveshare-v3.json",
+      "name": "Word Shortcuts (mini)",
+      "author": "FadyFaheem",
+      "summary": "Formatting, review, navigation, and layout shortcuts for Word. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 3",
+      "tags": [
+        "word",
+        "office",
+        "writing",
+        "mini"
+      ]
+    },
+    {
+      "id": "teams-controls-waveshare-v3",
+      "source": "profiles/teams-controls-waveshare-v3.json",
+      "name": "Teams Call Controls (mini)",
+      "author": "FadyFaheem",
+      "summary": "Mic, camera, screen share, hand, and leave for Teams calls. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 3",
+      "tags": [
+        "teams",
+        "meetings",
+        "office",
+        "mini"
+      ]
+    },
+    {
+      "id": "vlc-controls-waveshare-v3",
+      "source": "profiles/vlc-controls-waveshare-v3.json",
+      "name": "VLC Controls (mini)",
+      "author": "FadyFaheem",
+      "summary": "Playback, seek, volume, subtitle, and speed control for VLC. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 3",
+      "tags": [
+        "vlc",
+        "media",
+        "video",
+        "mini"
+      ]
+    },
+    {
+      "id": "chrome-shortcuts-waveshare-v4",
+      "source": "profiles/chrome-shortcuts-waveshare-v4.json",
+      "name": "Chrome Shortcuts (mini)",
+      "author": "FadyFaheem",
+      "summary": "Tabs, navigation, zoom, devtools, and window management for Chrome. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 4",
+      "tags": [
+        "chrome",
+        "browser",
+        "mini"
+      ]
+    },
+    {
+      "id": "cursor-shortcuts-waveshare-v4",
+      "source": "profiles/cursor-shortcuts-waveshare-v4.json",
+      "name": "Cursor Shortcuts (mini)",
+      "author": "FadyFaheem",
+      "summary": "Editing, navigation, panel, and AI shortcuts for Cursor. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 4",
+      "tags": [
+        "cursor",
+        "editor",
+        "coding",
+        "mini"
+      ]
+    },
+    {
+      "id": "outlook-shortcuts-waveshare-v4",
+      "source": "profiles/outlook-shortcuts-waveshare-v4.json",
+      "name": "Outlook Shortcuts (mini)",
+      "author": "FadyFaheem",
+      "summary": "Mail, calendar, reply, and folder shortcuts for Outlook. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 4",
+      "tags": [
+        "outlook",
+        "email",
+        "office",
+        "mini"
+      ]
+    },
+    {
+      "id": "excel-shortcuts-waveshare-v4",
+      "source": "profiles/excel-shortcuts-waveshare-v4.json",
+      "name": "Excel Shortcuts (mini)",
+      "author": "FadyFaheem",
+      "summary": "Formatting, formulas, navigation, and paste shortcuts for Excel. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 4",
+      "tags": [
+        "excel",
+        "office",
+        "spreadsheet",
+        "mini"
+      ]
+    },
+    {
+      "id": "word-shortcuts-waveshare-v4",
+      "source": "profiles/word-shortcuts-waveshare-v4.json",
+      "name": "Word Shortcuts (mini)",
+      "author": "FadyFaheem",
+      "summary": "Formatting, review, navigation, and layout shortcuts for Word. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 4",
+      "tags": [
+        "word",
+        "office",
+        "writing",
+        "mini"
+      ]
+    },
+    {
+      "id": "teams-controls-waveshare-v4",
+      "source": "profiles/teams-controls-waveshare-v4.json",
+      "name": "Teams Call Controls (mini)",
+      "author": "FadyFaheem",
+      "summary": "Mic, camera, screen share, hand, and leave for Teams calls. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 4",
+      "tags": [
+        "teams",
+        "meetings",
+        "office",
+        "mini"
+      ]
+    },
+    {
+      "id": "vlc-controls-waveshare-v4",
+      "source": "profiles/vlc-controls-waveshare-v4.json",
+      "name": "VLC Controls (mini)",
+      "author": "FadyFaheem",
+      "summary": "Playback, seek, volume, subtitle, and speed control for VLC. Sized for the 4in Waveshare panel.",
+      "board": "Waveshare 4in Rev 4",
+      "tags": [
+        "vlc",
+        "media",
+        "video",
+        "mini"
+      ]
+    }
+  ]
+}

@@ -26,6 +26,9 @@ Waveshare `ESP32-S3-Touch-LCD-4` (profiles
   Rev 4.0 replaces it with a CH32V003 expander whose PWM register drives a
   real dimmable backlight
 - The native USB Serial/JTAG connection (`303a:1001`)
+- The panel is square, so all four orientations give the same grid and the
+  same key size. Mount it whichever way the desk wants and set the rotation
+  from the Devices page; the board keeps the answer.
 - An optional
   [power-button bypass](../docs/WAVESHARE_V3_POWER_BUTTON_BYPASS.md) for
   automatic startup, verified on Rev 3.0
@@ -287,21 +290,34 @@ coordinates already and answer `calibrate-unsupported`.
 
 The optional `rotation` field on `display` turns the screen by 0, 90, 180 or
 270 degrees for firmware advertising `display-rotation`, so a board can be
-mounted in any orientation. The grid re-flows to the new shape, which changes
-`keyPx` and makes the desktop re-send every icon on the next `layout-ack`.
+mounted in any orientation. The grid re-flows to the new shape, which on a
+panel that is not square changes `keyPx`, and the desktop re-sends every icon
+on the next `layout-ack`.
 Touch follows without recalibration: the transform is stored against the
 panel's unrotated orientation and turned on the way out.
 
-Rotation needs `esp_lcd_panel_swap_xy`, which the RGB and MIPI-DSI panel
-drivers do not implement, so only the Cheap Yellow Display offers it today.
+There are two ways a board can turn. The Cheap Yellow Display turns its
+panel, through the `esp_lcd_panel_swap_xy` and mirror calls `esp_lvgl_port`
+writes into MADCTL for it. The Waveshare boards cannot: their ST7701 runs as
+an RGB panel, whose driver implements neither. They are registered with
+`sw_rotate` instead, which makes the port rotate each flushed buffer with
+`lv_draw_sw_rotate` and leave the panel's scan order alone. Either way LVGL
+turns every touch sample by the display rotation, so the glass follows
+without recalibration, and either way the board is asked through the same
+`rotation` field. The MIPI-DSI CrowPanel still offers no rotation.
 
-Waveshare Rev 4 mounts its panel upside down relative to Rev 3, and its
-ST7701 ignores the MADCTL and SDIR mirror commands in RGB mode, so its BSP
-asks LVGL for a fixed 180° at start-up instead. `esp_lvgl_port` turns each
-flushed buffer in software and LVGL turns every touch sample the same way,
-which is the one path to a rotated RGB panel that does not need `swap_xy`.
-It is not offered as a runtime setting: the cost is paid on every flush, and
-a board only needs it once, for how it is built.
+Software rotation costs a rotate of every flushed region and one extra draw
+buffer, which is why it is not the default everywhere. On the Waveshare it is
+the only option, and the square panel makes it the cheap case: the grid keeps
+its shape and `keyPx` does not move, so the icons the board asks for after a
+turn are the same pixels it was already holding. It does still ask for them.
+The re-flow empties the artwork pool for any style change, because on a board
+whose keys did change size nothing left in it could be read back.
+
+Waveshare Rev 4 mounts its panel upside down relative to Rev 3. That offset
+is the base every rotation is added to rather than a rotation of its own, so
+0° means upright on both revisions and the stored setting means the same
+thing whichever one it is restored on.
 
 The optional `flipX` and `flipY` fields on `display` mirror the panel's own x
 and y axes for firmware advertising `display-flip`. They are one control and

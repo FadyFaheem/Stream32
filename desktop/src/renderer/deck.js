@@ -1563,6 +1563,27 @@ class DeckController {
     }
   }
 
+  // A deck installed from the community gallery lands exactly like an imported
+  // file: the device already carries the new profile, so this only has to adopt
+  // the returned device, select the new profile, and push it to the hardware.
+  adoptImportedDevice(deviceId, device, message) {
+    if (!device) {
+      return;
+    }
+
+    this.devices[deviceId] = device;
+    this.runtime.clearLiveRuntime(deviceId);
+
+    if (deviceId === this.selectedDeviceId) {
+      this.selectedPage = this.selectedProfile()?.activePage ?? 0;
+      this.selectedKey = null;
+    }
+
+    this.renderAll();
+    this.runtime.scheduleSync(deviceId, 0);
+    this.setSyncStatus(message, 'ready');
+  }
+
   async importProfile() {
     if (!this.selectedDeviceId) {
       return;

@@ -18,6 +18,9 @@ boards/dist/
 # Generated curated plugin catalog (published by CI, never committed)
 plugins/dist/
 
+# Generated community deck catalog (published by CI, never committed)
+decks/dist/
+
 # Editor files
 .idea/
 .vscode/

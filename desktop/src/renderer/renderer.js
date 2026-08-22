@@ -1,11 +1,12 @@
 const { DeckController } = require('./deck');
 const { DeviceController } = require('./device');
 const { DeviceManager } = require('./device-manager');
+const { CommunityController } = require('./community');
 const { catalogViewModel } = require('./plugin-catalog');
 
 const navItems = document.querySelectorAll('.nav-item');
 const views = new Map(
-  ['deck', 'devices', 'flash', 'settings'].map((name) => [
+  ['deck', 'devices', 'community', 'flash', 'settings'].map((name) => [
     name,
     document.querySelector(`#view-${name}`),
   ]),
@@ -22,6 +23,11 @@ function showView(name) {
 
   if (name === 'devices') {
     deviceManager.render();
+  }
+
+  if (name === 'community') {
+    communityController.setDevices(deckController.devices);
+    communityController.show();
   }
 }
 
@@ -574,6 +580,18 @@ const deviceManager = new DeviceManager({
   deviceController,
   document,
   showView,
+});
+const communityController = new CommunityController({
+  api: window.stream32,
+  document,
+  onInstalled: (deviceId, device) => {
+    deckController.adoptImportedDevice(
+      deviceId,
+      device,
+      'Shared deck installed as a new profile.',
+    );
+    communityController.setDevices(deckController.devices);
+  },
 });
 // Mirror device and session changes into the Device Manager view live.
 deckController.onRender = () => deviceManager.render();

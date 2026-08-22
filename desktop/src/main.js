@@ -53,6 +53,10 @@ const {
 const { createDiagnosticLogger } = require('./diagnostic-log');
 const { createDiagnostics } = require('./diagnostics');
 const { createFocusWatcher } = require('./focus-watcher');
+const {
+  SHARE_GUIDE_URL,
+  createDeckCatalogService,
+} = require('./deck-catalog');
 const { createPluginCatalogService } = require('./plugin-catalog');
 const { createPluginService } = require('./plugins');
 const { configureSerialAccess } = require('./serial');
@@ -81,6 +85,7 @@ const actionRunner = createActionRunner({
 let boardService = null;
 let companionSatellite = null;
 let curatedPluginService = null;
+let deckCatalogService = null;
 let isQuitting = false;
 let mainWindow = null;
 let pluginService = null;
@@ -416,6 +421,39 @@ function registerIpcHandlers() {
       return operation(id);
     });
   }
+  ipcMain.handle('community:list', (event, force) => {
+    requireMainSender(event, 'Community deck request is invalid.');
+
+    if (typeof force !== 'boolean') {
+      throw new TypeError('Community refresh flag must be a boolean.');
+    }
+
+    return deckCatalogService.list(force);
+  });
+  // The download is verified and validated in the service, and the profile is
+  // added under a new name rather than replacing anything the device already
+  // has, so installing a shared deck can never overwrite the owner's work.
+  ipcMain.handle('community:install', async (event, deviceId, id) => {
+    requireMainSender(event, 'Community deck install is invalid.');
+
+    if (typeof deviceId !== 'string' || !DEVICE_ID_PATTERN.test(deviceId)) {
+      throw new TypeError('Device id is invalid.');
+    }
+
+    if (typeof id !== 'string') {
+      throw new TypeError('Shared deck id must be a string.');
+    }
+
+    const { entry, profile } = await deckCatalogService.download(id);
+    return {
+      entry,
+      device: addImportedProfile(deviceId, profile, getDecksPath()),
+    };
+  });
+  ipcMain.handle('community:share-guide', (event) => {
+    requireMainSender(event, 'Community share guide request is invalid.');
+    return shell.openExternal(SHARE_GUIDE_URL);
+  });
   ipcMain.handle('backup:export', async (event) => {
     requireMainSender(event, 'Backup export request is invalid.');
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
@@ -802,6 +840,10 @@ if (!hasSingleInstanceLock) {
       onEvent: (event, details) =>
         logComponentEvent('plugins', event, details),
       userDirectory: paths.userPluginsDirectory,
+    });
+    deckCatalogService = createDeckCatalogService({
+      fetcher: net.fetch,
+      userDataPath: paths.userDataDirectory,
     });
     curatedPluginService = createPluginCatalogService({
       appVersion: app.getVersion(),

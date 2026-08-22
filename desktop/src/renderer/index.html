@@ -31,6 +31,9 @@
             <button class="nav-item" type="button" data-view="devices">
               Devices
             </button>
+            <button class="nav-item" type="button" data-view="community">
+              Community
+            </button>
             <button class="nav-item" type="button" data-view="flash">
               Flash board
             </button>
@@ -599,6 +602,67 @@
             aria-label="Action results"
           ></div>
         </dialog>
+
+        <section
+          id="view-community"
+          class="view view-community"
+          aria-label="Community decks"
+          hidden
+        >
+          <div class="community-head">
+            <div>
+              <p class="kicker">Community</p>
+              <h2>Shared decks</h2>
+              <p class="helper">
+                Decks published by other Stream32 owners. Installing one adds it
+                as a new profile on the selected device and never replaces a
+                profile you already have.
+              </p>
+            </div>
+            <div class="community-head-actions">
+              <button
+                id="community-refresh"
+                class="button button-secondary"
+                type="button"
+              >
+                Refresh
+              </button>
+              <button
+                id="community-share"
+                class="button button-quiet"
+                type="button"
+              >
+                Share your deck
+              </button>
+            </div>
+          </div>
+          <div class="community-controls">
+            <label class="deck-field community-search-field">
+              Search
+              <input
+                id="community-search"
+                type="search"
+                autocomplete="off"
+                placeholder="Name, author, board, or tag"
+              >
+            </label>
+            <label class="deck-field community-device-field">
+              Install onto
+              <select id="community-device"></select>
+            </label>
+          </div>
+          <p
+            id="community-status"
+            class="helper"
+            data-state="idle"
+            aria-live="polite"
+          ></p>
+          <div
+            id="community-list"
+            class="community-list"
+            aria-label="Shared decks"
+          ></div>
+        </section>
 
         <section id="view-flash" class="view" aria-label="Flash board" hidden>
           <details id="flash-step" class="card setup-step" open>

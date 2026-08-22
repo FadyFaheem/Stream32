@@ -95,9 +95,18 @@ colors, state, and artwork never rewrite profile JSON or flash artwork.
   know. It is the one provider that can tell you about state changed by
   something other than the deck.
 
-Toggle on-artwork uses the same bounded image upload pipeline as base artwork,
-but firmware keeps the rendered RGB565 bytes only in RAM/PSRAM. Reconnects and
-base profile syncs reapply current overlays without changing the saved base.
+Every live appearance picks artwork the same two ways the saved key does: from
+the Material icon library, or from a file through the same bounded upload
+pipeline as base artwork. Firmware keeps the rendered RGB565 bytes only in
+RAM/PSRAM. Reconnects and base profile syncs reapply current overlays without
+changing the saved base.
+
+An overlay that recolors a key which has artwork re-sends that artwork over the
+new color. Artwork reaches the board as one opaque tile with the key color
+already painted behind it, so a color sent on its own would be covered by the
+saved tile and the deck would disagree with the editor's preview. The board
+already holds the bytes for an appearance that leaves the artwork unchanged, so
+nothing is re-sent for one.
 
 ### Status commands
 

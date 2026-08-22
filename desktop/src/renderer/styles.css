@@ -1282,6 +1282,34 @@ input:disabled {
   color: #ff9b8c;
 }
 
+/* The capture area is the only focused control while recording, so it is
+   marked clearly enough that it is obvious keys are being read. */
+.macro-recorder {
+  display: grid;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.7rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(255, 173, 34, 0.45);
+  border-radius: 10px;
+  background: rgba(255, 173, 34, 0.06);
+}
+
+.macro-recorder-capture {
+  width: 100%;
+  min-height: 2.55rem;
+  padding: 0 0.85rem;
+  color: var(--ink);
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--surface-strong);
+}
+
+.macro-recorder-preview {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .deck-action-message {
   min-height: 1em;
   margin: 0.45rem 0 0;

@@ -200,6 +200,7 @@ class DeckController {
     this.liveOnLabel = document.querySelector('#deck-live-on-label');
     this.liveOnColor = document.querySelector('#deck-live-on-color');
     this.liveOnLabelColor = document.querySelector('#deck-live-on-label-color');
+    this.liveOnIcon = document.querySelector('#deck-live-on-icon');
     this.liveOnImage = document.querySelector('#deck-live-on-image');
     this.liveOnImageClear = document.querySelector('#deck-live-on-image-clear');
     this.liveClockField = document.querySelector('#deck-live-clock-field');
@@ -215,6 +216,7 @@ class DeckController {
       container: document.querySelector('#deck-live-status-states'),
       onChange: (mutate) => this.updateStatusStates(mutate),
       readImageFile: (file) => this.readImageFile(file),
+      openIconLibrary: (apply) => this.openIconLibrary(apply),
       onError: (error) => this.setSyncStatus(
         `Could not read live image: ${error.message}`,
         'error',
@@ -742,6 +744,15 @@ class DeckController {
     ]) {
       control.addEventListener('change', () => this.saveLiveConfigFromEditor());
     }
+    this.liveOnIcon.addEventListener('click', () => {
+      this.openIconLibrary((dataUrl) => {
+        this.updateSelectedKey((key) => {
+          if (key.liveState?.provider === 'toggle') {
+            key.liveState.on.image = dataUrl;
+          }
+        });
+      });
+    });
     this.liveOnImage.addEventListener('change', async () => {
       const file = this.liveOnImage.files?.[0];
       this.liveOnImage.value = '';
@@ -769,10 +780,11 @@ class DeckController {
       });
     });
     this.iconOpen.addEventListener('click', () => {
-      this.iconSearch.value = '';
-      this.renderIconGrid('');
-      this.iconDialog.showModal();
-      this.iconSearch.focus();
+      this.openIconLibrary((dataUrl) => {
+        this.updateSelectedKey((key) => {
+          key.image = dataUrl;
+        });
+      });
     });
     this.iconSearch.addEventListener('input', () => {
       this.renderIconGrid(this.iconSearch.value);
@@ -997,12 +1009,20 @@ class DeckController {
     }
   }
 
+  // The library serves the key's own artwork and every live appearance, so the
+  // caller says where the chosen icon lands rather than the dialog assuming it.
+  openIconLibrary(apply) {
+    this.iconTarget = apply;
+    this.iconSearch.value = '';
+    this.renderIconGrid('');
+    this.iconDialog.showModal();
+    this.iconSearch.focus();
+  }
+
   async pickIcon(name) {
     try {
       const dataUrl = await this.renderMaterialIcon(name);
-      this.updateSelectedKey((key) => {
-        key.image = dataUrl;
-      });
+      this.iconTarget?.(dataUrl);
       this.iconDialog.close();
     } catch (error) {
       this.setSyncStatus(`Could not render the icon: ${error.message}`, 'error');

@@ -11,11 +11,19 @@ const DEFAULT_LABEL_COLOR = '#ffffff';
 // rather than written into index.html because their number is the user's
 // choice, unlike every other field in the key editor.
 class LiveStatusFields {
-  constructor({ document, container, onChange, readImageFile, onError }) {
+  constructor({
+    document,
+    container,
+    onChange,
+    readImageFile,
+    openIconLibrary,
+    onError,
+  }) {
     this.document = document;
     this.container = container;
     this.onChange = onChange;
     this.readImageFile = readImageFile;
+    this.openIconLibrary = openIconLibrary;
     this.onError = onError;
   }
 
@@ -89,6 +97,14 @@ class LiveStatusFields {
       });
     });
 
+    const icon = this.button('Icon library', () => {
+      this.openIconLibrary((data) => {
+        this.change(position, (entry) => {
+          entry.image = data;
+        });
+      });
+    }, 'secondary');
+
     const image = document.createElement('input');
     image.type = 'file';
     image.accept = 'image/*';
@@ -118,9 +134,19 @@ class LiveStatusFields {
     });
     clearImage.disabled = !state.image;
 
-    const remove = this.button('Remove', () => this.change(position, null));
+    // The same row the Appearance section uses, so the file control is styled
+    // by the same rule rather than falling back to the browser's own look.
+    const imageRow = document.createElement('div');
+    imageRow.className = 'deck-image-row';
+    imageRow.append(icon, image, clearImage);
 
-    row.append(code, label, color, labelColor, image, clearImage, remove);
+    // Named for what it removes, since a button that drops only the artwork
+    // sits in the same row; it matches the "Add exit code" that puts one back.
+    // It closes the first line rather than trailing the second, so reading
+    // order and the order the controls are tabbed through stay the same.
+    const remove = this.button('Remove code', () => this.change(position, null));
+
+    row.append(code, label, color, labelColor, remove, imageRow);
     return row;
   }
 
@@ -132,10 +158,10 @@ class LiveStatusFields {
     return input;
   }
 
-  button(text, onClick) {
+  button(text, onClick, variant = 'quiet') {
     const button = this.document.createElement('button');
     button.type = 'button';
-    button.className = 'button button-quiet';
+    button.className = `button button-${variant}`;
     button.textContent = text;
     button.addEventListener('click', onClick);
     return button;

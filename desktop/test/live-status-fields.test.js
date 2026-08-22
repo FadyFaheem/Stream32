@@ -34,6 +34,7 @@ async function fire(node, type) {
 
 function fieldsFixture(states) {
   const container = makeElement();
+  const iconRequests = [];
   let current = states;
   const fields = new LiveStatusFields({
     document: { createElement: (tag) => makeElement(tag) },
@@ -48,17 +49,20 @@ function fieldsFixture(states) {
       fields.render(current);
     },
     readImageFile: async () => 'data:image/png;base64,AAAA',
+    openIconLibrary: (apply) => iconRequests.push(apply),
     onError: () => {},
   });
 
   fields.render(current);
-  return { container, fields, states: () => current };
+  return { container, fields, iconRequests, states: () => current };
 }
 
-// Row order is [code, label, color, labelColor, image, clear image, remove].
+// Row order is [code, label, color, labelColor, remove, image row], and the
+// image row is [icon library, file, clear image].
 const codeInput = (row) => row.children[0];
 const labelInput = (row) => row.children[1];
-const removeButton = (row) => row.children[6];
+const removeButton = (row) => row.children[4];
+const imageRow = (row) => row.children[5];
 
 test('each exit code gets a row that edits only itself', async () => {
   const { container, states } = fieldsFixture([
@@ -116,6 +120,35 @@ test('the last row cannot be removed, since a key needs a state to show', async 
 
   await fire(removeButton(container.children[0]), 'click');
   assert.deepEqual(states(), [{ code: 0, label: 'Only' }]);
+});
+
+test('the image controls sit in the row the Appearance section is styled by', () => {
+  const { container } = fieldsFixture([{ code: 0 }]);
+  const row = imageRow(container.children[0]);
+
+  assert.equal(row.tag, 'div');
+  assert.equal(row.className, 'deck-image-row');
+  assert.deepEqual(
+    row.children.map((child) => child.tag),
+    ['button', 'input', 'button'],
+  );
+  assert.equal(row.children[1].type, 'file');
+});
+
+test('an icon chosen from the library lands on the row that opened it', async () => {
+  const { container, iconRequests, states } = fieldsFixture([
+    { code: 0, label: 'Speakers' },
+    { code: 1, label: 'Headset' },
+  ]);
+
+  await fire(imageRow(container.children[1]).children[0], 'click');
+  assert.equal(iconRequests.length, 1);
+  iconRequests[0]('data:image/webp;base64,BBBB');
+
+  assert.deepEqual(states(), [
+    { code: 0, label: 'Speakers' },
+    { code: 1, label: 'Headset', image: 'data:image/webp;base64,BBBB' },
+  ]);
 });
 
 test('states stop being added once the bound is reached', () => {

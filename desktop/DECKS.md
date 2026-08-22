@@ -107,6 +107,26 @@ at its first failed step, when its device disconnects, or when another named
 profile becomes active. Repeated presses of the same Multi Action key do not
 overlap, while other keys remain available.
 
+## Recording a macro
+
+**Record keys** in the Multi Action editor captures a sequence of presses and
+appends them as steps, instead of adding each one by hand. It folds the
+recording into the fewest steps that reproduce it:
+
+- Plain printable keys accumulate into one **Type Text** step, so typing
+  `git status` costs one step rather than ten.
+- A press carrying Ctrl, Alt, or the Windows key, and any named key such as
+  Enter, Tab, or F5, becomes its own **hotkey** step.
+- Pauses longer than 120 ms become **delay** steps, rounded to 50 ms.
+  Ordinary typing speed does not. Turn off **Record the pauses between
+  presses** to capture only the keys.
+
+Recording reads keys from the capture field inside the editor, which holds
+focus while recording, so Stream32 never installs a system-wide keyboard hook.
+Recording stops at the 16-step Multi Action limit and says so, and selecting
+another key or another action abandons the recording rather than appending it
+somewhere unexpected.
+
 ## Keyboard and mouse input
 
 **Type Text** sends up to 512 Unicode characters to the focused application.

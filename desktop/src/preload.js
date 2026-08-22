@@ -11,6 +11,8 @@ contextBridge.exposeInMainWorld('stream32', {
     ipcRenderer.invoke('boards:firmware', boardId),
   getAutoStart: () => ipcRenderer.invoke('autostart:get'),
   getActionCapabilities: () => ipcRenderer.invoke('action:capabilities'),
+  listAudioOutputDevices: () => ipcRenderer.invoke('audio:outputDevices'),
+  listAudioApps: () => ipcRenderer.invoke('audio:apps'),
   getCompanionSettings: () => ipcRenderer.invoke('companion:settings'),
   getDisplaySettings: () => ipcRenderer.invoke('display-settings:get'),
   getFocusSnapshot: () => ipcRenderer.invoke('focus:snapshot'),

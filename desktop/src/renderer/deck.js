@@ -226,6 +226,9 @@ class DeckController {
       },
       onReload: () => this.api.listPlugins(true),
     });
+    this.actionEditor.onRequestAudioSuggestions = () => {
+      this.loadAudioSuggestions();
+    };
     this.runtime = new DeckRuntime({
       api,
       document,
@@ -303,6 +306,7 @@ class DeckController {
       this.actionEditor.setCapabilities({
         text: { available: false, reason: error.message },
         mouse: { available: false, reason: error.message },
+        audio: { available: false, reason: error.message },
       });
     }
 
@@ -1627,6 +1631,26 @@ class DeckController {
   setSyncStatus(message, state) {
     this.syncStatus.textContent = message;
     this.syncStatus.dataset.state = state;
+  }
+
+  // Both queries reach the platform audio stack, so they run only when the key
+  // editor asks. Either may fail on its own — a Linux box without pactl, a Mac
+  // without SwitchAudioSource — so a failed half leaves the other half usable
+  // and reports why instead of clearing the list.
+  async loadAudioSuggestions() {
+    const [devices, apps] = await Promise.all([
+      this.api.listAudioOutputDevices?.().catch((error) => error),
+      this.api.listAudioApps?.().catch((error) => error),
+    ]);
+    const failure = [devices, apps].find((result) => result instanceof Error);
+    this.actionEditor.setAudioSuggestions({
+      devices: Array.isArray(devices) ? devices : [],
+      apps: Array.isArray(apps) ? apps : [],
+    });
+
+    if (failure) {
+      this.setSyncStatus(`Audio devices: ${failure.message}`, 'error');
+    }
   }
 
   setProfileMatchStatus(message, state) {

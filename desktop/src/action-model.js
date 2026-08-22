@@ -12,6 +12,16 @@ const MOUSE_OPERATIONS = new Set([
   'move-relative',
   'scroll',
 ]);
+const AUDIO_OPERATIONS = new Set([
+  'set-volume',
+  'mute',
+  'set-output-device',
+  'app-volume',
+  'app-mute',
+]);
+const MUTE_STATES = new Set(['on', 'off', 'toggle']);
+const MAX_DEVICE_NAME_LENGTH = 256;
+const MAX_APP_NAME_LENGTH = 256;
 const UNSAFE_TEXT_CONTROL_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/u;
 
 function boundedInteger(value, field, minimum, maximum) {
@@ -127,6 +137,81 @@ function validateMouseAction(action) {
   }
 }
 
+function boundedPercent(value, field) {
+  if (!Number.isInteger(value) || value < 0 || value > 100) {
+    throw new TypeError(`${field} must be a whole number between 0 and 100.`);
+  }
+
+  return value;
+}
+
+function boundedName(value, field, maximumLength) {
+  if (
+    typeof value !== 'string' ||
+    value.trim().length === 0 ||
+    value.length > maximumLength
+  ) {
+    throw new TypeError(`${field} must be 1-${maximumLength} characters.`);
+  }
+
+  return value.trim();
+}
+
+// Audio actions address the real mixer rather than sending volume keys, so a
+// saved key carries an exact level, an explicit mute state, or the name of a
+// device or application. Names are stored as typed: the target may be absent
+// when the key is edited and present when it is pressed.
+function validateAudioAction(action) {
+  if (action?.type !== 'audio' || !AUDIO_OPERATIONS.has(action.operation)) {
+    throw new TypeError('Audio operation is invalid.');
+  }
+
+  switch (action.operation) {
+    case 'set-volume':
+      return {
+        type: 'audio',
+        operation: 'set-volume',
+        level: boundedPercent(action.level, 'Audio volume'),
+      };
+    case 'mute':
+      if (!MUTE_STATES.has(action.state)) {
+        throw new TypeError('Audio mute state must be on, off, or toggle.');
+      }
+
+      return { type: 'audio', operation: 'mute', state: action.state };
+    case 'set-output-device':
+      return {
+        type: 'audio',
+        operation: 'set-output-device',
+        device: boundedName(
+          action.device,
+          'Audio output device',
+          MAX_DEVICE_NAME_LENGTH,
+        ),
+      };
+    case 'app-volume':
+      return {
+        type: 'audio',
+        operation: 'app-volume',
+        app: boundedName(action.app, 'Audio application', MAX_APP_NAME_LENGTH),
+        level: boundedPercent(action.level, 'Audio volume'),
+      };
+    case 'app-mute':
+      if (!MUTE_STATES.has(action.state)) {
+        throw new TypeError('Audio mute state must be on, off, or toggle.');
+      }
+
+      return {
+        type: 'audio',
+        operation: 'app-mute',
+        app: boundedName(action.app, 'Audio application', MAX_APP_NAME_LENGTH),
+        state: action.state,
+      };
+    default:
+      throw new TypeError(`Unknown audio operation: ${action.operation}`);
+  }
+}
+
 function actionPageTargets(action) {
   if (action?.type === 'page') {
     return [action.page];
@@ -167,7 +252,10 @@ function remapActionAfterPageDeletion(action, removedPage) {
 }
 
 module.exports = {
+  AUDIO_OPERATIONS,
+  MAX_APP_NAME_LENGTH,
   MAX_DELAY_MS,
+  MAX_DEVICE_NAME_LENGTH,
   MAX_MOUSE_COORDINATE,
   MAX_MOUSE_DELTA,
   MAX_MULTI_STEPS,
@@ -176,8 +264,10 @@ module.exports = {
   MAX_TOTAL_DELAY_MS,
   MOUSE_BUTTONS,
   MOUSE_OPERATIONS,
+  MUTE_STATES,
   actionPageTargets,
   remapActionAfterPageDeletion,
+  validateAudioAction,
   validateMouseAction,
   validateTextAction,
 };

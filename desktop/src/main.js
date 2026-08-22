@@ -663,6 +663,17 @@ function registerIpcHandlers() {
     requireMainSender(event, 'Action capability request is invalid.');
     return actionRunner.getCapabilities();
   });
+  // Both lists are suggestions for the key editor, not a closed set: an output
+  // device can be unplugged and an application only appears while it is
+  // actually playing, so the editor still accepts a typed name.
+  ipcMain.handle('audio:outputDevices', (event) => {
+    requireMainSender(event, 'Audio device request is invalid.');
+    return actionRunner.listAudioOutputDevices();
+  });
+  ipcMain.handle('audio:apps', (event) => {
+    requireMainSender(event, 'Audio application request is invalid.');
+    return actionRunner.listAudioApps();
+  });
   ipcMain.handle('deck:export', async (event, deviceId) => {
     requireMainSender(event, 'Deck export request is invalid.');
 

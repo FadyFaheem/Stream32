@@ -120,3 +120,36 @@ System Events/CoreGraphics programs and requires Stream32 in **System Settings
 `xdotool`; generic Wayland input is intentionally reported as unavailable.
 The action picker queries these host capabilities and displays the reason when
 an action cannot run.
+
+## Audio control
+
+**Media control** sends the transport and volume keys, which are relative and
+always address whatever the system is playing. **Audio control** talks to the
+mixer instead, so a key can set an exact level, force a mute state, move the
+default output, or address one application:
+
+| Operation | What it does |
+| --- | --- |
+| Set system volume | Sets the default output to an exact 0-100% |
+| Mute system output | Mute, unmute, or toggle |
+| Switch output device | Makes a named output device the default |
+| Set app volume | Sets one application's mixer level |
+| Mute an app | Mutes, unmutes, or toggles one application |
+
+Device and application names are typed rather than picked from a closed list,
+because the device may be unplugged and the application may not be running when
+the key is edited. **Detect** fills a suggestion list from whatever is present
+right now. An application is addressable only while it is actually playing
+audio; pressing the key while it is silent reports that instead of failing
+quietly. Names match case-insensitively and ignore a trailing `.exe`, so one
+key works across platforms.
+
+Platform support differs, and the action picker reports the reason when
+something is unavailable:
+
+- **Windows** supports every operation through CoreAudio.
+- **macOS** supports volume and mute. Switching the default output needs
+  `SwitchAudioSource` (`brew install switchaudio-osx`). Per-application volume
+  has no public API and is unavailable.
+- **Linux** supports every operation through `pactl`, and unlike Type Text and
+  Mouse it works under Wayland.

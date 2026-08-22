@@ -398,6 +398,22 @@ test('builds xdotool argument arrays for text and mouse input', () => {
   );
 });
 
+// The audio probe runs its own command rather than going through probeCommand,
+// so it is stubbed here to keep the assertion independent of whether the
+// machine running the tests happens to have pactl installed.
+function missingCommandChild() {
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = () => {};
+  queueMicrotask(() => {
+    const error = new Error('spawn ENOENT');
+    error.code = 'ENOENT';
+    child.emit('error', error);
+  });
+  return child;
+}
+
 test('probes Linux input capabilities without executing input', async () => {
   let probes = 0;
   const x11 = createActionRunner({
@@ -408,10 +424,15 @@ test('probes Linux input capabilities without executing input', async () => {
       assert.deepEqual([command, args], ['xdotool', ['--version']]);
       return true;
     },
+    spawnProcess: missingCommandChild,
   });
   assert.deepEqual(await x11.getCapabilities(), {
     text: { available: true, reason: 'Requires X11 and xdotool.' },
     mouse: { available: true, reason: 'Requires X11 and xdotool.' },
+    audio: {
+      available: false,
+      reason: 'Audio control on Linux needs pactl from PulseAudio or PipeWire.',
+    },
   });
   await x11.getCapabilities();
   assert.equal(probes, 1);

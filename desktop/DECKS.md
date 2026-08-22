@@ -107,6 +107,30 @@ at its first failed step, when its device disconnects, or when another named
 profile becomes active. Repeated presses of the same Multi Action key do not
 overlap, while other keys remain available.
 
+## Community decks
+
+The **Community** view lists deck profiles published by other owners. Installing
+one adds it as a new named profile on the device you choose; it never replaces a
+profile you already have, and from that point it is an ordinary local profile you
+can rename, edit, or delete.
+
+The catalog is downloaded from a fixed GitHub Release the first time the view is
+opened, so a user who never opens it makes no network request. Each entry
+records a byte size and a SHA-256, and a download that does not match both is
+refused before it is parsed. What survives that is then run through the same
+importer the **Import** button uses, so a shared deck can only contain action
+types Stream32 already supports. If the catalog cannot be reached, the last
+downloaded list is shown and marked as stale.
+
+Sharing your own deck is a pull request rather than an in-app upload, which is
+why there are no accounts and no captcha: identity and review come from GitHub.
+**Share your deck** opens [the guide](../decks/README.md).
+
+One thing worth reviewing before installing someone else's deck: a **Launch app
+/ command** key carries a command line that runs with your privileges. It is
+visible in the key editor before you press it, so check those keys the way you
+would check a script from the internet.
+
 ## Recording a macro
 
 **Record keys** in the Multi Action editor captures a sequence of presses and

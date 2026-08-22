@@ -75,6 +75,7 @@ Firmware, flashing, and the USB protocol are documented in
 | [Waveshare Rev 3 power-button bypass](./docs/WAVESHARE_V3_POWER_BUTTON_BYPASS.md) | Waveshare owners | Optional automatic power-on hardware modification |
 | [Decks and profiles](./desktop/DECKS.md) | Users | Profiles, focused-app switching, editing, Multi Actions |
 | [Action plugins](./desktop/PLUGINS.md) | Users and authors | Installing, publishing, and writing action plugins |
+| [Sharing a deck](./decks/README.md) | Users | Installing community decks and publishing your own |
 | [Companion surfaces](./desktop/COMPANION.md) | Users | Driving a deck from Bitfocus Companion over the Satellite API |
 | [Board support](./boards/README.md) | Contributors | Firmware builds, flashing behavior, and the USB protocol |
 

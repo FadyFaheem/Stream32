@@ -1126,6 +1126,53 @@ input:disabled {
   grid-column: 1 / -1;
 }
 
+.deck-live-status-command {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.deck-live-interval-field {
+  max-width: 10rem;
+}
+
+/* Each exit code is boxed, because the rows are two lines tall and otherwise
+   run together: the appearance fields and the row's own Remove sit on the
+   first line, the artwork controls on the second, in the order they are read. */
+.deck-live-status-state {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.deck-live-status-state + .deck-live-status-state {
+  margin-top: 0.5rem;
+}
+
+.deck-live-status-state input[type="text"] {
+  min-width: 0;
+}
+
+.deck-live-status-code {
+  width: 100%;
+}
+
+.deck-live-status-state > .deck-image-row {
+  grid-column: 1 / -1;
+}
+
+/* Narrower than the Appearance section's, which has a whole row to itself,
+   so the three artwork controls still share one line here. */
+.deck-live-status-state > .deck-image-row input[type="file"] {
+  flex: 1 1 8rem;
+}
+
 .deck-action-summary {
   display: flex;
   align-items: stretch;

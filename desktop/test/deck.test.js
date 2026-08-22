@@ -1270,6 +1270,78 @@ test('live updates complete only after their correlated key ACK', async () => {
   assert.equal(controller.pending.has(deviceId), false);
 });
 
+// The board draws the saved artwork whenever the overlay carries none, and
+// that bitmap has the saved colour painted behind it. A recolour that sent no
+// artwork would therefore change the key everywhere except on the deck.
+test('a live recolour resends the key artwork over the new colour', async () => {
+  const controller = createRuntime();
+  const deviceId = 'aaaa11112222';
+  const saved = {
+    index: 0,
+    color: '#101010',
+    image: 'data:image/webp;base64,AAAA',
+  };
+  const sent = [];
+  const rendered = [];
+  controller.devices = {
+    [deviceId]: {
+      activeProfileId: 'default',
+      profiles: {
+        default: {
+          keyPx: { '1x1': 64 },
+          pages: [{ rows: 1, cols: 1, keys: [saved] }],
+        },
+      },
+    },
+  };
+  controller.renderImages = async (page, keyPx) => {
+    rendered.push({ keys: page.keys, keyPx });
+    return new Map([[0, { crc: 'aabbccdd', pixels: new Uint8Array(2) }]]);
+  };
+
+  const session = {
+    hello: { deviceId, features: ['key-update'] },
+    async send(bytes) {
+      sent.push(JSON.parse(Buffer.from(bytes).toString('utf8')));
+      queueMicrotask(() => {
+        controller.handleDeviceMessage(session, {
+          type: 'key-update-ack',
+          page: 0,
+          index: 0,
+          needImage: false,
+        });
+      });
+    },
+  };
+  controller.sessions.set(deviceId, session);
+
+  await controller.sendLiveUpdate(deviceId, session, {
+    profileId: 'default',
+    page: 0,
+    index: 0,
+    overlay: { color: '#2f8f5b', state: 'unknown' },
+  });
+
+  assert.deepEqual(rendered, [{
+    keys: [{ ...saved, color: '#2f8f5b', state: 'unknown' }],
+    keyPx: 64,
+  }]);
+  assert.equal(sent[0].color, '#2f8f5b');
+  assert.equal(sent[0].imageCrc, 'aabbccdd');
+
+  // An overlay that leaves the artwork looking the way it was saved keeps
+  // costing nothing: the board already holds those exact pixels.
+  await controller.sendLiveUpdate(deviceId, session, {
+    profileId: 'default',
+    page: 0,
+    index: 0,
+    overlay: { label: 'Muted', state: 'unknown' },
+  });
+
+  assert.equal(rendered.length, 1);
+  assert.equal(sent[1].imageCrc, undefined);
+});
+
 test('an older timeout cannot delete a newer pending reply', async () => {
   const controller = createRuntime();
   const deviceId = 'aaaa11112222';
@@ -2127,4 +2199,145 @@ test('Multi Action keys do not emit firmware goPage targets', async () => {
 
   const layout = JSON.parse(Buffer.from(sent[0]).toString('utf8'));
   assert.equal(layout.keys[0].goPage, undefined);
+});
+
+function statusRuntime(command = 'audio-output.sh --status') {
+  const controller = createRuntime();
+  const key = {
+    index: 0,
+    label: 'Audio',
+    liveState: {
+      provider: 'status-command',
+      command,
+      intervalSeconds: 3,
+      states: [
+        { code: 0, label: 'Speakers' },
+        { code: 1, label: 'Headset' },
+      ],
+    },
+  };
+  controller.devices = {
+    aaaa11112222: {
+      activeProfileId: 'default',
+      profiles: {
+        default: { activePage: 0, pages: [{ rows: 1, cols: 1, keys: [key] }] },
+      },
+    },
+  };
+  controller.sessions.set('aaaa11112222', {
+    hello: { features: ['key-update'] },
+  });
+  return { controller, key };
+}
+
+test('a status command paints the key matching its exit code', async () => {
+  const { controller } = statusRuntime();
+  const queued = [];
+  let exitCode = 1;
+  controller.api = { runStatusCommand: async () => ({ code: exitCode }) };
+  controller.queueLiveUpdate = (deviceId, update) => queued.push(update);
+
+  controller.runDueStatusCommands();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.deepEqual(queued.at(-1).overlay, {
+    label: 'Headset',
+    state: 'unknown',
+  });
+
+  // An exit code no state claims clears the overlay, so the key falls back to
+  // the appearance the user saved rather than keeping a stale one.
+  exitCode = 7;
+  await controller.runStatusCommand(
+    'aaaa11112222',
+    'default',
+    0,
+    controller.devices.aaaa11112222.profiles.default.pages[0].keys[0],
+  );
+  assert.equal(queued.at(-1).overlay, null);
+});
+
+test('a status command is not polled twice at once or before it is due', async () => {
+  const { controller } = statusRuntime();
+  let running = 0;
+  let starts = 0;
+  let peak = 0;
+  let release;
+  controller.api = {
+    runStatusCommand: () => {
+      starts++;
+      running++;
+      peak = Math.max(peak, running);
+      return new Promise((resolve) => {
+        release = () => {
+          running--;
+          resolve({ code: 0 });
+        };
+      });
+    },
+  };
+  controller.queueLiveUpdate = () => {};
+
+  // A command slower than its interval must stretch its own schedule instead
+  // of stacking a shell behind itself on every tick.
+  controller.runDueStatusCommands();
+  controller.runDueStatusCommands();
+  controller.runDueStatusCommands();
+  assert.equal(starts, 1);
+  assert.equal(peak, 1);
+
+  release();
+  await Promise.resolve();
+  await Promise.resolve();
+
+  // The next run is due an interval after the answer, not after the request,
+  // so a tick arriving straight after one finishes does not start another.
+  controller.runDueStatusCommands();
+  assert.equal(starts, 1);
+
+  controller.runDueStatusCommands(Date.now() + 3000);
+  assert.equal(starts, 2);
+  assert.equal(peak, 1);
+});
+
+test('nothing is polled for a deck that is not listening', () => {
+  const { controller } = statusRuntime();
+  let runs = 0;
+  controller.api = {
+    runStatusCommand: async () => {
+      runs++;
+      return { code: 0 };
+    },
+  };
+  controller.queueLiveUpdate = () => {};
+  controller.sessions.clear();
+
+  controller.runDueStatusCommands();
+  assert.equal(runs, 0);
+});
+
+test('a press re-runs the status command it just invalidated', async () => {
+  const { controller } = statusRuntime();
+  let runs = 0;
+  controller.api = {
+    runStatusCommand: async () => {
+      runs++;
+      return { code: 0 };
+    },
+  };
+  controller.queueLiveUpdate = () => {};
+  controller.onRenderSelectedLive = () => {};
+
+  // Waiting out the interval would make the user's own tap the slowest way to
+  // change the icon.
+  controller.refreshLiveAfterSuccess('aaaa11112222', {
+    profileId: 'default',
+    page: 0,
+    index: 0,
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  assert.equal(runs, 1);
 });

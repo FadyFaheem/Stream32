@@ -90,10 +90,135 @@ colors, state, and artwork never rewrite profile JSON or flash artwork.
 - **Clock** updates the key title at minute boundaries in 12- or 24-hour format.
 - **Focused app** shows a bounded application identity from the existing
   first-party focus watcher; it never exposes window titles.
+- **Status command** runs a command you write and shows the appearance you gave
+  its exit code, so a key can follow something Stream32 has no other way to
+  know. It is the one provider that can tell you about state changed by
+  something other than the deck.
 
-Toggle on-artwork uses the same bounded image upload pipeline as base artwork,
-but firmware keeps the rendered RGB565 bytes only in RAM/PSRAM. Reconnects and
-base profile syncs reapply current overlays without changing the saved base.
+Every live appearance picks artwork the same two ways the saved key does: from
+the Material icon library, or from a file through the same bounded upload
+pipeline as base artwork. Firmware keeps the rendered RGB565 bytes only in
+RAM/PSRAM. Reconnects and base profile syncs reapply current overlays without
+changing the saved base.
+
+An overlay that recolors a key which has artwork re-sends that artwork over the
+new color. Artwork reaches the board as one opaque tile with the key color
+already painted behind it, so a color sent on its own would be covered by the
+saved tile and the deck would disagree with the editor's preview. The board
+already holds the bytes for an appearance that leaves the artwork unchanged, so
+nothing is re-sent for one.
+
+### Status commands
+
+Give the key up to eight exit codes, each with its own label, colors and
+artwork. A script that both performs and reports an action is the usual shape:
+the key's Launch action runs `audio-output.sh`, and its status command runs
+`audio-output.sh --status`, which exits `0`, `1` or `2` for the output now in
+use. Because the board is asked what to look like rather than told what
+happened, the key stays right when the change came from somewhere else, which
+a key that only flips on its own press cannot do.
+
+The command runs on its interval and again as soon as the key's own action
+succeeds, so your own press never waits out the interval it just invalidated.
+Only the exit code is read: output is discarded rather than buffered, and it
+never reaches a log.
+
+These are the bounds it runs inside, because a polled command is not a pressed
+one:
+
+- Only while that deck is connected and not driven by Companion. A closed app
+  or an unplugged board runs nothing.
+- Never two at once for one key. A command slower than its interval stretches
+  its own schedule instead of stacking shells behind itself, and the next run
+  is due an interval after the answer rather than after the request.
+- Killed after five seconds, along with anything it started. Killing the shell
+  alone would leave the command that is actually hanging behind it, so the
+  whole process group goes on POSIX and `taskkill /t` walks the tree on
+  Windows. A hung command reports nothing rather than stalling the key.
+- An unmatched exit code, a command that cannot run, and one that hangs are the
+  same answer: the key shows the appearance you saved for it.
+
+The command is yours and runs with your privileges, exactly like the Launch
+action. The difference worth thinking about is that this one runs on a timer
+rather than when you press something, so point it at something cheap that
+answers quickly.
+
+On Windows the command runs through `cmd`, and no console window appears for
+it. Exit codes there are not limited to the 0-255 a POSIX wait status carries,
+so `9009` for a command that does not exist and `3010` for an installer asking
+for a reboot are both states you can give an appearance to. A batch file
+reports through `exit /b`, and PowerShell through `exit`, which means
+`powershell -NoProfile -Command "...; exit 2"` is the usual one-liner shape.
+
+Two things to know before writing one. `cmd` expands `%NAME%` before the
+command runs, so write paths out or read the variable inside PowerShell as
+`$env:NAME` instead. And starting PowerShell costs a few hundred milliseconds,
+which is fine every five seconds and wasteful every one, so give a PowerShell
+status command a longer interval than a native tool would need.
+
+Whatever you write, run it in `cmd` first and check `echo %ERRORLEVEL%`. That
+number is exactly what Stream32 reads.
+
+#### A worked example: which audio output is live
+
+Windows has no built-in command for this, so install one:
+`Install-Module -Name AudioDeviceCmdlets -Scope CurrentUser`. Then
+`Get-AudioDevice -List | Where-Object Type -eq 'Playback'` prints the index of
+each output. Put one script somewhere stable, say
+`C:\Users\You\stream32\audio.ps1`, and have it both cycle and report:
+
+```powershell
+param([switch]$Status)
+
+# Playback device indexes, in the order the key should cycle them.
+$devices = 1, 3, 5
+
+$position = [array]::IndexOf($devices, (Get-AudioDevice -Playback).Index)
+
+if ($Status) {
+    # Position doubles as the exit code, and an output that is not in the list
+    # exits 3, which is a state you can give its own appearance.
+    if ($position -lt 0) { exit 3 }
+    exit $position
+}
+
+Set-AudioDevice -Index $devices[($position + 1) % $devices.Count] | Out-Null
+exit 0
+```
+
+The key's **Launch action** runs it:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\You\stream32\audio.ps1"
+```
+
+and its **status command** asks the same script what is true now:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\You\stream32\audio.ps1" -Status
+```
+
+Give exit code `0` the speaker artwork, `1` the headset, `2` the HDMI one, and
+`3` something that reads as "something else". Tapping the key cycles the
+output and the artwork follows immediately; changing it from the volume flyout
+instead is picked up on the next check.
+
+`-ExecutionPolicy Bypass` is needed because the policy applies to script files.
+An inline `-Command` runs without it, so a one-liner is an option when the
+logic is small enough to read.
+
+On macOS and Linux the command runs through `/bin/sh`, not the shell you use in
+a terminal, and it inherits the environment Stream32 was started with rather
+than the one your shell builds. On Debian and Ubuntu `/bin/sh` is `dash`, so a
+one-liner written in bash syntax needs `bash -c '...'` around it; a script file
+is unaffected, because its own shebang decides. On macOS that is the biggest practical
+difference between the two: an app opened from Finder or the Dock is started by
+`launchd` with a short PATH that leaves out `/opt/homebrew/bin` and
+`/usr/local/bin`, so a Homebrew tool that works when you type it will exit
+`127` here. Write the full path to it, which is worth doing anyway for
+something that runs unattended. A command that drives another app through
+`osascript` also needs Automation permission, which macOS asks for once, so run
+it by hand before pointing a key at it.
 
 ## Multi Actions
 

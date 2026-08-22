@@ -7,6 +7,7 @@ const {
   mergeKeyOverlay,
   millisecondsUntilNextMinute,
   providerNames,
+  statusAppearanceFor,
   validateLiveState,
 } = require('../src/dynamic-state');
 
@@ -57,6 +58,83 @@ test('validates bounded first-party live state configurations', () => {
     () => validateLiveState({ provider: 'downloaded-code' }),
     /provider/,
   );
+});
+
+test('status command states are bounded and their exit codes unique', () => {
+  const config = validateLiveState({
+    provider: 'status-command',
+    command: 'audio-output.sh --status',
+    intervalSeconds: 3,
+    states: [
+      { code: 0, label: 'Speakers', color: '#2f8f5b' },
+      { code: 1, label: 'Headset' },
+    ],
+  });
+
+  assert.deepEqual(config, {
+    provider: 'status-command',
+    command: 'audio-output.sh --status',
+    intervalSeconds: 3,
+    states: [
+      { code: 0, label: 'Speakers', color: '#2f8f5b' },
+      { code: 1, label: 'Headset' },
+    ],
+  });
+
+  const base = {
+    provider: 'status-command',
+    command: 'x',
+    intervalSeconds: 3,
+    states: [{ code: 0 }],
+  };
+
+  // A second state on the same code could never be shown, so it is a mistake
+  // rather than a preference.
+  assert.throws(
+    () => validateLiveState({ ...base, states: [{ code: 1 }, { code: 1 }] }),
+    /exit code/,
+  );
+  // Windows exit codes are 32-bit, and its useful ones are not small: 9009 is
+  // "command not found" and 3010 is "reboot required".
+  assert.deepEqual(
+    validateLiveState({ ...base, states: [{ code: 9009, label: 'Missing' }] })
+      .states,
+    [{ code: 9009, label: 'Missing' }],
+  );
+  assert.throws(
+    () => validateLiveState({ ...base, states: [{ code: 2_147_483_648 }] }),
+    /exit code/,
+  );
+  assert.throws(
+    () => validateLiveState({ ...base, states: [{ code: -1 }] }),
+    /exit code/,
+  );
+  assert.throws(() => validateLiveState({ ...base, states: [] }), /states/);
+  assert.throws(() => validateLiveState({ ...base, command: '' }), /command/);
+  assert.throws(
+    () => validateLiveState({ ...base, intervalSeconds: 0 }),
+    /interval/,
+  );
+  assert.throws(
+    () => validateLiveState({ ...base, intervalSeconds: 1.5 }),
+    /interval/,
+  );
+});
+
+test('an exit code with no state leaves the saved key showing', () => {
+  const config = validateLiveState({
+    provider: 'status-command',
+    command: 'x',
+    intervalSeconds: 3,
+    states: [{ code: 2, label: 'HDMI' }],
+  });
+
+  assert.deepEqual(statusAppearanceFor(config, 2), { label: 'HDMI' });
+  // Unmatched, never run, and killed for hanging all arrive here.
+  assert.equal(statusAppearanceFor(config, 1), null);
+  assert.equal(statusAppearanceFor(config, null), null);
+  assert.equal(statusAppearanceFor(config, undefined), null);
+  assert.equal(statusAppearanceFor({ provider: 'clock' }, 0), null);
 });
 
 test('clock formatting and next-minute scheduling are deterministic', () => {

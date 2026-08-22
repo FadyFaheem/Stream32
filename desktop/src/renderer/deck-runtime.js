@@ -6,7 +6,9 @@ const { CompanionSurfaces } = require('./companion-surface');
 const {
   focusedAppTitle,
   formatClock,
+  mergeKeyOverlay,
   millisecondsUntilNextMinute,
+  statusAppearanceFor,
 } = require('../dynamic-state');
 const { ProfileSwitcher } = require('./profile-switcher');
 const {
@@ -33,6 +35,9 @@ const ACK_TIMEOUT_MS = 5000;
 const SYNC_DEBOUNCE_MS = 600;
 const LIVE_UPDATE_DEBOUNCE_MS = 100;
 const LIVE_LEASE_REFRESH_MS = 10000;
+// Status commands are due on their own second, so one tick serves every key
+// rather than a timer per key that has to be torn down on each profile edit.
+const STATUS_TICK_MS = 1000;
 
 function gridKey(page) {
   return `${page.rows}x${page.cols}`;
@@ -114,8 +119,14 @@ class DeckRuntime {
     this.liveQueues = new Map();
     this.liveTimers = new Map();
     this.liveRunning = new Set();
+    // When each status command may run again, and which are running now. A key
+    // never runs two at once, so a slow command stretches its own interval
+    // instead of queueing shells behind itself.
+    this.statusDue = new Map();
+    this.statusRunning = new Set();
     this.clockTimer = null;
     this.liveLeaseTimer = null;
+    this.statusTimer = null;
     this.companionAvailable = false;
     this.companion = new CompanionSurfaces({
       api,
@@ -220,6 +231,12 @@ class DeckRuntime {
       }
     }
 
+    for (const key of [...this.statusDue.keys()]) {
+      if (key.startsWith(prefix)) {
+        this.statusDue.delete(key);
+      }
+    }
+
     this.liveQueues.delete(deviceId);
     clearTimeout(this.liveTimers.get(deviceId));
     this.liveTimers.delete(deviceId);
@@ -254,6 +271,15 @@ class DeckRuntime {
           ...(label ? { label } : {}),
           state: 'unknown',
         };
+      }
+      case 'status-command': {
+        const appearance = statusAppearanceFor(
+          config,
+          this.liveValues.get(
+            this.liveKey(deviceId, profileId, page, key.index),
+          ),
+        );
+        return appearance ? { ...appearance, state: 'unknown' } : null;
       }
       default:
         return null;
@@ -307,7 +333,93 @@ class DeckRuntime {
           this.liveValues.delete(key);
         }
       }
+
+      for (const key of [...this.statusDue.keys()]) {
+        if (key.startsWith(prefix) && !configured.has(key)) {
+          this.statusDue.delete(key);
+        }
+      }
     }
+  }
+
+  // Walks the configured keys rather than holding a timer each, so a profile
+  // edit needs no teardown: a key that stopped being a status command simply
+  // stops being visited.
+  // ponytail: one scan per second over the selected profile's keys, which is
+  // the same walk refreshLiveStates already does every ten. If a deck ever
+  // grows enough keys for that to show up, give each key its own timeout.
+  runDueStatusCommands(now = Date.now()) {
+    for (const deviceId of Object.keys(this.getDevices())) {
+      // A command polled for a deck that is not listening is pure cost, and
+      // Companion owns the key's appearance while it is enabled.
+      if (!this.sessions.has(deviceId) || this.companionEnabled(deviceId)) {
+        continue;
+      }
+
+      const profileId = this.getSelectedProfileId(deviceId);
+      const profile = this.getProfile(deviceId, profileId);
+
+      if (!profile || !profileId) {
+        continue;
+      }
+
+      for (const [pageIndex, page] of profile.pages.entries()) {
+        for (const key of page.keys) {
+          if (key.liveState?.provider !== 'status-command') {
+            continue;
+          }
+
+          const id = this.liveKey(deviceId, profileId, pageIndex, key.index);
+          const due = this.statusDue.get(id) ?? 0;
+
+          if (this.statusRunning.has(id) || now < due) {
+            continue;
+          }
+
+          void this.runStatusCommand(deviceId, profileId, pageIndex, key);
+        }
+      }
+    }
+  }
+
+  async runStatusCommand(deviceId, profileId, page, key) {
+    const id = this.liveKey(deviceId, profileId, page, key.index);
+    const config = key.liveState;
+
+    // A key edit reaches this registry a moment before the validated profile
+    // comes back from the save, so a half-written command can be seen here.
+    if (this.statusRunning.has(id) || !config?.command?.trim()) {
+      return;
+    }
+
+    this.statusRunning.add(id);
+
+    let code = null;
+
+    try {
+      ({ code } = await this.api.runStatusCommand(config.command));
+    } catch {
+      // A rejected command is the same as one that answered nothing: the key
+      // falls back to the appearance the user saved.
+    } finally {
+      this.statusRunning.delete(id);
+      // Measured from the answer, not the request, so a command slower than
+      // its interval cannot be re-entered the moment it returns.
+      this.statusDue.set(id, Date.now() + config.intervalSeconds * 1000);
+    }
+
+    if (this.liveValues.get(id) === code) {
+      return;
+    }
+
+    this.liveValues.set(id, code);
+    this.queueLiveUpdate(deviceId, {
+      profileId,
+      page,
+      index: key.index,
+      overlay: this.liveOverlayFor(deviceId, profileId, page, key),
+    });
+    this.onRenderSelectedLive(deviceId);
   }
 
   queueLiveUpdate(deviceId, update) {
@@ -417,12 +529,23 @@ class DeckRuntime {
       return;
     }
 
+    // Artwork reaches the board as one opaque tile with the key colour already
+    // painted behind it, and the board keeps showing the saved tile whenever an
+    // overlay carries no artwork of its own. So an overlay that recolours a key
+    // that has artwork has to re-send that artwork over the new colour: without
+    // it the saved colour stays baked into the pixels covering the key, and the
+    // deck disagrees with the desktop preview, which composites the two.
+    const saved = page.keys.find((entry) => entry.index === update.index);
+    const shown = mergeKeyOverlay(saved, update.overlay);
+    const restyled =
+      shown.image !== saved?.image || shown.color !== saved?.color;
+
     let render = null;
     const keyPx = profile.keyPx[gridKey(page)];
 
-    if (update.overlay.image && keyPx) {
+    if (shown.image && restyled && keyPx) {
       const renders = await this.renderPageImages(
-        { keys: [{ index: update.index, ...update.overlay }] },
+        { keys: [{ ...shown, index: update.index }] },
         keyPx,
       );
       render = renders.get(update.index);
@@ -477,6 +600,12 @@ class DeckRuntime {
       LIVE_LEASE_REFRESH_MS,
     );
     this.liveLeaseTimer?.unref?.();
+    clearInterval(this.statusTimer);
+    this.statusTimer = setInterval(
+      () => this.runDueStatusCommands(),
+      STATUS_TICK_MS,
+    );
+    this.statusTimer?.unref?.();
   }
 
   scheduleClockTick() {
@@ -943,7 +1072,7 @@ class DeckRuntime {
           action.page,
           origin.profileId || this.getSelectedProfileId(deviceId),
         );
-        this.flipToggleAfterSuccess(deviceId, origin);
+        this.refreshLiveAfterSuccess(deviceId, origin);
         return true;
       }
 
@@ -954,7 +1083,7 @@ class DeckRuntime {
 
       if (action.type === 'sleep') {
         await this.blankDeviceDisplay(deviceId);
-        this.flipToggleAfterSuccess(deviceId, origin);
+        this.refreshLiveAfterSuccess(deviceId, origin);
         return true;
       }
 
@@ -965,7 +1094,7 @@ class DeckRuntime {
 
       if (action.type !== 'multi') {
         await this.api.runAction(action);
-        this.flipToggleAfterSuccess(deviceId, origin);
+        this.refreshLiveAfterSuccess(deviceId, origin);
         return true;
       }
 
@@ -1000,7 +1129,7 @@ class DeckRuntime {
       } finally {
         this.multiRuns.delete(runId);
       }
-      this.flipToggleAfterSuccess(deviceId, origin);
+      this.refreshLiveAfterSuccess(deviceId, origin);
       return true;
     } catch (error) {
       if (error instanceof ActionSequenceCancelledError) {
@@ -1013,12 +1142,19 @@ class DeckRuntime {
     }
   }
 
-  flipToggleAfterSuccess(deviceId, origin) {
+  // The press is the one state change the user is watching for, so it does not
+  // wait out the poll interval it just invalidated.
+  refreshLiveAfterSuccess(deviceId, origin) {
     const profileId =
       origin.profileId || this.getSelectedProfileId(deviceId);
     const key = this.getProfile(deviceId, profileId)
       ?.pages[origin.page]
       ?.keys.find((entry) => entry.index === origin.index);
+
+    if (key?.liveState?.provider === 'status-command') {
+      void this.runStatusCommand(deviceId, profileId, origin.page, key);
+      return;
+    }
 
     if (key?.liveState?.provider !== 'toggle') {
       return;

@@ -150,61 +150,6 @@
               </div>
             </div>
 
-            <div class="deck-profile-rulebar">
-              <span class="field-label deck-rule-label">Profile focus rule</span>
-              <button
-                id="deck-profile-default"
-                class="button button-secondary"
-                type="button"
-              >
-                Make profile default
-              </button>
-              <div class="deck-profile-match-field">
-                <label for="deck-profile-match">
-                  Profile app match on this computer
-                </label>
-                <input
-                  id="deck-profile-match"
-                  type="text"
-                  maxlength="260"
-                  autocomplete="off"
-                  spellcheck="false"
-                >
-              </div>
-              <div class="deck-profile-match-actions">
-                <button
-                  id="deck-profile-match-focused"
-                  class="button button-secondary"
-                  type="button"
-                  aria-label="Use focused app for profile"
-                >
-                  Use focused app
-                </button>
-                <button
-                  id="deck-profile-match-save"
-                  class="button button-quiet"
-                  type="button"
-                  aria-label="Save profile app match"
-                >
-                  Save profile match
-                </button>
-                <button
-                  id="deck-profile-match-clear"
-                  class="button button-quiet"
-                  type="button"
-                  aria-label="Clear profile app match"
-                >
-                  Clear
-                </button>
-              </div>
-              <p
-                id="deck-profile-match-status"
-                class="helper deck-profile-match-status"
-                data-state="idle"
-                aria-live="polite"
-              ></p>
-            </div>
-
             <div class="deck-pagebar">
               <div class="deck-pages">
                 <div id="deck-page-tabs" role="tablist" aria-label="Deck pages"></div>
@@ -235,60 +180,132 @@
               ></p>
             </div>
 
-            <div class="deck-page-rulebar">
-              <span class="field-label deck-rule-label">Page focus rule</span>
-              <button
-                id="deck-page-default"
-                class="button button-secondary"
-                type="button"
-              >
-                Make page default
-              </button>
-              <div class="deck-page-match-field">
-                <label for="deck-page-match">
-                  Page app match on this computer
-                </label>
-                <input
-                  id="deck-page-match"
-                  type="text"
-                  maxlength="260"
-                  autocomplete="off"
-                  spellcheck="false"
-                >
-              </div>
-              <div class="deck-page-match-actions">
-                <button
-                  id="deck-page-match-focused"
-                  class="button button-secondary"
-                  type="button"
-                  aria-label="Use focused app for page"
-                >
-                  Use focused app
-                </button>
-                <button
-                  id="deck-page-match-save"
-                  class="button button-quiet"
-                  type="button"
-                  aria-label="Save page app match"
-                >
-                  Save page match
-                </button>
-                <button
-                  id="deck-page-match-clear"
-                  class="button button-quiet"
-                  type="button"
-                  aria-label="Clear page app match"
-                >
-                  Clear
-                </button>
-              </div>
+            <details id="deck-focus-rules" class="deck-focus-rules">
+              <summary class="deck-focus-summary">
+                <span class="deck-focus-summary-title">Focus rules</span>
+                <span
+                  id="deck-focus-summary-detail"
+                  class="deck-focus-summary-detail"
+                ></span>
+              </summary>
               <p
-                id="deck-page-match-status"
-                class="helper deck-page-match-status"
+                id="deck-focus-status"
+                class="helper deck-focus-status"
                 data-state="idle"
                 aria-live="polite"
               ></p>
-            </div>
+              <div class="deck-focus-panes">
+                <div class="deck-profile-rulebar">
+                  <span class="field-label deck-rule-label">Profile focus rule</span>
+                  <button
+                    id="deck-profile-default"
+                    class="button button-secondary"
+                    type="button"
+                  >
+                    Make profile default
+                  </button>
+                  <div class="deck-profile-match-field">
+                    <label for="deck-profile-match">
+                      Profile app match on this computer
+                    </label>
+                    <input
+                      id="deck-profile-match"
+                      type="text"
+                      maxlength="260"
+                      autocomplete="off"
+                      spellcheck="false"
+                    >
+                  </div>
+                  <div class="deck-profile-match-actions">
+                    <button
+                      id="deck-profile-match-focused"
+                      class="button button-secondary"
+                      type="button"
+                      aria-label="Use focused app for profile"
+                    >
+                      Use focused app
+                    </button>
+                    <button
+                      id="deck-profile-match-save"
+                      class="button button-quiet"
+                      type="button"
+                      aria-label="Save profile app match"
+                    >
+                      Save profile match
+                    </button>
+                    <button
+                      id="deck-profile-match-clear"
+                      class="button button-quiet"
+                      type="button"
+                      aria-label="Clear profile app match"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                  <p
+                    id="deck-profile-match-status"
+                    class="helper deck-profile-match-status"
+                    data-state="idle"
+                    aria-live="polite"
+                  ></p>
+                </div>
+
+                  <div class="deck-page-rulebar">
+                    <span class="field-label deck-rule-label">Page focus rule</span>
+                    <button
+                      id="deck-page-default"
+                      class="button button-secondary"
+                      type="button"
+                    >
+                      Make page default
+                    </button>
+                    <div class="deck-page-match-field">
+                      <label for="deck-page-match">
+                        Page app match on this computer
+                      </label>
+                      <input
+                        id="deck-page-match"
+                        type="text"
+                        maxlength="260"
+                        autocomplete="off"
+                        spellcheck="false"
+                      >
+                    </div>
+                    <div class="deck-page-match-actions">
+                      <button
+                        id="deck-page-match-focused"
+                        class="button button-secondary"
+                        type="button"
+                        aria-label="Use focused app for page"
+                      >
+                        Use focused app
+                      </button>
+                      <button
+                        id="deck-page-match-save"
+                        class="button button-quiet"
+                        type="button"
+                        aria-label="Save page app match"
+                      >
+                        Save page match
+                      </button>
+                      <button
+                        id="deck-page-match-clear"
+                        class="button button-quiet"
+                        type="button"
+                        aria-label="Clear page app match"
+                      >
+                        Clear
+                      </button>
+                    </div>
+                    <p
+                      id="deck-page-match-status"
+                      class="helper deck-page-match-status"
+                      data-state="idle"
+                      aria-live="polite"
+                    ></p>
+                  </div>
+              </div>
+            </details>
 
             <div class="deck-stage">
               <div id="deck-grid" class="deck-grid" aria-label="Deck keys"></div>

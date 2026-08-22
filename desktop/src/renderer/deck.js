@@ -180,6 +180,10 @@ class DeckController {
       document.querySelector('#deck-page-match-focused');
     this.pageMatchStatus =
       document.querySelector('#deck-page-match-status');
+    this.focusRules = document.querySelector('#deck-focus-rules');
+    this.focusSummaryDetail =
+      document.querySelector('#deck-focus-summary-detail');
+    this.focusStatusLine = document.querySelector('#deck-focus-status');
     this.pageName = document.querySelector('#deck-page-name');
     this.rowsSelect = document.querySelector('#deck-rows');
     this.colsSelect = document.querySelector('#deck-cols');
@@ -258,8 +262,10 @@ class DeckController {
         }
       },
       onStatus: (message, state) => this.setSyncStatus(message, state),
-      onProfileStatus: (message, state) =>
-        this.setProfileMatchStatus(message, state),
+      // Automatic-switch failures are device errors, not rule-editing errors.
+      // The focus-rule lines now live inside a collapsed disclosure, so these
+      // go to the always-visible sync line instead of hiding behind it.
+      onProfileStatus: (message, state) => this.setSyncStatus(message, state),
       onRenderSyncStatus: () => {
         this.renderSyncStatus();
         this.onSyncProgress?.();
@@ -597,17 +603,39 @@ class DeckController {
     this.importButton.addEventListener('click', async () => {
       await this.importProfile();
     });
-    this.addPageButton.addEventListener('click', () => {
+    this.addPageButton.addEventListener('click', async () => {
+      // Captured before the dialog so a device-driven page change while the
+      // prompt is open cannot retarget the back key at the wrong page.
+      const origin = this.selectedPage;
+      const originName = this.selectedProfile()?.pages[origin]?.name ?? 'Page';
+      const addBackKey = await this.openConfirmDialog({
+        title: 'Add a page',
+        message:
+          `Add a Back key to the new page so it returns to ${originName}? ` +
+          'The key lands in the first slot and can be moved or removed later.',
+        confirmLabel: 'Add with Back key',
+        cancelLabel: 'Add without',
+        focusConfirm: true,
+      });
       this.updateProfile((profile) => {
+        // The prompt is async, so re-check the captured origin still exists
+        // rather than trusting an index read before it opened.
+        const backTarget = origin < profile.pages.length ? origin : 0;
         profile.pages.push({
           name: `Page ${profile.pages.length + 1}`,
           appMatches: {},
           rows: 3,
           cols: 3,
-          keys: [],
+          keys: addBackKey
+            ? [{
+              index: 0,
+              label: 'Back',
+              action: { type: 'page', page: backTarget },
+            }]
+            : [],
         });
         this.selectedPage = profile.pages.length - 1;
-        this.selectedKey = null;
+        this.selectedKey = addBackKey ? 0 : null;
       });
     });
     this.removePageButton.addEventListener('click', () => {
@@ -1611,6 +1639,39 @@ class DeckController {
     this.pageMatchStatus.dataset.state = state;
   }
 
+  // The focused app is one fact about the OS, not one per rule, so it renders
+  // once for the whole disclosure. The per-rule lines stay for save and clear
+  // errors, which do differ between the two rules.
+  setFocusStatus(message, state) {
+    this.focusStatusLine.textContent = message;
+    this.focusStatusLine.dataset.state = state;
+    this.setProfileMatchStatus('', 'idle');
+    this.setPageMatchStatus('', 'idle');
+  }
+
+  // Keeps the configured matches readable while the disclosure is closed, so
+  // collapsing the forms does not hide whether a rule exists at all.
+  renderFocusSummary() {
+    const profile = this.selectedProfile();
+    const page = profile?.pages[this.selectedPage];
+    const platform = this.focusStatus?.platform;
+    const parts = [];
+    const profileMatch = platform ? profile?.appMatches?.[platform] : undefined;
+    const pageMatch = platform ? page?.appMatches?.[platform] : undefined;
+
+    if (profileMatch) {
+      parts.push(`Profile: ${profileMatch}`);
+    }
+
+    if (pageMatch) {
+      parts.push(`Page: ${pageMatch}`);
+    }
+
+    this.focusSummaryDetail.textContent = parts.length
+      ? parts.join(' · ')
+      : 'None set — this profile and page never switch automatically.';
+  }
+
   renderSyncStatus() {
     if (this.storageErrors.length > 0) {
       this.setSyncStatus(
@@ -1832,31 +1893,31 @@ class DeckController {
       this.pageMatchInput.placeholder = 'Focused app unavailable';
     }
 
+    this.renderFocusSummary();
+
     if (this.focusStatus?.reason) {
       const state = this.focusStatus.state === 'error' ? 'error' : 'idle';
-      this.setProfileMatchStatus(this.focusStatus.reason, state);
-      this.setPageMatchStatus(this.focusStatus.reason, state);
+      this.setFocusStatus(this.focusStatus.reason, state);
       return;
     }
 
     if (this.focusSnapshot) {
       try {
         const focused = preferredRuleForSnapshot(this.focusSnapshot);
-        const message = `Focused app: ${focused.value}`;
-        this.setProfileMatchStatus(message, 'ready');
-        this.setPageMatchStatus(message, 'ready');
+        this.setFocusStatus(`Focused app: ${focused.value}`, 'ready');
       } catch {
-        const message = 'The focused app has no supported stable identity.';
-        this.setProfileMatchStatus(message, 'idle');
-        this.setPageMatchStatus(message, 'idle');
+        this.setFocusStatus(
+          'The focused app has no supported stable identity.',
+          'idle',
+        );
       }
       return;
     }
 
-    const message =
-      'Focus another app, then return and choose “Use focused app”.';
-    this.setProfileMatchStatus(message, 'idle');
-    this.setPageMatchStatus(message, 'idle');
+    this.setFocusStatus(
+      'Focus another app, then return and choose “Use focused app”.',
+      'idle',
+    );
   }
 
   renderPages() {

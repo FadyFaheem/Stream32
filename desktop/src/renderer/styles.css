@@ -723,6 +723,63 @@ input:disabled {
   border-color: rgba(255, 173, 34, 0.58);
 }
 
+/* Focus rules are set once and then rarely touched, so they collapse to a
+   single line and let the key grid sit higher on the page. The summary keeps
+   the configured matches glanceable without opening the forms. */
+.deck-focus-rules {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: rgba(4, 10, 14, 0.4);
+}
+
+.deck-focus-summary {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.55rem 0.85rem;
+  cursor: pointer;
+  user-select: none;
+  flex-wrap: wrap;
+}
+
+.deck-focus-summary:hover {
+  background: rgba(255, 173, 34, 0.06);
+}
+
+.deck-focus-summary-title {
+  color: var(--accent-strong);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.deck-focus-summary-detail {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.deck-focus-status {
+  margin: 0;
+  padding: 0 0.85rem 0.2rem;
+}
+
+.deck-focus-status[data-state="ready"] {
+  color: var(--success);
+}
+
+.deck-focus-status[data-state="error"] {
+  color: var(--error);
+}
+
+/* Both rules are the same shape, so they sit side by side wherever the window
+   is wide enough and stack below that. */
+.deck-focus-panes {
+  display: grid;
+  gap: 0.9rem 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  padding: 0.2rem 0.85rem 0.85rem;
+}
+
 .deck-profile-rulebar,
 .deck-page-rulebar {
   display: flex;

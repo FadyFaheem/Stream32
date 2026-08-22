@@ -6,6 +6,7 @@ const { CompanionSurfaces } = require('./companion-surface');
 const {
   focusedAppTitle,
   formatClock,
+  mergeKeyOverlay,
   millisecondsUntilNextMinute,
   statusAppearanceFor,
 } = require('../dynamic-state');
@@ -528,12 +529,23 @@ class DeckRuntime {
       return;
     }
 
+    // Artwork reaches the board as one opaque tile with the key colour already
+    // painted behind it, and the board keeps showing the saved tile whenever an
+    // overlay carries no artwork of its own. So an overlay that recolours a key
+    // that has artwork has to re-send that artwork over the new colour: without
+    // it the saved colour stays baked into the pixels covering the key, and the
+    // deck disagrees with the desktop preview, which composites the two.
+    const saved = page.keys.find((entry) => entry.index === update.index);
+    const shown = mergeKeyOverlay(saved, update.overlay);
+    const restyled =
+      shown.image !== saved?.image || shown.color !== saved?.color;
+
     let render = null;
     const keyPx = profile.keyPx[gridKey(page)];
 
-    if (update.overlay.image && keyPx) {
+    if (shown.image && restyled && keyPx) {
       const renders = await this.renderPageImages(
-        { keys: [{ index: update.index, ...update.overlay }] },
+        { keys: [{ ...shown, index: update.index }] },
         keyPx,
       );
       render = renders.get(update.index);

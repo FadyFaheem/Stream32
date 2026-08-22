@@ -1270,6 +1270,78 @@ test('live updates complete only after their correlated key ACK', async () => {
   assert.equal(controller.pending.has(deviceId), false);
 });
 
+// The board draws the saved artwork whenever the overlay carries none, and
+// that bitmap has the saved colour painted behind it. A recolour that sent no
+// artwork would therefore change the key everywhere except on the deck.
+test('a live recolour resends the key artwork over the new colour', async () => {
+  const controller = createRuntime();
+  const deviceId = 'aaaa11112222';
+  const saved = {
+    index: 0,
+    color: '#101010',
+    image: 'data:image/webp;base64,AAAA',
+  };
+  const sent = [];
+  const rendered = [];
+  controller.devices = {
+    [deviceId]: {
+      activeProfileId: 'default',
+      profiles: {
+        default: {
+          keyPx: { '1x1': 64 },
+          pages: [{ rows: 1, cols: 1, keys: [saved] }],
+        },
+      },
+    },
+  };
+  controller.renderImages = async (page, keyPx) => {
+    rendered.push({ keys: page.keys, keyPx });
+    return new Map([[0, { crc: 'aabbccdd', pixels: new Uint8Array(2) }]]);
+  };
+
+  const session = {
+    hello: { deviceId, features: ['key-update'] },
+    async send(bytes) {
+      sent.push(JSON.parse(Buffer.from(bytes).toString('utf8')));
+      queueMicrotask(() => {
+        controller.handleDeviceMessage(session, {
+          type: 'key-update-ack',
+          page: 0,
+          index: 0,
+          needImage: false,
+        });
+      });
+    },
+  };
+  controller.sessions.set(deviceId, session);
+
+  await controller.sendLiveUpdate(deviceId, session, {
+    profileId: 'default',
+    page: 0,
+    index: 0,
+    overlay: { color: '#2f8f5b', state: 'unknown' },
+  });
+
+  assert.deepEqual(rendered, [{
+    keys: [{ ...saved, color: '#2f8f5b', state: 'unknown' }],
+    keyPx: 64,
+  }]);
+  assert.equal(sent[0].color, '#2f8f5b');
+  assert.equal(sent[0].imageCrc, 'aabbccdd');
+
+  // An overlay that leaves the artwork looking the way it was saved keeps
+  // costing nothing: the board already holds those exact pixels.
+  await controller.sendLiveUpdate(deviceId, session, {
+    profileId: 'default',
+    page: 0,
+    index: 0,
+    overlay: { label: 'Muted', state: 'unknown' },
+  });
+
+  assert.equal(rendered.length, 1);
+  assert.equal(sent[1].imageCrc, undefined);
+});
+
 test('an older timeout cannot delete a newer pending reply', async () => {
   const controller = createRuntime();
   const deviceId = 'aaaa11112222';

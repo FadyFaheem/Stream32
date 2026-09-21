@@ -340,14 +340,13 @@ test('no board redoes a rotation the platform already applies', () => {
   }
 });
 
-test('the Waveshare boards turn their square panel in software', () => {
-  // Their ST7701 runs as an RGB panel, so neither swap_xy nor the MADCTL
-  // mirror the other boards rotate with reaches it. sw_rotate is what makes
-  // lv_display_set_rotation turn the flushed buffer instead, and LVGL turns
-  // touch by the same rotation, so it has to stay set for either to work.
+test('the Waveshare RGB panels turn in software', () => {
+  // sw_rotate makes lv_display_set_rotation turn the flushed buffer, and LVGL
+  // applies the same rotation to touch coordinates.
   for (const [board, base] of [
     ['waveshare-esp32-s3-touch-lcd-4-v3', 0],
     ['waveshare-esp32-s3-touch-lcd-4-v4', 180],
+    ['waveshare-esp32-s3-touch-lcd-4-3b', 0],
   ]) {
     const bsp = read(
       path.join(
@@ -381,6 +380,52 @@ test('the Waveshare boards turn their square panel in software', () => {
       `${board} sets a rotation from more than one place`,
     );
   }
+});
+
+test('the Waveshare 4.3B uses its direct RGB panel and CH422G controls', () => {
+  const firmware = path.join(
+    ROOT,
+    'boards',
+    'waveshare-esp32-s3-touch-lcd-4-3b',
+    'firmware',
+  );
+  const display = read(
+    path.join(firmware, 'components', 'waveshare_bsp', 'include', 'bsp', 'display.h'),
+  );
+  const header = read(
+    path.join(
+      firmware,
+      'components',
+      'waveshare_bsp',
+      'include',
+      'bsp',
+      'esp32_s3_touch_lcd_4.h',
+    ),
+  );
+  const bsp = read(
+    path.join(firmware, 'components', 'waveshare_bsp', 'waveshare_bsp.c'),
+  );
+  const main = read(path.join(firmware, 'main', 'main.c'));
+
+  assert.match(display, /#define BSP_LCD_H_RES\s+\(800\)/);
+  assert.match(display, /#define BSP_LCD_V_RES\s+\(480\)/);
+  assert.match(main, /#define STREAM32_LINE_CAPACITY 8192/);
+  assert.doesNotMatch(main, /\"display-brightness\"|\"display-invert\"/);
+  assert.match(header, /#define BSP_CH422G_MODE_ADDRESS\s+\(0x24\)/);
+  assert.match(header, /#define BSP_CH422G_OUTPUT_ADDRESS\s+\(0x38\)/);
+  assert.match(bsp, /esp_lcd_new_rgb_panel\(/);
+  assert.match(bsp, /\.pclk_hz = BSP_LCD_PIXEL_CLOCK_HZ/);
+  assert.match(bsp, /\.flags\.pclk_active_neg = 1/);
+  assert.match(bsp, /ESP_LCD_TOUCH_IO_I2C_GT911_ADDRESS_BACKUP/);
+  assert.match(
+    bsp,
+    /BSP_CH422G_USB_SEL \| BSP_CH422G_LCD_RST \| BSP_CH422G_LCD_BL/,
+  );
+  assert.match(
+    bsp,
+    /BSP_CH422G_SD_CS \| BSP_CH422G_LCD_RST \|\s+BSP_CH422G_LCD_BL \| BSP_CH422G_TOUCH_RST/,
+  );
+  assert.doesNotMatch(bsp, /st7701|CH32V003|custom_io_expander/i);
 });
 
 test('a board offering rotation says which way it is already turned', () => {
@@ -519,6 +564,7 @@ test('every board answers the calibration and invert BSP contract', () => {
   const bsps = [
     ['waveshare-esp32-s3-touch-lcd-4-v3', 'waveshare_bsp/waveshare_bsp.c'],
     ['waveshare-esp32-s3-touch-lcd-4-v4', 'waveshare_bsp/waveshare_bsp.c'],
+    ['waveshare-esp32-s3-touch-lcd-4-3b', 'waveshare_bsp/waveshare_bsp.c'],
     ['elecrow-crowpanel-advanced-10-1-esp32-p4', 'elecrow_bsp/elecrow_bsp.c'],
     ['esp32-2432s028r-ili9341', 'cyd_bsp/cyd_bsp.c'],
   ];
@@ -600,6 +646,7 @@ test('every overlay mutation holds the display lock, not just visible ones', () 
 const BOARDS = [
   'waveshare-esp32-s3-touch-lcd-4-v3',
   'waveshare-esp32-s3-touch-lcd-4-v4',
+  'waveshare-esp32-s3-touch-lcd-4-3b',
   'elecrow-crowpanel-advanced-10-1-esp32-p4',
   'esp32-2432s028r-ili9341',
 ];

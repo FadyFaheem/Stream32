@@ -17,6 +17,7 @@ compatible.
 | Display | Size | Resolution | Deck size | Best for |
 | --- | --- | --- | --- | --- |
 | [Waveshare `ESP32-S3-Touch-LCD-4`](#waveshare-esp32-s3-touch-lcd-4) | 4" | 480x480 | up to 5x5, 8 pages | A compact, single-cable deck |
+| Waveshare `ESP32-S3-Touch-LCD-4.3B` | 4.3" | 800x480 | up to 40 keys/page, 8 pages | Hardware-validated source profile; local build required until a release image is published |
 | [Elecrow `CrowPanel Advanced 10.1"`](#elecrow-crowpanel-advanced-101-esp32-p4) | 10.1" | 1024x600 | up to 40 keys/page, 8 pages | A large deck with many keys per page |
 | [`ESP32-2432S028R`](#esp32-2432s028r-cheap-yellow-display) | 2.8" | 320x240 | up to 12 keys/page, 8 pages | The cheapest way to try Stream32 |
 
@@ -31,12 +32,19 @@ to get running.
   - The silkscreen hardware revision is **Rev 3.0** or **Rev 4.0**. Both are
     supported. Rev 4 uses a different IO expander and adds software backlight
     control, but the flashing process and deck experience are identical.
-  - It is the **4-inch** `ESP32-S3-Touch-LCD-4`. The similarly named **4.3-inch**
-    board is a different device and will not work.
+  - It is the **4-inch** `ESP32-S3-Touch-LCD-4`. The similarly named **4.3-inch
+    4.3B** is a different device with its own profile; the
+    4-inch firmware will not work on it.
 - **Optional automatic power-on:** The
   [Rev 3 power-button bypass](../docs/WAVESHARE_V3_POWER_BUTTON_BYPASS.md)
   documents a board-level modification for installations that should start
   without pressing the power button. It has only been verified on **Rev 3.0**.
+
+The separate Waveshare `ESP32-S3-Touch-LCD-4.3B` source profile targets its
+800x480 direct-RGB panel and supports up to 40 keys per page. Display, touch,
+USB, backlight blanking, and rotation have been validated on physical
+hardware. No release image is available yet, so a local firmware build is
+currently required.
 
 ## Elecrow CrowPanel Advanced 10.1" ESP32-P4
 

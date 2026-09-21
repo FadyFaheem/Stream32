@@ -33,8 +33,19 @@ Waveshare `ESP32-S3-Touch-LCD-4` (profiles
   [power-button bypass](../docs/WAVESHARE_V3_POWER_BUTTON_BYPASS.md) for
   automatic startup, verified on Rev 3.0
 
-The similarly named 4.3-inch board is a different device. Do not select
-either 4-inch profile for it.
+Waveshare `ESP32-S3-Touch-LCD-4.3B` (profile
+`waveshare-esp32-s3-touch-lcd-4-3b`):
+
+- ESP32-S3 N16R8, ST7262 direct-RGB 800×480 LCD, GT911 touch
+- Up to 40 keys per page and 8 pages
+- Native USB Serial/JTAG (`303a:1001`)
+- CH422G-controlled on/off backlight; no continuous brightness control
+- Display, touch, USB protocol, backlight blanking, and software rotation have
+  been validated on physical hardware. A release image is still pending, so
+  build it locally for now.
+
+The 4-inch and 4.3-inch boards use different display buses, pinouts, and I/O
+expanders. Never flash either 4-inch profile onto the 4.3B.
 
 Elecrow `CrowPanel Advanced 10.1"` (profile
 `elecrow-crowpanel-advanced-10-1-esp32-p4`, model `DHE04310D`):
@@ -298,21 +309,21 @@ panel's unrotated orientation and turned on the way out.
 
 There are two ways a board can turn. The Cheap Yellow Display turns its
 panel, through the `esp_lcd_panel_swap_xy` and mirror calls `esp_lvgl_port`
-writes into MADCTL for it. The Waveshare boards cannot: their ST7701 runs as
-an RGB panel, whose driver implements neither. They are registered with
-`sw_rotate` instead, which makes the port rotate each flushed buffer with
-`lv_draw_sw_rotate` and leave the panel's scan order alone. Either way LVGL
-turns every touch sample by the display rotation, so the glass follows
-without recalibration, and either way the board is asked through the same
-`rotation` field. The MIPI-DSI CrowPanel still offers no rotation.
+writes into MADCTL for it. The Waveshare RGB panels cannot change scan order
+through their ESP-IDF panel drivers, so they are registered with `sw_rotate`
+instead. The port rotates each flushed buffer with `lv_draw_sw_rotate` and
+leaves the panel's scan order alone. Either way LVGL turns every touch sample
+by the display rotation, so the glass follows without recalibration, and
+either way the board is asked through the same `rotation` field. The MIPI-DSI
+CrowPanel still offers no rotation.
 
 Software rotation costs a rotate of every flushed region and one extra draw
-buffer, which is why it is not the default everywhere. On the Waveshare it is
-the only option, and the square panel makes it the cheap case: the grid keeps
-its shape and `keyPx` does not move, so the icons the board asks for after a
-turn are the same pixels it was already holding. It does still ask for them.
-The re-flow empties the artwork pool for any style change, because on a board
-whose keys did change size nothing left in it could be read back.
+buffer, which is why it is not the default everywhere. On Waveshare it is the
+only option. The square 4-inch panels keep the same grid and `keyPx`; the
+rectangular 4.3B swaps its logical dimensions at 90° and 270°, so its grid
+re-flows and the desktop sends correctly sized icons again. The re-flow
+empties the artwork pool for any style change, because on a board whose keys
+did change size nothing left in it could be read back.
 
 Waveshare Rev 4 mounts its panel upside down relative to Rev 3. That offset
 is the base every rotation is added to rather than a rotation of its own, so
@@ -387,7 +398,8 @@ backlight, so an idle wake touch is reliable. Waveshare Rev 4 blanking turns
 its CH32V003 PWM backlight fully off the same way. Waveshare Rev 3 does not
 advertise brightness because its current BSP has no software-controlled
 backlight pin; idle and lock still blank its ST7701 image, although the
-backlight may remain lit.
+backlight may remain lit. The Waveshare 4.3B also does not advertise
+brightness, but its CH422G can switch the backlight fully off for blanking.
 
 The firmware persists layouts and artwork to the dedicated `deck` flash
 partition (header last, CRC-checked), so a standalone device boots straight

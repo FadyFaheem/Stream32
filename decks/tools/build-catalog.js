@@ -90,8 +90,9 @@ function buildCatalog({
 
     // The gate that matters: a submitted profile must import cleanly, so a
     // broken or hostile export never reaches the published catalog.
+    let profile;
     try {
-      importProfile(body.toString('utf8'));
+      profile = importProfile(body.toString('utf8'));
     } catch (error) {
       fail(`Deck ${id} is not a valid Stream32 profile export: ${error.message}`);
     }
@@ -113,6 +114,7 @@ function buildCatalog({
       asset,
       sha256: createHash('sha256').update(body).digest('hex'),
       bytes: body.length,
+      boardId: profile.boardId,
       name: requireString(entry?.name, `Deck ${id} name`, 60),
       author: requireString(entry?.author, `Deck ${id} author`, 60),
       tags,

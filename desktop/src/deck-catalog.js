@@ -20,7 +20,7 @@ const { readFile, mkdir, stat } = require('node:fs/promises');
 const path = require('node:path');
 
 const { writeJsonAtomic } = require('./atomic-json');
-const { importProfile } = require('./deck-model');
+const { BOARD_ID_PATTERN, importProfile } = require('./deck-model');
 
 const CATALOG_SCHEMA_VERSION = 1;
 const SHARE_GUIDE_URL =
@@ -139,9 +139,14 @@ function validateEntry(entry, seenIds, seenAssets) {
     'Deck catalog summary',
     MAX_SUMMARY_LENGTH,
   );
-  // Board and key count are advisory: a profile still imports onto a different
-  // board, it just may not fill the grid.
+  // `board` is a display label; only the id derived from the validated export
+  // can be compared with a device. Older catalogs omit it.
   const board = optionalString(entry.board, 'Deck catalog board', 64);
+  const boardId = optionalString(entry.boardId, 'Deck catalog board id', 64);
+
+  if (boardId !== undefined && !BOARD_ID_PATTERN.test(boardId)) {
+    throw new TypeError('Deck catalog board id is invalid.');
+  }
 
   if (summary !== undefined) {
     validated.summary = summary;
@@ -149,6 +154,10 @@ function validateEntry(entry, seenIds, seenAssets) {
 
   if (board !== undefined) {
     validated.board = board;
+  }
+
+  if (boardId !== undefined) {
+    validated.boardId = boardId;
   }
 
   return validated;

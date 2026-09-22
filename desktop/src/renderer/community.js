@@ -60,6 +60,7 @@ class CommunityController {
       this.query = this.search.value;
       this.renderList();
     });
+    this.deviceSelect.addEventListener('change', () => this.renderList());
     this.refreshButton.addEventListener('click', () => {
       this.load(true);
     });
@@ -141,6 +142,15 @@ class CommunityController {
       return;
     }
 
+    if (entry.boardId && entry.boardId !== this.devices[deviceId]?.boardId) {
+      this.setStatus(
+        `This deck requires ${entry.board || entry.boardId}. ` +
+        'Select a matching device or choose a deck made for your board.',
+        'error',
+      );
+      return;
+    }
+
     this.busy = true;
     this.renderList();
     this.setStatus(`Installing ${entry.name}…`);
@@ -163,6 +173,7 @@ class CommunityController {
 
   renderList() {
     const matches = searchCatalog(this.decks, this.query);
+    const selectedDevice = this.devices[this.deviceSelect.value];
     this.list.replaceChildren();
 
     if (matches.length === 0) {
@@ -195,8 +206,19 @@ class CommunityController {
       const install = this.document.createElement('button');
       install.type = 'button';
       install.className = 'button button-secondary';
-      install.textContent = 'Install';
-      install.disabled = this.busy || this.deviceSelect.disabled;
+      const incompatible = Boolean(selectedDevice && entry.boardId &&
+        entry.boardId !== selectedDevice.boardId);
+      install.textContent = incompatible ? 'Different board' : 'Install';
+      install.disabled = this.busy || this.deviceSelect.disabled || incompatible;
+
+      if (incompatible) {
+        const requirement = this.document.createElement('p');
+        requirement.className = 'helper';
+        requirement.textContent =
+          `Requires ${entry.board || entry.boardId}. ` +
+          'Select a matching device or choose a deck made for your board.';
+        card.append(requirement);
+      }
       install.addEventListener('click', () => {
         this.install(entry);
       });

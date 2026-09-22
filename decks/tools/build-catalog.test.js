@@ -54,7 +54,8 @@ test('a valid index becomes a catalog with sizes and hashes', () => {
         name: 'Streaming',
         author: 'someone',
         summary: 'Scene switching.',
-        board: 'crowpanel-10',
+        board: 'CrowPanel display label',
+        boardId: 'untrusted-index-board',
         tags: ['obs'],
       },
     ],
@@ -66,11 +67,12 @@ test('a valid index becomes a catalog with sizes and hashes', () => {
     asset: 'streaming.json',
     sha256: createHash('sha256').update(PROFILE).digest('hex'),
     bytes: Buffer.byteLength(PROFILE),
+    boardId: 'crowpanel-10',
     name: 'Streaming',
     author: 'someone',
     tags: ['obs'],
     summary: 'Scene switching.',
-    board: 'crowpanel-10',
+    board: 'CrowPanel display label',
   });
   assert.equal(assets.length, 1);
   assert.equal(assets[0].name, 'streaming.json');

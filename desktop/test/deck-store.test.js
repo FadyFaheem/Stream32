@@ -805,10 +805,12 @@ test('imports a compatible file as a new selected profile', () => {
 
     const wrongBoard = sampleProfile();
     wrongBoard.boardId = 'different-board';
+    const before = readDecks(decksPath);
     assert.throws(
       () => addImportedProfile(DEVICE_ID, wrongBoard, decksPath),
-      /different board/,
+      /different board \(different-board\).*selected device uses waveshare-esp32-s3-touch-lcd-4-v3/,
     );
+    assert.deepEqual(readDecks(decksPath), before);
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

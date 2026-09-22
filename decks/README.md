@@ -4,6 +4,12 @@ The **Community** tab in the Stream32 desktop app lists decks published by other
 owners. Installing one adds it as a new named profile on the device you pick; it
 never replaces a profile you already have.
 
+Profiles require the board they were exported from. The gallery shows which
+board each deck needs and disables installation for other boards. For example,
+Windows Workspace uses eight pages with up to 40 keys each on the CrowPanel 10.1;
+it cannot fit unchanged on the ESP32-2432S028R's 12-key grid. Choose a deck made for your board
+or create and share a layout within that board's limits.
+
 This directory is where those decks come from. There is no account system and no
 upload form: a shared deck is a pull request, so GitHub provides the identity and
 review that a hosted gallery would otherwise need an account and a captcha to
@@ -47,6 +53,8 @@ approximate.
 `main`, the publish workflow rebuilds `catalog-v1.json` with each deck's byte
 size and SHA-256 and updates the `decks-current` release. The desktop app
 verifies both before it parses a download.
+The catalog also derives `boardId` from the validated export for compatibility
+checks; the optional `board` label in the index is only for display and search.
 
 ## What a shared deck may contain
 

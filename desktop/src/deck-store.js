@@ -718,7 +718,11 @@ function addImportedProfile(deviceId, profile, decksPath) {
   const imported = validateProfile(profile);
 
   if (imported.boardId !== device.boardId) {
-    throw new TypeError('Imported profile is for a different board.');
+    throw new TypeError(
+      `Imported profile is for a different board (${imported.boardId}); ` +
+      `the selected device uses ${device.boardId}. ` +
+      'Choose a profile made for the selected board.',
+    );
   }
 
   const name = uniqueProfileName(device, imported.name);

@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld('stream32', {
   restoreBackup: () => ipcRenderer.invoke('backup:restore'),
   runAction: (action) => ipcRenderer.invoke('action:run', action),
   runStatusCommand: (command) => ipcRenderer.invoke('status:run', command),
+  runStatusJsonCommand: (command) =>
+    ipcRenderer.invoke('status-json:run', command),
   registerDeck: (deviceId, boardId, name) =>
     ipcRenderer.invoke('deck:register', deviceId, boardId, name),
   removeDeck: (deviceId) =>

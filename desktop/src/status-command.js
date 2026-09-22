@@ -6,6 +6,11 @@ const { spawn } = require('node:child_process');
 
 const MAX_COMMAND_LENGTH = 1024;
 const STATUS_COMMAND_TIMEOUT_MS = 5000;
+// A JSON answer is four small fields, or those fields plus one inline image
+// of at most 24 KB, so 32 KB covers the largest answer the schema allows. The
+// cap exists so a command that never stops talking cannot grow a buffer
+// nobody asked to fill.
+const MAX_JSON_OUTPUT_BYTES = 32_768;
 
 // Killing the shell does not kill what the shell started: `sh -c` forks for
 // anything but the simplest line, and cmd.exe starts even a single command as
@@ -82,8 +87,82 @@ function runStatusCommand(
   });
 }
 
+// A JSON status command answers with a small object on stdout, so that one
+// pipe is read rather than ignored. Everything else keeps the polled-command
+// posture of runStatusCommand: killed with its whole tree after the timeout,
+// hidden on Windows, and resolved rather than rejected on failure, so the
+// caller only ever has an answer or nothing to show for it.
+function runStatusJsonCommand(
+  command,
+  { timeoutMs = STATUS_COMMAND_TIMEOUT_MS } = {},
+) {
+  if (
+    typeof command !== 'string' ||
+    !command.trim() ||
+    command.length > MAX_COMMAND_LENGTH
+  ) {
+    throw new TypeError('Status command is invalid.');
+  }
+
+  return new Promise((resolve) => {
+    const child = spawn(command, {
+      shell: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      // Its own process group, so killTree can reach the whole command. Not on
+      // Windows, where detaching would give the child its own console window.
+      detached: process.platform !== 'win32',
+      // Stream32 is a GUI app, so cmd.exe would otherwise flash a console
+      // window on screen every time a key polls.
+      windowsHide: true,
+    });
+
+    let timedOut = false;
+    let overflowed = false;
+    let received = 0;
+    const chunks = [];
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killTree(child);
+    }, timeoutMs);
+    timer.unref?.();
+
+    const finish = (result) => {
+      clearTimeout(timer);
+      resolve(result);
+    };
+
+    // Drained as it arrives, so the buffer never holds more than the cap. Past
+    // it the command is not an answer but a firehose, and is stopped; close
+    // then reports the same nothing as any other failure.
+    child.stdout.on('data', (chunk) => {
+      received += chunk.length;
+
+      if (received <= MAX_JSON_OUTPUT_BYTES) {
+        chunks.push(chunk);
+      } else if (!overflowed) {
+        overflowed = true;
+        killTree(child);
+      }
+    });
+    // A pipe that fails mid-read is a command that answered nothing, which is
+    // close's answer too; listening keeps the stream from throwing instead.
+    child.stdout.on('error', () => {});
+
+    child.on('error', () => finish({ output: null }));
+    child.on('close', (code, signal) =>
+      finish({
+        output: signal || timedOut || overflowed || code !== 0
+          ? null
+          : Buffer.concat(chunks).toString('utf8'),
+      }),
+    );
+  });
+}
+
 module.exports = {
   MAX_COMMAND_LENGTH,
+  MAX_JSON_OUTPUT_BYTES,
   STATUS_COMMAND_TIMEOUT_MS,
   runStatusCommand,
+  runStatusJsonCommand,
 };

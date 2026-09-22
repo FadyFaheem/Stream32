@@ -38,6 +38,9 @@ const LIVE_LEASE_REFRESH_MS = 10000;
 // Status commands are due on their own second, so one tick serves every key
 // rather than a timer per key that has to be torn down on each profile edit.
 const STATUS_TICK_MS = 1000;
+// The two polled providers share the run: one walk, one due-map, one
+// no-two-at-once rule, differing only in how their answer becomes an overlay.
+const POLLED_PROVIDERS = new Set(['status-command', 'status-json']);
 
 function gridKey(page) {
   return `${page.rows}x${page.cols}`;
@@ -67,6 +70,7 @@ class DeckRuntime {
     setDevice,
     persistProfile,
     renderPageImages,
+    renderIcon,
     limitsFor,
     resolveProfileForSnapshot,
     resolvePageForSnapshot,
@@ -87,6 +91,10 @@ class DeckRuntime {
     this.setDevice = setDevice;
     this.persistProfile = persistProfile;
     this.renderPageImages = renderPageImages;
+    // Turns a Material icon name into the artwork data URL a JSON status
+    // answer asked for, or null for a name the library does not know. Supplied
+    // by the controller, which owns the font and the canvas.
+    this.renderIcon = renderIcon;
     this.limitsFor = limitsFor;
     this.getFocusStatus = getFocusStatus;
     this.getFocusSnapshot = getFocusSnapshot;
@@ -281,6 +289,27 @@ class DeckRuntime {
         );
         return appearance ? { ...appearance, state: 'unknown' } : null;
       }
+      case 'status-json': {
+        const answer = this.liveValues.get(
+          this.liveKey(deviceId, profileId, page, key.index),
+        );
+
+        if (!answer) {
+          return null;
+        }
+
+        const overlay = { ...answer.overlay };
+
+        if (answer.imageName) {
+          const image = config.images?.[answer.imageName];
+
+          if (image) {
+            overlay.image = image;
+          }
+        }
+
+        return { ...overlay, state: 'unknown' };
+      }
       default:
         return null;
     }
@@ -365,7 +394,7 @@ class DeckRuntime {
 
       for (const [pageIndex, page] of profile.pages.entries()) {
         for (const key of page.keys) {
-          if (key.liveState?.provider !== 'status-command') {
+          if (!POLLED_PROVIDERS.has(key.liveState?.provider)) {
             continue;
           }
 
@@ -394,10 +423,15 @@ class DeckRuntime {
 
     this.statusRunning.add(id);
 
-    let code = null;
+    // For the exit-code provider this is the code itself; for the JSON
+    // provider it is the overlay the answer became, with a signature to
+    // compare so an identical answer does not repaint the key.
+    let answer = null;
 
     try {
-      ({ code } = await this.api.runStatusCommand(config.command));
+      answer = config.provider === 'status-json'
+        ? await this.readStatusJson(config)
+        : await this.readStatusCode(config);
     } catch {
       // A rejected command is the same as one that answered nothing: the key
       // falls back to the appearance the user saved.
@@ -408,11 +442,16 @@ class DeckRuntime {
       this.statusDue.set(id, Date.now() + config.intervalSeconds * 1000);
     }
 
-    if (this.liveValues.get(id) === code) {
+    const previous = this.liveValues.get(id);
+    const unchanged = config.provider === 'status-json'
+      ? previous?.signature === answer?.signature
+      : previous === answer;
+
+    if (unchanged) {
       return;
     }
 
-    this.liveValues.set(id, code);
+    this.liveValues.set(id, answer);
     this.queueLiveUpdate(deviceId, {
       profileId,
       page,
@@ -420,6 +459,65 @@ class DeckRuntime {
       overlay: this.liveOverlayFor(deviceId, profileId, page, key),
     });
     this.onRenderSelectedLive(deviceId);
+  }
+
+  async readStatusCode(config) {
+    const { code } = await this.api.runStatusCommand(config.command);
+    return code;
+  }
+
+  // A null answer clears the overlay, so the key falls back to what the user
+  // saved — the same outcome as an unmatched exit code.
+  async readStatusJson(config) {
+    const validated = await this.api.runStatusJsonCommand(config.command);
+
+    if (!validated) {
+      return null;
+    }
+
+    const overlay = {};
+
+    if (validated.label) {
+      overlay.label = validated.label;
+    }
+
+    if (validated.color) {
+      overlay.color = validated.color;
+    }
+
+    if (validated.labelColor) {
+      overlay.labelColor = validated.labelColor;
+    }
+
+    // "image" outranks "icon": artwork the answer names itself beats a glyph
+    // the answer would only suggest.
+    let imageName;
+
+    if (validated.image) {
+      if (validated.image.startsWith('data:')) {
+        overlay.image = validated.image;
+      } else {
+        // A slot name resolves at overlay time rather than here, so artwork
+        // swapped under a name repaints on the next refresh without waiting
+        // for a poll to notice. An unknown name resolves to nothing, which
+        // drops the field the way an unknown icon name drops its own.
+        imageName = validated.image;
+      }
+    } else if (validated.icon && this.renderIcon) {
+      // A name the icon library does not know loses its field rather than the
+      // whole answer: the rest still describes the key truthfully.
+      const image = await this.renderIcon(validated.icon);
+
+      if (image) {
+        overlay.image = image;
+      }
+    }
+
+    return {
+      signature: JSON.stringify(imageName ? { ...overlay, imageName } : overlay),
+      overlay,
+      ...(imageName ? { imageName } : {}),
+    };
   }
 
   queueLiveUpdate(deviceId, update) {
@@ -1151,7 +1249,7 @@ class DeckRuntime {
       ?.pages[origin.page]
       ?.keys.find((entry) => entry.index === origin.index);
 
-    if (key?.liveState?.provider === 'status-command') {
+    if (POLLED_PROVIDERS.has(key?.liveState?.provider)) {
       void this.runStatusCommand(deviceId, profileId, origin.page, key);
       return;
     }

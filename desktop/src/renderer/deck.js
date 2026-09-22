@@ -7,10 +7,12 @@ const {
   moveKey,
   pasteKey,
 } = require('./key-clipboard');
+const { LiveJsonImages } = require('./live-json-images');
 const { LiveStatusFields } = require('./live-status-fields');
 const { remapActionAfterPageDeletion } = require('../action-model');
 const { MAX_NAME_LENGTH } = require('../deck-model');
 const {
+  MAX_STATUS_JSON_IMAGES,
   MAX_STATUS_STATES,
   mergeKeyOverlay,
 } = require('../dynamic-state');
@@ -215,6 +217,23 @@ class DeckController {
     this.liveStatusInterval =
       document.querySelector('#deck-live-status-interval');
     this.liveStatusAdd = document.querySelector('#deck-live-status-add');
+    this.liveJsonFields = document.querySelector('#deck-live-json-fields');
+    this.liveJsonCommand =
+      document.querySelector('#deck-live-json-command');
+    this.liveJsonInterval =
+      document.querySelector('#deck-live-json-interval');
+    this.liveJsonAdd = document.querySelector('#deck-live-json-add');
+    this.liveJsonImages = new LiveJsonImages({
+      document,
+      container: document.querySelector('#deck-live-json-images'),
+      onChange: (mutate) => this.updateJsonImages(mutate),
+      readImageFile: (file) => this.readImageFile(file),
+      openIconLibrary: (apply) => this.openIconLibrary(apply),
+      onError: (error) => this.setSyncStatus(
+        `Could not read live image: ${error.message}`,
+        'error',
+      ),
+    });
     this.liveStatusStates = new LiveStatusFields({
       document,
       container: document.querySelector('#deck-live-status-states'),
@@ -262,6 +281,7 @@ class DeckController {
       persistProfile: (deviceId, profileId) =>
         this.persistProfile(deviceId, profileId),
       renderPageImages: (page, keyPx) => this.renderPageImages(page, keyPx),
+      renderIcon: (name) => this.renderLiveIcon(name),
       limitsFor: (profile) => this.limitsFor(profile),
       resolveProfileForSnapshot: selectProfileForSnapshot,
       resolvePageForSnapshot: selectPageForSnapshot,
@@ -758,6 +778,12 @@ class DeckController {
               { code: 1, color: '#8f2f2f', labelColor: '#ffffff' },
             ],
           };
+        } else if (provider === 'status-json') {
+          key.liveState = {
+            provider,
+            command: '',
+            intervalSeconds: 3,
+          };
         } else {
           key.liveState = { provider: 'focused-app' };
         }
@@ -766,6 +792,9 @@ class DeckController {
     this.liveStatusAdd.addEventListener('click', () => {
       this.liveStatusStates.add();
     });
+    this.liveJsonAdd.addEventListener('click', () => {
+      this.liveJsonImages.add();
+    });
     for (const control of [
       this.liveOnLabel,
       this.liveOnColor,
@@ -773,6 +802,8 @@ class DeckController {
       this.liveClockFormat,
       this.liveStatusCommand,
       this.liveStatusInterval,
+      this.liveJsonCommand,
+      this.liveJsonInterval,
     ]) {
       control.addEventListener('change', () => this.saveLiveConfigFromEditor());
     }
@@ -1080,6 +1111,29 @@ class DeckController {
       STORED_IMAGE_PIXELS / 2,
     );
     return canvas.toDataURL('image/webp', 0.92);
+  }
+
+  // A JSON status answer names an icon rather than shipping artwork, so the
+  // name has to be one the library knows before it is drawn. Rendered tiles
+  // are cached by name: a polled command asks for the same glyph every
+  // interval, and re-rasterizing it each time would be pure cost.
+  async renderLiveIcon(name) {
+    if (!ICON_NAMES.includes(name)) {
+      return null;
+    }
+
+    if (!this.liveIconCache) {
+      this.liveIconCache = new Map();
+    }
+
+    if (!this.liveIconCache.has(name)) {
+      this.liveIconCache.set(
+        name,
+        await this.renderMaterialIcon(name),
+      );
+    }
+
+    return this.liveIconCache.get(name);
   }
 
   async readImageFile(file) {
@@ -1538,6 +1592,12 @@ class DeckController {
         key.liveState.intervalSeconds = Number.isInteger(interval)
           ? Math.min(Math.max(interval, 1), 3600)
           : key.liveState.intervalSeconds;
+      } else if (key.liveState?.provider === 'status-json') {
+        const interval = Number.parseInt(this.liveJsonInterval.value, 10);
+        key.liveState.command = this.liveJsonCommand.value.trim();
+        key.liveState.intervalSeconds = Number.isInteger(interval)
+          ? Math.min(Math.max(interval, 1), 3600)
+          : key.liveState.intervalSeconds;
       }
     });
   }
@@ -1552,6 +1612,26 @@ class DeckController {
 
       if (mutate(states)) {
         key.liveState.states = states;
+      }
+    });
+  }
+
+  updateJsonImages(mutate) {
+    this.updateSelectedKey((key) => {
+      if (key.liveState?.provider !== 'status-json') {
+        return;
+      }
+
+      const images = { ...(key.liveState.images || {}) };
+
+      if (mutate(images)) {
+        // Pending slots (empty values) ride the draft so their rows stay
+        // editable; the validator drops them before anything is saved.
+        if (Object.keys(images).length > 0) {
+          key.liveState.images = images;
+        } else {
+          delete key.liveState.images;
+        }
       }
     });
   }
@@ -2314,18 +2394,36 @@ class DeckController {
     this.liveStatusStates.render(
       live?.provider === 'status-command' ? live.states : [],
     );
+    this.liveJsonFields.hidden = live?.provider !== 'status-json';
+    this.liveJsonCommand.value = live?.provider === 'status-json'
+      ? live.command
+      : '';
+    this.liveJsonInterval.value = String(
+      live?.provider === 'status-json' ? live.intervalSeconds : 3,
+    );
+    this.liveJsonAdd.disabled =
+      live?.provider !== 'status-json' ||
+      Object.keys(live.images || {}).length >= MAX_STATUS_JSON_IMAGES;
+    this.liveJsonImages.render(
+      live?.provider === 'status-json' ? live.images || {} : {},
+    );
     const session = this.runtime.sessionFor(this.selectedDeviceId);
     this.liveStatus.textContent = live
       ? session && !session.hello?.features?.includes('key-update')
         ? 'Connected firmware does not support live state. Reflash this board to enable it.'
         : live.provider === 'toggle'
           ? 'Local toggle changes only after its complete action succeeds.'
-          : live.provider === 'status-command'
+          : live.provider === 'status-json'
             ? live.command
               ? 'The command runs only while this deck is connected, ' +
                 'and never two at once.'
-              : 'Enter a command that exits with a code for each state.'
-            : 'Live appearance is ephemeral and never changes the saved base key.'
+              : 'Enter a command that prints one JSON object.'
+            : live.provider === 'status-command'
+              ? live.command
+                ? 'The command runs only while this deck is connected, ' +
+                  'and never two at once.'
+                : 'Enter a command that exits with a code for each state.'
+              : 'Live appearance is ephemeral and never changes the saved base key.'
       : '';
 
     const action = key.action || null;

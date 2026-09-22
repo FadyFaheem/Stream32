@@ -52,6 +52,7 @@ const {
 } = require('./deck-store');
 const { createDiagnosticLogger } = require('./diagnostic-log');
 const { createDiagnostics } = require('./diagnostics');
+const { validateStatusJson } = require('./dynamic-state');
 const { createFocusWatcher } = require('./focus-watcher');
 const {
   SHARE_GUIDE_URL,
@@ -70,7 +71,7 @@ const {
   setDisplaySettings,
   setUpdateSettings,
 } = require('./settings');
-const { runStatusCommand } = require('./status-command');
+const { runStatusCommand, runStatusJsonCommand } = require('./status-command');
 const { createTray } = require('./tray');
 const { createUpdater } = require('./updater');
 
@@ -784,6 +785,26 @@ function registerIpcHandlers() {
     }
 
     return runStatusCommand(command);
+  });
+  // The JSON variant widens the channel to one small validated object, still
+  // nothing more: stdout past the cap never arrives, anything that is not
+  // exactly the schema becomes no answer, and no output is ever logged.
+  ipcMain.handle('status-json:run', async (event, command) => {
+    if (event.sender !== mainWindow?.webContents) {
+      throw new TypeError('Status command request is invalid.');
+    }
+
+    const { output } = await runStatusJsonCommand(command);
+
+    if (output === null) {
+      return null;
+    }
+
+    try {
+      return validateStatusJson(JSON.parse(output));
+    } catch {
+      return null;
+    }
   });
 }
 

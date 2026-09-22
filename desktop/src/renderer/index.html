@@ -430,6 +430,7 @@
                         <option value="clock">Clock</option>
                         <option value="focused-app">Focused app</option>
                         <option value="status-command">Status command</option>
+                        <option value="status-json">JSON status command</option>
                       </select>
                     </label>
                     <p class="helper deck-live-helper">
@@ -515,6 +516,51 @@
                         type="button"
                       >
                         Add exit code
+                      </button>
+                    </div>
+                    <div id="deck-live-json-fields" class="deck-live-status-json">
+                      <label class="deck-field">
+                        Status command
+                        <input
+                          id="deck-live-json-command"
+                          type="text"
+                          maxlength="1024"
+                          placeholder="my-status.sh"
+                        >
+                      </label>
+                      <label class="deck-field deck-live-interval-field">
+                        Check every
+                        <input
+                          id="deck-live-json-interval"
+                          type="number"
+                          min="1"
+                          max="3600"
+                          step="1"
+                          value="3"
+                        >
+                      </label>
+                      <p class="helper">
+                        Stream32 runs this command on a timer and after the
+                        key's own action, and reads one JSON object from its
+                        output:
+                        &quot;key_color&quot; and &quot;text_color&quot; are
+                        #rrggbb, &quot;label&quot; is text, &quot;icon&quot;
+                        is an icon library name, and &quot;image&quot; names
+                        one of the images below or carries a
+                        &quot;data:image/...&quot; URL of its own (at most
+                        24 KB); every field is optional, and image beats icon.
+                        A non-zero exit code, output that is not exactly this
+                        shape, more than 32 KB, and a command that hangs past
+                        five seconds all leave the key looking the way you
+                        saved it. Output is never logged.
+                      </p>
+                      <div id="deck-live-json-images"></div>
+                      <button
+                        id="deck-live-json-add"
+                        class="button button-quiet"
+                        type="button"
+                      >
+                        Add image
                       </button>
                     </div>
                     <p id="deck-live-status" class="helper" aria-live="polite"></p>

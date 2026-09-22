@@ -1132,6 +1132,12 @@ input:disabled {
   min-width: 0;
 }
 
+.deck-live-status-json {
+  display: grid;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
 .deck-live-interval-field {
   max-width: 10rem;
 }
@@ -1164,6 +1170,28 @@ input:disabled {
 }
 
 .deck-live-status-state > .deck-image-row {
+  grid-column: 1 / -1;
+}
+
+/* One boxed row per named image, the same shape as an exit-code state: the
+   name and its Remove on the first line, the artwork controls on the second. */
+.deck-live-json-image {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  padding: 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.deck-live-json-image + .deck-live-json-image {
+  margin-top: 0.5rem;
+}
+
+.deck-live-json-image > .deck-image-row {
   grid-column: 1 / -1;
 }
 
